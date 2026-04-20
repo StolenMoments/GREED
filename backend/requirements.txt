@@ -4,4 +4,4 @@ sqlalchemy
 pydantic>=2,<3
 click
 httpx
-
+pytest
