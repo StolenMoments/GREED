@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import NamedTuple
+
 from sqlalchemy import Select, desc, func, select
 from sqlalchemy.orm import Session
 
@@ -11,32 +14,32 @@ RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
 ANALYSIS_ORDER_BY = (desc(Analysis.created_at), desc(Analysis.id))
 
 
-def create_run(db: Session, memo: str | None = None) -> Run:
+class RunRow(NamedTuple):
+    id: int
+    memo: str | None
+    created_at: datetime
+    analysis_count: int
+
+
+def create_run(db: Session, memo: str | None = None) -> RunRow:
     run = Run(memo=memo)
     db.add(run)
     db.commit()
     db.refresh(run)
-    setattr(run, "analysis_count", 0)
-    return run
+    return RunRow(id=run.id, memo=run.memo, created_at=run.created_at, analysis_count=0)
 
 
-def get_runs(db: Session) -> list[Run]:
+def get_runs(db: Session) -> list[RunRow]:
     rows = db.execute(_run_with_count_stmt()).all()
-    runs: list[Run] = []
-    for run, analysis_count in rows:
-        setattr(run, "analysis_count", analysis_count)
-        runs.append(run)
-    return runs
+    return [RunRow(id=run.id, memo=run.memo, created_at=run.created_at, analysis_count=count) for run, count in rows]
 
 
-def get_run(db: Session, run_id: int) -> Run | None:
+def get_run(db: Session, run_id: int) -> RunRow | None:
     row = db.execute(_run_with_count_stmt().where(Run.id == run_id)).first()
     if row is None:
         return None
-
-    run, analysis_count = row
-    setattr(run, "analysis_count", analysis_count)
-    return run
+    run, count = row
+    return RunRow(id=run.id, memo=run.memo, created_at=run.created_at, analysis_count=count)
 
 
 def create_analysis(db: Session, obj: AnalysisCreate) -> Analysis:

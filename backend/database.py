@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -24,4 +25,9 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 
-init_db()
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
