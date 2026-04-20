@@ -30,6 +30,7 @@ def db_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+        engine.dispose()
 
 
 def test_create_run_persists_run(db_session: Session) -> None:
@@ -124,7 +125,7 @@ def test_get_analyses_by_run_filters_by_judgment(db_session: Session) -> None:
     assert [analysis.id for analysis in buy_analyses] == [buy_analysis.id]
 
 
-def test_get_analysis_history_returns_same_ticker_first(db_session: Session) -> None:
+def test_get_analysis_history_orders_by_newest_first(db_session: Session) -> None:
     first_run = create_run(db_session, memo="history 1")
     second_run = create_run(db_session, memo="history 2")
 

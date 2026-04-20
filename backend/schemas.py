@@ -26,6 +26,13 @@ class AnalysisCreate(BaseModel):
     name: str
     model: str
     markdown: str
+    judgment: str
+    trend: str
+    cloud_position: str
+    ma_alignment: str
+    entry_price: float | None = None
+    target_price: float | None = None
+    stop_loss: float | None = None
 
 
 class AnalysisSummary(BaseModel):

@@ -4,6 +4,7 @@ from sqlalchemy import Select, desc, func, select
 from sqlalchemy.orm import Session
 
 from backend.models import Analysis, Run
+from backend.schemas import AnalysisCreate
 
 
 RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
@@ -38,20 +39,20 @@ def get_run(db: Session, run_id: int) -> Run | None:
     return run
 
 
-def create_analysis(db: Session, obj: object) -> Analysis:
+def create_analysis(db: Session, obj: AnalysisCreate) -> Analysis:
     analysis = Analysis(
-        run_id=_required_attr(obj, "run_id"),
-        ticker=_required_attr(obj, "ticker"),
-        name=_required_attr(obj, "name"),
-        model=_required_attr(obj, "model"),
-        markdown=_required_attr(obj, "markdown"),
-        judgment=_required_attr(obj, "judgment"),
-        trend=_required_attr(obj, "trend"),
-        cloud_position=_required_attr(obj, "cloud_position"),
-        ma_alignment=_required_attr(obj, "ma_alignment"),
-        entry_price=getattr(obj, "entry_price", None),
-        target_price=getattr(obj, "target_price", None),
-        stop_loss=getattr(obj, "stop_loss", None),
+        run_id=obj.run_id,
+        ticker=obj.ticker,
+        name=obj.name,
+        model=obj.model,
+        markdown=obj.markdown,
+        judgment=obj.judgment,
+        trend=obj.trend,
+        cloud_position=obj.cloud_position,
+        ma_alignment=obj.ma_alignment,
+        entry_price=obj.entry_price,
+        target_price=obj.target_price,
+        stop_loss=obj.stop_loss,
     )
     db.add(analysis)
     db.commit()
@@ -89,8 +90,3 @@ def _run_with_count_stmt() -> Select[tuple[Run, int]]:
     )
 
 
-def _required_attr(obj: object, attr_name: str):
-    value = getattr(obj, attr_name, None)
-    if value is None:
-        raise ValueError(f"Missing required attribute: {attr_name}")
-    return value
