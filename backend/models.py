@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from backend.database import Base
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    memo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    analyses: Mapped[list["Analysis"]] = relationship(
+        "Analysis",
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class Analysis(Base):
+    __tablename__ = "analyses"
+    __table_args__ = (
+        Index("ix_analyses_run_id", "run_id"),
+        Index("ix_analyses_ticker", "ticker"),
+        Index("ix_analyses_judgment", "judgment"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    judgment: Mapped[str] = mapped_column(String, nullable=False)
+    trend: Mapped[str] = mapped_column(String, nullable=False)
+    cloud_position: Mapped[str] = mapped_column(String, nullable=False)
+    ma_alignment: Mapped[str] = mapped_column(String, nullable=False)
+    entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    run: Mapped[Run] = relationship("Run", back_populates="analyses")
