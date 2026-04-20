@@ -135,6 +135,84 @@ def test_parse_markdown_falls_back_to_plain_judgment_text() -> None:
     assert result.data["judgment"] == "매수"
 
 
+def test_parse_markdown_accepts_bracketed_judgment_text() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+[매수]
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.data["judgment"] == "매수"
+
+
+def test_parse_markdown_accepts_quoted_judgment_text() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 하락
+- 구름대 위치: 구름 아래
+- MA 배열: 역배열
+
+### 4. 매매 판정
+"매도"
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.data["judgment"] == "매도"
+
+
+def test_parse_markdown_extracts_transformed_example_markdown_table() -> None:
+    markdown = """
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+- 후행스팬: 가격선 위
+
+### 2. 핵심 지지/저항선
+- 1차 지지: 2,106원 근거: 일목 전환선
+- 2차 지지: 2,023원 근거: 120주 이동평균선
+- 1차 저항: 2,216원 근거: 일목 기준선
+- 2차 저항: 2,500원 근거: 최근 단기 전고점 (2026년 3월 23일 주간 고가)
+
+### 3. 향후 구름 전망 (미래 26주)
+- 구름 방향: 전환 예정
+- 비고: 향후 26주 미래 구름은 초반 하락운을 유지하다가 2026년 7월경 얇은 상승운으로 전환된 뒤 다시 혼조세가 전개됩니다.
+
+### 4. 매매 판정
+[매수]
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 진입 조건 | 1차 지지선(전환선) 부근 눌림 시 분할 매수 또는 1차 저항선(기준선) 상향 돌파 시 추격 매수 | 2,100원 ~ 2,220원 |
+| 1차 목표 | 최근 형성된 매물대 상단 및 직전 파동의 의미 있는 고점 도달 | 2,500원 |
+| 손절 기준 | 주가가 120주 이동평균선 및 20주 이동평균선을 동시 하향 이탈하며 추세 지지 무효화 | 1,990원 미만 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.failed == []
+    assert result.data["judgment"] == "매수"
+    assert result.data["trend"] == "상승"
+    assert result.data["cloud_position"] == "구름 위"
+    assert result.data["ma_alignment"] == "혼조"
+    assert result.data["entry_price"] == 2100.0
+    assert result.data["target_price"] == 2500.0
+    assert result.data["stop_loss"] == 1990.0
+
+
 def test_parse_markdown_collects_all_failed_required_fields() -> None:
     result = parse_markdown("")
 
