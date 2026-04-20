@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
 
 
 REQUIRED_FIELDS = ("judgment", "trend", "cloud_position", "ma_alignment")
 OPTIONAL_FIELDS = ("entry_price", "target_price", "stop_loss")
+# "없음", "none" 은 스펙 외 방어적 추가 — LLM 출력 변형 대응
 NONE_TOKENS = {"n/a", "na", "-", "미정", "없음", "none"}
 
 FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -15,6 +15,7 @@ FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
     "ma_alignment": re.compile(r"MA 배열:\s*(정배열|역배열|혼조)"),
 }
 
+# 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 컬럼 추가 시 패턴 재검토 필요.
 PRICE_PATTERNS: dict[str, re.Pattern[str]] = {
     "entry_price": re.compile(r"^\|\s*진입 조건\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
     "target_price": re.compile(r"^\|\s*1차 목표\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
@@ -30,13 +31,13 @@ JUDGMENT_FALLBACK_PATTERN = re.compile(
 
 @dataclass(slots=True)
 class ParseResult:
-    data: dict[str, Any]
+    data: dict[str, str | float | None]
     failed: list[str]
     success: bool
 
 
 def parse_markdown(markdown: str) -> ParseResult:
-    data: dict[str, Any] = {}
+    data: dict[str, str | float | None] = {}
     failed: list[str] = []
 
     judgment = _extract_judgment(markdown)
@@ -83,6 +84,7 @@ def _parse_price(raw_value: str) -> float | None:
     if cleaned.casefold() in NONE_TOKENS:
         return None
 
+    # 한국 주식 가격은 정수 전용 — 소수점 미지원 의도적 생략
     number_match = re.search(r"\d[\d,]*", cleaned)
     if number_match is None:
         return None

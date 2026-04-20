@@ -133,3 +133,10 @@ def test_parse_markdown_falls_back_to_plain_judgment_text() -> None:
 
     assert result.success is True
     assert result.data["judgment"] == "매수"
+
+
+def test_parse_markdown_collects_all_failed_required_fields() -> None:
+    result = parse_markdown("")
+
+    assert result.success is False
+    assert result.failed == ["judgment", "trend", "cloud_position", "ma_alignment"]
