@@ -1,24 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Generator
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.crud import create_run, get_run, get_runs
-from backend.database import SessionLocal
+from backend.database import get_db
 from backend.schemas import RunCreate, RunRead
 
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
-
-
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("", response_model=RunRead, status_code=status.HTTP_201_CREATED)

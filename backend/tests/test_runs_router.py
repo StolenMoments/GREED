@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.crud import create_analysis, create_run
-from backend.database import Base
-from backend.routers.runs import get_db, router
+from backend.database import Base, get_db
+from backend.routers.runs import router
 from backend.schemas import AnalysisCreate
 
 
@@ -45,6 +45,16 @@ def client() -> Generator[TestClient, None, None]:
     engine.dispose()
 
 
+@pytest.fixture()
+def db_session(client: TestClient) -> Generator[Session, None, None]:
+    override = client.app.dependency_overrides[get_db]
+    session = next(override())
+    try:
+        yield session
+    finally:
+        session.close()
+
+
 def test_create_run_returns_201_with_run_fields(client: TestClient) -> None:
     response = client.post("/api/runs", json={"memo": "first run"})
 
@@ -56,32 +66,41 @@ def test_create_run_returns_201_with_run_fields(client: TestClient) -> None:
     assert body["created_at"]
 
 
-def test_list_runs_returns_runs_with_analysis_counts(client: TestClient) -> None:
-    create_response = client.post("/api/runs", json={"memo": "second run"})
-    second_run_id = create_response.json()["id"]
+def test_create_run_without_memo_returns_201(client: TestClient) -> None:
+    response = client.post("/api/runs", json={})
 
-    app = client.app
-    override = app.dependency_overrides[get_db]
-    db = next(override())
-    try:
-        first_run = create_run(db, memo="first run")
-        first_run_id = first_run.id
-        create_analysis(
-            db,
-            AnalysisCreate(
-                run_id=first_run.id,
-                ticker="005930",
-                name="Samsung Electronics",
-                model="gpt-5.4",
-                markdown="analysis",
-                judgment="매수",
-                trend="상승",
-                cloud_position="구름 위",
-                ma_alignment="정배열",
-            ),
-        )
-    finally:
-        db.close()
+    assert response.status_code == 201
+    assert response.json()["memo"] is None
+
+
+def test_list_runs_empty_returns_empty_list(client: TestClient) -> None:
+    response = client.get("/api/runs")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_runs_returns_runs_with_analysis_counts(
+    client: TestClient, db_session: Session
+) -> None:
+    second_run_id = client.post("/api/runs", json={"memo": "second run"}).json()["id"]
+
+    first_run = create_run(db_session, memo="first run")
+    first_run_id = first_run.id
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=first_run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown="analysis",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
 
     response = client.get("/api/runs")
 
@@ -99,3 +118,9 @@ def test_get_run_returns_404_when_missing(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Run not found"}
+
+
+def test_get_run_with_invalid_id_type_returns_422(client: TestClient) -> None:
+    response = client.get("/api/runs/not-a-number")
+
+    assert response.status_code == 422
