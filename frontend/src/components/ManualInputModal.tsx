@@ -7,7 +7,7 @@ import { useCreateRun, useRuns } from '../hooks/useRuns';
 import type { Analysis, CreateAnalysisPayload } from '../types';
 import { parseMarkdown } from '../utils/parseMarkdown';
 
-const modelOptions = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.2'] as const;
+const modelOptions = ['GPT', 'Gemini', 'Claude'] as const;
 
 const starterMarkdown = `### 1. 현재 구조 요약
 - 추세: 상승
@@ -211,7 +211,7 @@ function ManualInputModal({
                 >
                   <span className="block text-base font-semibold">{option}</span>
                   <span className="mt-2 block text-sm text-slate-400">
-                    분석 생성에 사용한 모델명으로 저장됩니다.
+                    {option === 'GPT' ? 'OpenAI' : option === 'Gemini' ? 'Google' : 'Anthropic'}
                   </span>
                 </button>
               ))}
