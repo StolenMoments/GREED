@@ -2,22 +2,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import ParsedSummaryCard from '../components/ParsedSummaryCard';
+import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
 import { parseMarkdown } from '../utils/parseMarkdown';
-import type { AnalysisSummary, Judgment } from '../types';
-
-const judgmentStyles: Record<Judgment, string> = {
-  매수: 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100',
-  홀드: 'border-amber-300/40 bg-amber-300/10 text-amber-100',
-  관망: 'border-slate-400/30 bg-slate-400/10 text-slate-200',
-  매도: 'border-rose-300/35 bg-rose-300/10 text-rose-100',
-};
-
-const signalStyles = {
-  positive: 'text-emerald-200',
-  neutral: 'text-slate-300',
-  negative: 'text-rose-200',
-} as const;
+import type { AnalysisSummary } from '../types';
 
 const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
   year: 'numeric',
@@ -34,12 +22,6 @@ function parseAnalysisId(idParam: string | undefined) {
 
   const parsed = Number(idParam);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function getSignalTone(value: string, positive: string, negative: string) {
-  if (value === positive) return 'positive';
-  if (value === negative) return 'negative';
-  return 'neutral';
 }
 
 function formatDate(value: string) {
@@ -175,6 +157,7 @@ function HistoryList({
             return (
               <button
                 aria-current={isActive ? 'page' : undefined}
+                aria-label={`${formatDate(item.created_at)} 분석 - 판정: ${item.judgment}`}
                 className={[
                   'w-full px-3 py-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
                   isActive
