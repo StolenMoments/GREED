@@ -21,8 +21,8 @@ FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
 
 # 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 컬럼 추가 시 패턴 재검토 필요.
 PRICE_PATTERNS: dict[str, re.Pattern[str]] = {
-    "entry_price": re.compile(r"^\|\s*진입 조건\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
-    "target_price": re.compile(r"^\|\s*1차 목표\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
+    "entry_price": re.compile(r"^\|[^|]*진입\s*조건[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
+    "target_price": re.compile(r"^\|\s*1차\s*목표[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
     "stop_loss": re.compile(r"^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
 }
 

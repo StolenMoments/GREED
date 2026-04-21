@@ -39,8 +39,8 @@ const fieldPatterns = {
 } as const;
 
 const pricePatterns = {
-  entry_price: /^\|\s*진입 조건\s*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
-  target_price: /^\|\s*1차 목표\s*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
+  entry_price: /^\|[^|]*진입\s*조건[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
+  target_price: /^\|\s*1차\s*목표[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
   stop_loss: /^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
 } as const;
 
