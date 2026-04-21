@@ -32,39 +32,13 @@ function parseRunId(runIdParam: string | undefined) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function getTrendTone(trend: AnalysisSummary['trend']) {
-  if (trend === '상승') {
-    return signalStyles.positive;
-  }
-
-  if (trend === '하락') {
-    return signalStyles.negative;
-  }
-
-  return signalStyles.neutral;
+function isValidJudgment(value: string | null): value is Judgment {
+  return judgmentTabs.some((tab) => tab.value === value);
 }
 
-function getCloudTone(cloudPosition: AnalysisSummary['cloud_position']) {
-  if (cloudPosition === '구름 위') {
-    return signalStyles.positive;
-  }
-
-  if (cloudPosition === '구름 아래') {
-    return signalStyles.negative;
-  }
-
-  return signalStyles.neutral;
-}
-
-function getMaTone(maAlignment: AnalysisSummary['ma_alignment']) {
-  if (maAlignment === '정배열') {
-    return signalStyles.positive;
-  }
-
-  if (maAlignment === '역배열') {
-    return signalStyles.negative;
-  }
-
+function getSignalTone(value: string, positive: string, negative: string) {
+  if (value === positive) return signalStyles.positive;
+  if (value === negative) return signalStyles.negative;
   return signalStyles.neutral;
 }
 
@@ -108,6 +82,7 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
 
   return (
     <button
+      aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
       className="grid w-full grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_0.8fr] items-center gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70"
       onClick={() => navigate(`/analyses/${analysis.id}`)}
       type="button"
@@ -130,19 +105,13 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
         {analysis.judgment}
       </span>
 
-      <span className={`text-sm font-medium ${getTrendTone(analysis.trend)}`}>
+      <span className={`text-sm font-medium ${getSignalTone(analysis.trend, '상승', '하락')}`}>
         {analysis.trend}
       </span>
-      <span
-        className={`text-sm font-medium ${getCloudTone(
-          analysis.cloud_position,
-        )}`}
-      >
+      <span className={`text-sm font-medium ${getSignalTone(analysis.cloud_position, '구름 위', '구름 아래')}`}>
         {analysis.cloud_position}
       </span>
-      <span
-        className={`text-sm font-medium ${getMaTone(analysis.ma_alignment)}`}
-      >
+      <span className={`text-sm font-medium ${getSignalTone(analysis.ma_alignment, '정배열', '역배열')}`}>
         {analysis.ma_alignment}
       </span>
     </button>
@@ -154,10 +123,8 @@ function StockListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const runId = parseRunId(runIdParam);
   const requestedJudgment = searchParams.get('judgment');
-  const activeJudgment = judgmentTabs.some(
-    (tab) => tab.value === requestedJudgment,
-  )
-    ? (requestedJudgment as Judgment)
+  const activeJudgment = isValidJudgment(requestedJudgment)
+    ? requestedJudgment
     : undefined;
   const filters = useMemo<AnalysisFilters>(
     () => (activeJudgment ? { judgment: activeJudgment } : {}),
@@ -203,12 +170,16 @@ function StockListPage() {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1">
+        <div
+          className="flex shrink-0 items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1"
+          role="tablist"
+        >
           {judgmentTabs.map((tab) => {
             const isActive = tab.value === activeJudgment;
 
             return (
               <button
+                aria-selected={isActive}
                 className={[
                   'min-w-16 rounded-md px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
                   isActive
@@ -223,6 +194,7 @@ function StockListPage() {
                     setSearchParams({});
                   }
                 }}
+                role="tab"
                 type="button"
               >
                 {tab.label}
