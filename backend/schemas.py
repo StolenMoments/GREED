@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -62,3 +62,12 @@ class AnalysisRead(AnalysisSummary):
     entry_price: float | None
     target_price: float | None
     stop_loss: float | None
+
+
+class StockPriceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ticker: str
+    price_date: date
+    close_price: float
+    fetched_at: datetime

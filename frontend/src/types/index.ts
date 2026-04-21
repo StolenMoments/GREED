@@ -56,3 +56,10 @@ export interface AnalysisFilters {
   judgment?: Judgment;
   run_id?: number;
 }
+
+export interface StockPrice {
+  ticker: string;
+  price_date: string;
+  close_price: number;
+  fetched_at: string;
+}

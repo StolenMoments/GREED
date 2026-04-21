@@ -2,8 +2,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import ParsedSummaryCard from '../components/ParsedSummaryCard';
+import PriceLevels from '../components/PriceLevels';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
+import { useStockPrice } from '../hooks/useStockPrice';
 import { parseMarkdown } from '../utils/parseMarkdown';
 import type { AnalysisSummary } from '../types';
 
@@ -34,8 +36,8 @@ function LoadingPanel() {
       <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 p-6">
         <div className="h-5 w-32 animate-pulse rounded bg-slate-800" />
         <div className="mt-4 h-9 w-80 max-w-full animate-pulse rounded bg-slate-800" />
-        <div className="mt-6 grid grid-cols-4 gap-3">
-          {Array.from({ length: 4 }, (_, index) => (
+        <div className="mt-6 grid grid-cols-5 gap-3">
+          {Array.from({ length: 5 }, (_, index) => (
             <div
               className="h-16 animate-pulse rounded-md bg-slate-900"
               key={index}
@@ -211,6 +213,7 @@ function AnalysisDetailPage() {
     isError: isHistoryError,
     isLoading: isHistoryLoading,
   } = useHistory(analysisId);
+  const { data: stockPrice } = useStockPrice(analysis?.ticker);
   const parsed = useMemo(
     () => (analysis ? parseMarkdown(analysis.markdown) : undefined),
     [analysis],
@@ -295,6 +298,12 @@ function AnalysisDetailPage() {
       </article>
 
       <div className="flex flex-col gap-4">
+        <PriceLevels
+          currentPrice={stockPrice}
+          entryPrice={parsed.data.entry_price}
+          targetPrice={parsed.data.target_price}
+          stopLoss={parsed.data.stop_loss}
+        />
         <ParsedSummaryCard parsed={parsed} showErrors />
         <HistoryList
           activeId={analysis.id}

@@ -7,8 +7,6 @@ const fieldLabels: Record<ParsedField, string> = {
   ma_alignment: 'MA 배열',
 };
 
-const priceFormatter = new Intl.NumberFormat('ko-KR');
-
 interface ParsedSummaryCardProps {
   parsed: ParsedMarkdown;
   showErrors?: boolean;
@@ -57,9 +55,6 @@ function ParsedSummaryCard({
           label={fieldLabels.ma_alignment}
           value={parsed.data.ma_alignment}
         />
-        <SummaryItem label="진입가" value={formatPrice(parsed.data.entry_price)} />
-        <SummaryItem label="목표가" value={formatPrice(parsed.data.target_price)} />
-        <SummaryItem label="손절가" value={formatPrice(parsed.data.stop_loss)} />
       </dl>
 
       {showErrors && parsed.failed.length > 0 ? (
@@ -95,10 +90,6 @@ function SummaryItem({
       </dd>
     </div>
   );
-}
-
-function formatPrice(value: number | null) {
-  return value === null ? null : priceFormatter.format(value);
 }
 
 export default ParsedSummaryCard;

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -54,3 +54,12 @@ class Analysis(Base):
     )
 
     run: Mapped[Run] = relationship("Run", back_populates="analyses")
+
+
+class StockPrice(Base):
+    __tablename__ = "stock_prices"
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    price_date: Mapped[date] = mapped_column(Date, nullable=False)
+    close_price: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import NamedTuple
 
 from sqlalchemy import Select, desc, func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Analysis, Run
+from backend.models import Analysis, Run, StockPrice
 from backend.schemas import AnalysisCreate
 
 
@@ -92,6 +92,28 @@ def get_analysis(db: Session, analysis_id: int) -> Analysis | None:
 def get_analysis_history(db: Session, ticker: str) -> list[Analysis]:
     stmt = select(Analysis).where(Analysis.ticker == ticker).order_by(*ANALYSIS_ORDER_BY)
     return list(db.scalars(stmt).all())
+
+
+def get_stock_price(db: Session, ticker: str) -> StockPrice | None:
+    return db.get(StockPrice, ticker)
+
+
+def upsert_stock_price(
+    db: Session,
+    ticker: str,
+    price_date: date,
+    close_price: float,
+) -> StockPrice:
+    row = db.get(StockPrice, ticker)
+    if row is None:
+        row = StockPrice(ticker=ticker)
+        db.add(row)
+    row.price_date = price_date
+    row.close_price = close_price
+    row.fetched_at = datetime.now().astimezone()
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def _run_with_count_stmt() -> Select[tuple[Run, int]]:
