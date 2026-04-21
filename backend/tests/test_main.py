@@ -14,6 +14,8 @@ def test_app_registers_expected_routes() -> None:
     assert "/api/analyses" in paths
     assert "/api/analyses/{analysis_id}" in paths
     assert "/api/analyses/{analysis_id}/history" in paths
+    assert "/api/jobs/trigger-analysis" in paths
+    assert "/api/jobs/{job_id}" in paths
 
 
 def test_cors_allows_localhost_5173() -> None:

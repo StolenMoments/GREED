@@ -10,11 +10,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.crud import (
     create_analysis,
     create_run,
+    create_job,
     get_analyses_by_run,
     get_analysis,
     get_analysis_history,
+    get_job,
     get_run,
     get_runs,
+    update_job_done,
+    update_job_failed,
     upsert_stock_price,
 )
 from backend.database import Base
@@ -198,3 +202,24 @@ def test_upsert_stock_price_uses_seoul_time(db_session: Session) -> None:
 
     now_in_seoul = seoul_now().replace(tzinfo=None)
     assert abs(now_in_seoul - stock_price.fetched_at.replace(tzinfo=None)) < timedelta(seconds=5)
+
+
+def test_job_lifecycle_updates_status(db_session: Session) -> None:
+    run = create_run(db_session, memo="job run")
+    job = create_job(db_session, ticker="005930", run_id=run.id)
+
+    assert job.status == "pending"
+    assert get_job(db_session, job.id) is not None
+
+    update_job_failed(db_session, job, "pick: error")
+    failed_job = get_job(db_session, job.id)
+    assert failed_job is not None
+    assert failed_job.status == "failed"
+    assert failed_job.error_message == "pick: error"
+
+    update_job_done(db_session, failed_job, analysis_id=123)
+    done_job = get_job(db_session, job.id)
+    assert done_job is not None
+    assert done_job.status == "done"
+    assert done_job.analysis_id == 123
+    assert done_job.error_message is None
