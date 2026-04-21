@@ -1,6 +1,6 @@
 {
   "scripts": {
     "back":"python.exe -m uvicorn backend.main:app --reload",
-    "front": "node frontend/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173"
+    "front": "cd frontend && node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173"
   }
 }
