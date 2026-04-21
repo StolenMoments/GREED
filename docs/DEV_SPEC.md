@@ -343,16 +343,20 @@ python scripts/pick.py 005930 --years 5 --output ./pick_output
 
 ## 9. 개발 실행
 
-루트에서 실행:
+터미널 두 개를 열어 루트에서 각각 실행:
 
 ```bash
-npm run dev
+# 터미널 1 - 백엔드
+npm run back
+
+# 터미널 2 - 프론트엔드
+npm run front
 ```
 
-실행되는 프로세스:
-
-- 백엔드: `python -m uvicorn backend.main:app --reload`
+- 백엔드: `python.exe -m uvicorn backend.main:app --reload`
 - 프론트엔드: `vite --host 127.0.0.1 --port 5173`
+
+> Windows에서 uvicorn `--reload` 시 `CTRL_C_EVENT`가 콘솔 세션 전체에 전파되어 통합 dev runner가 종료되는 문제로 인해 분리 실행 방식으로 전환.
 
 프론트엔드만 실행:
 
