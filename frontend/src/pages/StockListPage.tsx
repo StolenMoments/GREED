@@ -155,18 +155,14 @@ function StockListPage() {
 
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex items-end justify-between gap-6 border-b border-amber-100/10 pb-6">
+      <div className="flex items-end justify-between gap-6 border-b border-amber-100/10 pb-4">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
             run #{runId}
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
             종목 분석 목록
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            이번 실행에서 생성된 기술적 분석을 판정별로 좁혀 보고 상세
-            리포트로 이동합니다.
-          </p>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-3">

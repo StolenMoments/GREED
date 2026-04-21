@@ -199,18 +199,14 @@ function AnalysisListPage() {
 
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-5 border-b border-amber-100/10 pb-6 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
+      <div className="flex flex-col gap-4 border-b border-amber-100/10 pb-4 xl:flex-row xl:items-end xl:justify-between xl:gap-6">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
             global analyses
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
             전체 분석 목록
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            저장된 분석을 최신순으로 확인하고, 실행을 거치지 않고 바로 상세
-            리포트로 이동합니다.
-          </p>
         </div>
 
         <div className="flex flex-col gap-3 xl:items-end">

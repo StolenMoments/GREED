@@ -34,30 +34,18 @@ function PlaceholderRoute({
       <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-50">
         {content.title}
       </h2>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
-        {content.description}
-      </p>
     </section>
   );
 }
 
 function App() {
   return (
-    <main className="min-h-screen px-6 py-12 text-slate-50">
-      <div className="mx-auto flex max-w-6xl flex-col gap-10">
-        <header className="flex items-end justify-between gap-6 border-b border-amber-200/10 pb-6">
-          <div className="space-y-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-amber-300">
-              greed
-            </p>
-            <h1 className="text-4xl font-semibold tracking-tight">
-              Frontend workspace initialized.
-            </h1>
-            <p className="max-w-3xl text-base leading-7 text-slate-300">
-              Vite, React, TypeScript, Tailwind CSS, React Router, Axios, React
-              Markdown, Remark GFM, and TanStack Query are configured.
-            </p>
-          </div>
+    <main className="min-h-screen px-6 py-8 text-slate-50">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8">
+        <header className="flex items-center justify-between gap-6 border-b border-amber-200/10 pb-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-amber-300">
+            greed
+          </p>
 
           <nav className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-950/70 p-1">
             {navItems.map((item) => (

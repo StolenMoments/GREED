@@ -103,18 +103,14 @@ function RunListPage() {
 
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-5 border-b border-amber-100/10 pb-6 md:flex-row md:items-end md:justify-between md:gap-6">
+      <div className="flex flex-col gap-4 border-b border-amber-100/10 pb-4 md:flex-row md:items-end md:justify-between md:gap-6">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
             screening runs
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
             실행 목록
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            주간 스크리닝 실행을 시간순으로 확인하고 각 실행의 분석 결과로
-            이동합니다.
-          </p>
         </div>
 
         <button
