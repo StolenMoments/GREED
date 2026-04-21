@@ -1,7 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
-import ParsedSummaryCard from '../components/ParsedSummaryCard';
 import PriceLevels from '../components/PriceLevels';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
@@ -340,7 +339,6 @@ function AnalysisDetailPage() {
           targetPrice={parsed.data.target_price}
           stopLoss={parsed.data.stop_loss}
         />
-        <ParsedSummaryCard parsed={parsed} showErrors />
         <HistoryList
           activeId={analysis.id}
           history={history}

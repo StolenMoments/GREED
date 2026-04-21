@@ -29,9 +29,9 @@ function PriceLevels({
   const current = currentPrice?.close_price;
 
   return (
-    <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-4">
+    <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-6">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-100">가격 레벨</h3>
+        <h3 className="text-base font-semibold text-slate-100">가격 레벨</h3>
         {currentPrice && (
           <span className="text-xs font-medium text-slate-500">
             {currentPrice.price_date.slice(5).replace('-', '/')}
@@ -39,16 +39,16 @@ function PriceLevels({
         )}
       </div>
 
-      <div className="mt-3">
-        <p className="tabular-nums text-2xl font-semibold tracking-tight text-amber-100">
+      <div className="mt-5">
+        <p className="tabular-nums text-4xl font-semibold tracking-tight text-amber-100">
           {current !== undefined ? `${priceFormatter.format(current)}원` : '—'}
         </p>
-        <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.2em] text-slate-600">
+        <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-600">
           현재가
         </p>
       </div>
 
-      <div className="mt-4 space-y-2.5 border-t border-slate-800/70 pt-4">
+      <div className="mt-6 space-y-4 border-t border-slate-800/70 pt-5">
         <PriceRow label="목표가" price={targetPrice} current={current} tone="target" />
         <PriceRow label="진입가" price={entryPrice} current={current} tone="entry" />
         <PriceRow label="손절가" price={stopLoss} current={current} tone="stop" />
@@ -74,14 +74,14 @@ function PriceRow({
 
   return (
     <div className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3">
-      <span className={`text-xs font-medium ${colorClass}`}>{label}</span>
+      <span className={`text-sm font-medium ${colorClass}`}>{label}</span>
       <span
-        className={`text-right tabular-nums text-sm font-semibold ${price != null ? colorClass : 'text-slate-600'}`}
+        className={`text-right tabular-nums text-lg font-semibold ${price != null ? colorClass : 'text-slate-600'}`}
       >
         {price != null ? `${priceFormatter.format(price)}원` : '—'}
       </span>
       <span
-        className={`tabular-nums text-xs font-medium ${pct !== null ? colorClass : 'text-slate-700'}`}
+        className={`tabular-nums text-sm font-medium ${pct !== null ? colorClass : 'text-slate-700'}`}
       >
         {pct ?? '—'}
       </span>

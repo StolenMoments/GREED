@@ -332,7 +332,7 @@ python scripts/pick.py 005930 --years 5 --output ./pick_output
 - `RunListPage`: 실행 목록, 새 실행 생성, 실행 상세 이동
 - `StockListPage`: 실행별 분석 목록, 판정 필터, 수동 입력 모달
 - `AnalysisListPage`: 전체 분석 목록, 판정 필터, Run ID 필터
-- `AnalysisDetailPage`: 마크다운 렌더링, 핵심 지표, 가격 레벨, 파싱 미리보기, 동일 종목 이력, 티커 복사
+- `AnalysisDetailPage`: 마크다운 렌더링, 핵심 지표, 가격 레벨, 동일 종목 이력, 티커 복사
 
 ### 8-3. 주요 컴포넌트
 
