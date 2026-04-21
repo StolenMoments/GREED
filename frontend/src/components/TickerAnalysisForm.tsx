@@ -2,7 +2,7 @@ import type { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { useJobPolling, useTriggerAnalysis } from '../hooks/useJobs';
+import { useJobPolling, useRunJobs, useTriggerAnalysis } from '../hooks/useJobs';
 
 interface TickerAnalysisFormProps {
   runId: number;
@@ -20,14 +20,18 @@ function TickerAnalysisForm({
 }: TickerAnalysisFormProps) {
   const [ticker, setTicker] = useState('');
   const [jobId, setJobId] = useState<number | null>(null);
+  const [dismissedJobId, setDismissedJobId] = useState<number | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const triggerAnalysis = useTriggerAnalysis();
-  const jobQuery = useJobPolling(jobId);
+  const runJobsQuery = useRunJobs(runId);
+  const latestRunJob = runJobsQuery.data?.find((runJob) => runJob.id !== dismissedJobId);
+  const trackedJobId = jobId ?? latestRunJob?.id ?? null;
+  const jobQuery = useJobPolling(trackedJobId);
   const notifiedAnalysisIdRef = useRef<number | null>(null);
 
   const trimmedTicker = ticker.trim();
-  const job = jobQuery.data;
+  const job = jobQuery.data ?? latestRunJob;
   const isPending = triggerAnalysis.isPending || job?.status === 'pending';
   const isSubmitDisabled = isPending;
 
@@ -85,6 +89,7 @@ function TickerAnalysisForm({
         ticker: trimmedTicker,
         run_id: runId,
       });
+      setDismissedJobId(null);
       setJobId(createdJob.id);
       notifiedAnalysisIdRef.current = null;
     } catch (error) {
@@ -94,6 +99,7 @@ function TickerAnalysisForm({
   }
 
   function handleRetry() {
+    setDismissedJobId(job?.id ?? null);
     setJobId(null);
     setServerError(null);
     setShowValidation(false);

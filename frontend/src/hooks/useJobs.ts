@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchJob, triggerAnalysis } from '../api/jobs';
+import { fetchJob, fetchJobs, triggerAnalysis } from '../api/jobs';
 import type { Job, JobTriggerRequest } from '../types';
 import { analysisKeys } from './useAnalyses';
 import { runKeys } from './useRuns';
 
 export const jobKeys = {
   all: ['jobs'] as const,
+  lists: () => [...jobKeys.all, 'list'] as const,
+  list: (runId: number) => [...jobKeys.lists(), 'run', runId] as const,
   detail: (jobId: number) => [...jobKeys.all, 'detail', jobId] as const,
 };
 
@@ -16,8 +18,17 @@ export function useTriggerAnalysis() {
   return useMutation<Job, Error, JobTriggerRequest>({
     mutationFn: triggerAnalysis,
     onSuccess: (job) => {
+      void queryClient.invalidateQueries({ queryKey: jobKeys.list(job.run_id) });
       queryClient.setQueryData(jobKeys.detail(job.id), job);
     },
+  });
+}
+
+export function useRunJobs(runId: number | undefined) {
+  return useQuery({
+    queryKey: jobKeys.list(runId ?? 0),
+    queryFn: () => fetchJobs(runId),
+    enabled: runId !== undefined,
   });
 }
 
@@ -45,6 +56,7 @@ export function useJobPolling(jobId: number | null) {
     }
 
     invalidatedJobIdRef.current = job.id;
+    void queryClient.invalidateQueries({ queryKey: jobKeys.list(job.run_id) });
     void queryClient.invalidateQueries({ queryKey: analysisKeys.lists() });
     void queryClient.invalidateQueries({ queryKey: runKeys.lists() });
     void queryClient.invalidateQueries({ queryKey: runKeys.detail(job.run_id) });

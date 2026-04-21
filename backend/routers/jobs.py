@@ -6,7 +6,15 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.crud import create_analysis, create_job, get_job, get_run, update_job_done, update_job_failed
+from backend.crud import (
+    create_analysis,
+    create_job,
+    get_job,
+    get_jobs,
+    get_run,
+    update_job_done,
+    update_job_failed,
+)
 from backend.database import SessionLocal, get_db
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
@@ -104,6 +112,13 @@ def trigger_analysis_endpoint(
     job = create_job(db, ticker=ticker, run_id=payload.run_id)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job
+
+
+@router.get("", response_model=list[JobRead])
+def list_jobs_endpoint(run_id: int | None = None, db: Session = Depends(get_db)) -> list[JobRead]:
+    if run_id is not None and get_run(db, run_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    return get_jobs(db, run_id=run_id)
 
 
 @router.get("/{job_id}", response_model=JobRead)
