@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import ParsedSummaryCard from '../components/ParsedSummaryCard';
 import PriceLevels from '../components/PriceLevels';
@@ -98,6 +98,50 @@ function Metric({
         {value}
       </dd>
     </div>
+  );
+}
+
+function CopyTickerButton({ ticker }: { ticker: string }) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
+    'idle',
+  );
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(ticker);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+
+    window.setTimeout(() => {
+      setCopyState('idle');
+    }, 1600);
+  }
+
+  const label =
+    copyState === 'copied'
+      ? '복사됨'
+      : copyState === 'failed'
+        ? '복사 실패'
+        : '티커 복사';
+
+  return (
+    <button
+      aria-label={`${ticker} 티커 클립보드 복사`}
+      className={[
+        'rounded-md border px-2.5 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
+        copyState === 'copied'
+          ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100'
+          : copyState === 'failed'
+            ? 'border-rose-300/40 bg-rose-300/10 text-rose-100'
+            : 'border-amber-200/20 text-amber-100 hover:bg-amber-100/10',
+      ].join(' ')}
+      onClick={() => void handleCopy()}
+      type="button"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -231,9 +275,12 @@ function AnalysisDetailPage() {
         <div className="border-b border-amber-100/10 px-6 py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
-                {analysis.ticker}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+                  {analysis.ticker}
+                </p>
+                <CopyTickerButton ticker={analysis.ticker} />
+              </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">
                 {analysis.name}
               </h2>
