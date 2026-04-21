@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from backend.crud import create_analysis, get_analyses_by_run, get_analysis, get_analysis_history, get_run
+from backend.crud import create_analysis, get_analyses, get_analyses_by_run, get_analysis, get_analysis_history, get_run
 from backend.database import get_db
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, AnalysisRead, AnalysisSummary, JudgmentEnum
@@ -30,6 +30,15 @@ def create_analysis_endpoint(
 
     analysis_payload = payload.model_copy(update=parse_result.data)
     return create_analysis(db, analysis_payload)
+
+
+@router.get("/api/analyses", response_model=list[AnalysisSummary])
+def list_analyses_endpoint(
+    judgment: JudgmentEnum | None = None,
+    run_id: int | None = None,
+    db: Session = Depends(get_db),
+) -> list[AnalysisSummary]:
+    return get_analyses(db, judgment=judgment.value if judgment else None, run_id=run_id)
 
 
 @router.get("/api/runs/{run_id}/analyses", response_model=list[AnalysisSummary])

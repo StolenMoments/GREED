@@ -74,6 +74,19 @@ def get_analyses_by_run(
     return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
 
 
+def get_analyses(
+    db: Session,
+    judgment: str | None = None,
+    run_id: int | None = None,
+) -> list[Analysis]:
+    stmt = select(Analysis)
+    if judgment is not None:
+        stmt = stmt.where(Analysis.judgment == judgment)
+    if run_id is not None:
+        stmt = stmt.where(Analysis.run_id == run_id)
+    return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
+
+
 def get_analysis(db: Session, analysis_id: int) -> Analysis | None:
     stmt = select(Analysis).where(Analysis.id == analysis_id)
     return db.scalars(stmt).first()
@@ -91,5 +104,4 @@ def _run_with_count_stmt() -> Select[tuple[Run, int]]:
         .group_by(Run.id)
         .order_by(*RUN_ORDER_BY)
     )
-
 
