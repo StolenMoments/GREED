@@ -172,6 +172,38 @@ def test_list_analyses_by_run_filters_by_judgment(client: TestClient, db_session
     assert body[0]["judgment"] == "매수"
 
 
+def test_create_analysis_returns_404_when_run_not_found(client: TestClient) -> None:
+    response = client.post(
+        "/api/analyses",
+        json={
+            "run_id": 99999,
+            "ticker": "005930",
+            "name": "Samsung Electronics",
+            "model": "gpt-5.4",
+            "markdown": VALID_MARKDOWN,
+            "judgment": "보류",
+            "trend": "보류",
+            "cloud_position": "보류",
+            "ma_alignment": "보류",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_list_analyses_returns_404_when_run_not_found(client: TestClient) -> None:
+    response = client.get("/api/runs/99999/analyses")
+
+    assert response.status_code == 404
+
+
+def test_list_analyses_returns_422_for_invalid_judgment(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="invalid judgment test")
+    response = client.get(f"/api/runs/{run.id}/analyses", params={"judgment": "잘못된값"})
+
+    assert response.status_code == 422
+
+
 def test_get_analysis_history_returns_same_ticker_newest_first(
     client: TestClient, db_session: Session
 ) -> None:

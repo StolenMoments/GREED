@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class JudgmentEnum(str, Enum):
+    buy = "매수"
+    hold = "관망"
+    sell = "매도"
 
 
 class RunCreate(BaseModel):
@@ -22,9 +29,9 @@ class AnalysisCreate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     run_id: int
-    ticker: str
-    name: str
-    model: str
+    ticker: str = Field(..., max_length=20)
+    name: str = Field(..., max_length=100)
+    model: str = Field(..., max_length=100)
     markdown: str
     judgment: str
     trend: str
