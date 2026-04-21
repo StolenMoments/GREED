@@ -19,6 +19,15 @@ export async function fetchAnalyses(
   return response.data;
 }
 
+export async function fetchAllAnalyses(
+  filters: AnalysisFilters = {},
+): Promise<AnalysisSummary[]> {
+  const response = await apiClient.get<AnalysisSummary[]>('/analyses', {
+    params: filters,
+  });
+  return response.data;
+}
+
 export async function fetchAnalysis(analysisId: number): Promise<Analysis> {
   const response = await apiClient.get<Analysis>(`/analyses/${analysisId}`);
   return response.data;

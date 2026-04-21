@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createAnalysis,
+  fetchAllAnalyses,
   fetchAnalyses,
   fetchAnalysis,
   fetchHistory,
@@ -12,7 +13,9 @@ export const analysisKeys = {
   all: ['analyses'] as const,
   lists: () => [...analysisKeys.all, 'list'] as const,
   list: (runId: number, filters: AnalysisFilters = {}) =>
-    [...analysisKeys.lists(), runId, filters] as const,
+    [...analysisKeys.lists(), 'run', runId, filters] as const,
+  globalList: (filters: AnalysisFilters = {}) =>
+    [...analysisKeys.lists(), 'all', filters] as const,
   details: () => [...analysisKeys.all, 'detail'] as const,
   detail: (analysisId: number) =>
     [...analysisKeys.details(), analysisId] as const,
@@ -28,6 +31,13 @@ export function useAnalyses(
     queryKey: analysisKeys.list(runId ?? 0, filters),
     queryFn: () => fetchAnalyses(runId as number, filters),
     enabled: runId !== undefined,
+  });
+}
+
+export function useAllAnalyses(filters: AnalysisFilters = {}) {
+  return useQuery({
+    queryKey: analysisKeys.globalList(filters),
+    queryFn: () => fetchAllAnalyses(filters),
   });
 }
 
