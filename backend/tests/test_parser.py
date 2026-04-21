@@ -38,6 +38,39 @@ def test_parse_markdown_extracts_required_and_optional_fields() -> None:
     }
 
 
+def test_parse_markdown_accepts_bold_required_field_labels() -> None:
+    markdown = """
+## 판단
+**홀드** (신규 진입은 단기 눌림목 대기)
+
+---
+
+## 기술적 지표 요약
+- **추세**: 상승 (2025년 4월 저점 134,600 → 현재 260,000, +93%)
+- **구름대 위치**: 구름 위 (현재가 260,000 / 선행스팬1: 203,500 / 선행스팬2: 191,300)
+- **MA 배열**: 정배열 (Close 260,000 > MA20 224,900 > MA60 200,668 > MA120 196,605)
+
+---
+
+## 매매 전략
+
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 진입 조건 | 단기 눌림 대기 | 245,000 |
+| 1차 목표 | 전고점 재도전 | 280,000 |
+| 손절 기준 | 추세 훼손 | 230,000 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.failed == []
+    assert result.data["judgment"] == "홀드"
+    assert result.data["trend"] == "상승"
+    assert result.data["cloud_position"] == "구름 위"
+    assert result.data["ma_alignment"] == "정배열"
+
+
 def test_parse_markdown_reports_missing_required_field() -> None:
     markdown = """
 ## 종목 분석 결과

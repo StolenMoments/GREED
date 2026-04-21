@@ -13,6 +13,7 @@ from backend.timezone import seoul_now
 
 RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
 ANALYSIS_ORDER_BY = (desc(Analysis.created_at), desc(Analysis.id))
+JOB_ORDER_BY = (desc(AnalysisJob.created_at), desc(AnalysisJob.id))
 
 
 class RunRow(NamedTuple):
@@ -105,6 +106,13 @@ def create_job(db: Session, ticker: str, run_id: int) -> AnalysisJob:
 
 def get_job(db: Session, job_id: int) -> AnalysisJob | None:
     return db.get(AnalysisJob, job_id)
+
+
+def get_jobs(db: Session, run_id: int | None = None) -> list[AnalysisJob]:
+    stmt = select(AnalysisJob)
+    if run_id is not None:
+        stmt = stmt.where(AnalysisJob.run_id == run_id)
+    return list(db.scalars(stmt.order_by(*JOB_ORDER_BY)).all())
 
 
 def update_job_done(db: Session, job: AnalysisJob, analysis_id: int) -> None:

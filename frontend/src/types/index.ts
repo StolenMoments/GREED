@@ -57,6 +57,23 @@ export interface AnalysisFilters {
   run_id?: number;
 }
 
+export type JobStatus = 'pending' | 'done' | 'failed';
+
+export interface Job {
+  id: number;
+  ticker: string;
+  run_id: number;
+  status: JobStatus;
+  error_message: string | null;
+  analysis_id: number | null;
+  created_at: string;
+}
+
+export interface JobTriggerRequest {
+  ticker: string;
+  run_id: number;
+}
+
 export interface StockPrice {
   ticker: string;
   price_date: string;

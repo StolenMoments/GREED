@@ -6,32 +6,92 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.crud import create_analysis, create_job, get_job, get_run, update_job_done, update_job_failed
+from backend.crud import (
+    create_analysis,
+    create_job,
+    get_job,
+    get_jobs,
+    get_run,
+    update_job_done,
+    update_job_failed,
+)
 from backend.database import SessionLocal, get_db
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
 
 
-SYSTEM_PROMPT = """당신은 한국 주식 기술적 분석 전문가입니다.
-아래 주봉 CSV 데이터를 분석하여 다음 형식으로 응답하세요.
+SYSTEM_PROMPT = """당신은 한국 주식시장 전문 기술적 분석가입니다.
+주봉(Weekly) OHLCV 데이터와 기술적 지표를 기반으로 분석하며,
+반드시 아래 규칙을 따릅니다.
 
-## 판단
-**매수** 또는 **홀드** 또는 **매도** 중 하나를 굵게 표시.
+컬럼 정의:
+  date       주봉 시작일 (월요일 기준)
+  open/high/low/close  주간 시가/고가/저가/종가
+  volume     주간 누적 거래량
+  ma20/ma60/ma120      종가 기준 20/60/120주 이동평균
+  ichi_conv  일목 전환선 (9주 고저 중간값)
+  ichi_base  일목 기준선 (26주 고저 중간값)
+  ichi_lead1 선행스팬A (전환+기준)/2, 26주 앞에 기록
+  ichi_lead2 선행스팬B 52주 고저 중간값, 26주 앞에 기록
+  ichi_lag   후행스팬, 현재 종가를 26주 앞 행에 기록
 
-## 기술적 지표 요약
-- 추세: 상승 또는 하락 또는 횡보
-- 구름대 위치: 구름 위 또는 구름 안 또는 구름 아래
-- MA 배열: 정배열 또는 역배열 또는 혼조
+일목구름 해석:
+  구름 위: 가격 > max(lead1, lead2) → 상승 지지 구조
+  구름 안: min < 가격 < max → 방향성 불확실
+  구름 아래: 가격 < min(lead1, lead2) → 하락 압력 구조
+  구름 두께: |lead1 - lead2| 클수록 지지/저항 강함
+  미래 구름: open/high/low/close 가 비어 있는 마지막 26행은
+             선행스팬 전용 행. 향후 구름 방향 판단용.
+             현재 가격 분석에는 사용하지 않음.
 
-## 매매 전략
+이동평균 배열:
+  정배열: ma20 > ma60 > ma120 → 중장기 상승 추세
+  역배열: ma20 < ma60 < ma120 → 중장기 하락 추세
+  이격도: (종가 / ma20 - 1) × 100
+
+NaN 처리: NaN 구간 지표는 판단에서 제외하고 명시.
+
+출력 형식 — 반드시 이 구조를 유지:
+
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: [상승 / 하락 / 횡보]
+- 구름대 위치: [구름 위 / 구름 안 / 구름 아래]
+- MA 배열: [정배열 / 역배열 / 혼조]
+- 후행스팬: [가격선 위 / 가격선 아래 / 교차 중]
+
+### 2. 핵심 지지/저항선
+- 1차 지지: [가격]  근거: [지표명]
+- 2차 지지: [가격]  근거: [지표명]
+- 1차 저항: [가격]  근거: [지표명]
+- 2차 저항: [가격]  근거: [지표명]
+
+### 3. 향후 구름 전망 (미래 26주)
+- 구름 방향: [상승운 / 하락운 / 전환 예정]
+- 비고: [구름 두께 변화 등 특이사항]
+
+### 4. 매매 판정
+**[매수 / 홀드 / 매도]**
+근거:
+1. [가장 중요한 근거]
+2. [두 번째 근거]
+3. [세 번째 근거]
+주의사항:
+- [리스크 또는 무효화 조건]
+
+### 5. 진입/청산 시나리오
 | 구분 | 조건 | 가격대 |
 |------|------|--------|
-| 진입 조건 | (설명) | 000,000 |
-| 1차 목표 | (설명) | 000,000 |
-| 손절 기준 | (설명) | 000,000 |
+| 진입 조건 | [조건 서술] | [가격] |
+| 1차 목표 | [조건 서술] | [가격] |
+| 손절 기준 | [조건 서술] | [가격] |
 
-## 분석 근거
-(자유 서술)"""
+수치 근거 없는 추상적 표현 사용 금지.
+기술적 분석 외 펀더멘털, 뉴스, 경제 이슈 언급 금지.
+
+CSV는 5년치 주봉 데이터입니다. 마지막 26행은 선행스팬 전용 미래 구름 행입니다.
+기술적 분석을 수행하고 매수/홀드/매도 판정을 내려주세요."""
 
 CLAUDE_TIMEOUT_SECONDS = 180
 PICK_OUTPUT_DIR = Path("pick_output")
@@ -52,6 +112,13 @@ def trigger_analysis_endpoint(
     job = create_job(db, ticker=ticker, run_id=payload.run_id)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job
+
+
+@router.get("", response_model=list[JobRead])
+def list_jobs_endpoint(run_id: int | None = None, db: Session = Depends(get_db)) -> list[JobRead]:
+    if run_id is not None and get_run(db, run_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    return get_jobs(db, run_id=run_id)
 
 
 @router.get("/{job_id}", response_model=JobRead)

@@ -112,6 +112,33 @@ def test_get_job_returns_job(client: TestClient, test_db: sessionmaker[Session])
     assert response.json()["id"] == job.id
 
 
+def test_list_jobs_returns_run_jobs_newest_first(client: TestClient, test_db: sessionmaker[Session]) -> None:
+    with test_db() as db:
+        first_run = crud.create_run(db, memo="first")
+        second_run = crud.create_run(db, memo="second")
+        older_job = crud.create_job(db, ticker="005930", run_id=first_run.id)
+        newer_job = crud.create_job(db, ticker="000660", run_id=first_run.id)
+        other_run_job = crud.create_job(db, ticker="035420", run_id=second_run.id)
+        first_run_id = first_run.id
+        older_job_id = older_job.id
+        newer_job_id = newer_job.id
+        other_run_job_id = other_run_job.id
+
+    response = client.get(f"/api/jobs?run_id={first_run_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [job["id"] for job in body] == [newer_job_id, older_job_id]
+    assert other_run_job_id not in [job["id"] for job in body]
+
+
+def test_list_jobs_returns_404_when_run_missing(client: TestClient) -> None:
+    response = client.get("/api/jobs?run_id=99999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Run not found"}
+
+
 def test_get_job_returns_404_when_missing(client: TestClient) -> None:
     response = client.get("/api/jobs/99999")
 
