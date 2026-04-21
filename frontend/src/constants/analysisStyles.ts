@@ -3,7 +3,6 @@ import type { Judgment } from '../types';
 export const judgmentStyles: Record<Judgment, string> = {
   매수: 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100',
   홀드: 'border-amber-300/40 bg-amber-300/10 text-amber-100',
-  관망: 'border-slate-400/30 bg-slate-400/10 text-slate-200',
   매도: 'border-rose-300/35 bg-rose-300/10 text-rose-100',
 };
 

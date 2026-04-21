@@ -1,4 +1,4 @@
-export type Judgment = '매수' | '홀드' | '관망' | '매도';
+export type Judgment = '매수' | '홀드' | '매도';
 
 export type Trend = '상승' | '하락' | '횡보';
 

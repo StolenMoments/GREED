@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class JudgmentEnum(str, Enum):
     buy = "매수"
-    hold = "관망"
+    hold = "홀드"
     sell = "매도"
 
 

@@ -9,7 +9,6 @@ const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '전체' },
   { label: '매수', value: '매수' },
   { label: '홀드', value: '홀드' },
-  { label: '관망', value: '관망' },
   { label: '매도', value: '매도' },
 ];
 

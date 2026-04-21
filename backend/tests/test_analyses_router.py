@@ -243,7 +243,7 @@ def test_list_all_analyses_returns_newest_first(client: TestClient, db_session: 
             name="Samsung Electronics",
             model="gpt-5.4",
             markdown=VALID_MARKDOWN,
-            judgment="관망",
+            judgment="홀드",
             trend="횡보",
             cloud_position="구름 안",
             ma_alignment="혼조",
