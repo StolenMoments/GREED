@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import StockListPage from './pages/StockListPage';
 
 const navItems = [
@@ -97,8 +98,8 @@ function App() {
             path="/analyses"
           />
           <Route
-            element={<PlaceholderRoute route="analyses" />}
-            path="/analyses/:analysisId"
+            element={<AnalysisDetailPage />}
+            path="/analyses/:id"
           />
           <Route
             element={<PlaceholderRoute route="settings" />}

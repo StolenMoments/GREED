@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import ManualInputModal from '../components/ManualInputModal';
+import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalyses } from '../hooks/useAnalyses';
 import type {
   Analysis,
@@ -16,19 +17,6 @@ const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '매도', value: '매도' },
 ];
 
-const judgmentStyles: Record<Judgment, string> = {
-  매수: 'border-emerald-300/35 bg-emerald-300/10 text-emerald-100',
-  홀드: 'border-amber-300/40 bg-amber-300/10 text-amber-100',
-  관망: 'border-slate-400/30 bg-slate-400/10 text-slate-200',
-  매도: 'border-rose-300/35 bg-rose-300/10 text-rose-100',
-};
-
-const signalStyles = {
-  positive: 'text-emerald-200',
-  neutral: 'text-slate-300',
-  negative: 'text-rose-200',
-} as const;
-
 function parseRunId(runIdParam: string | undefined) {
   if (!runIdParam) {
     return undefined;
@@ -40,12 +28,6 @@ function parseRunId(runIdParam: string | undefined) {
 
 function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
-}
-
-function getSignalTone(value: string, positive: string, negative: string) {
-  if (value === positive) return signalStyles.positive;
-  if (value === negative) return signalStyles.negative;
-  return signalStyles.neutral;
 }
 
 function LoadingRows() {
@@ -111,13 +93,13 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
         {analysis.judgment}
       </span>
 
-      <span className={`text-sm font-medium ${getSignalTone(analysis.trend, '상승', '하락')}`}>
+      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.trend, '상승', '하락')]}`}>
         {analysis.trend}
       </span>
-      <span className={`text-sm font-medium ${getSignalTone(analysis.cloud_position, '구름 위', '구름 아래')}`}>
+      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.cloud_position, '구름 위', '구름 아래')]}`}>
         {analysis.cloud_position}
       </span>
-      <span className={`text-sm font-medium ${getSignalTone(analysis.ma_alignment, '정배열', '역배열')}`}>
+      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.ma_alignment, '정배열', '역배열')]}`}>
         {analysis.ma_alignment}
       </span>
     </button>
