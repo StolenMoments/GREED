@@ -132,6 +132,7 @@
 - `backend/routers/analyses.py`: FastAPI APIRouter 구현
   - `POST /api/analyses` → `AnalysisCreate` 수신 → `parser.parse_markdown()` 호출 → DB 저장 → `AnalysisRead` 반환 (201)
     - 파싱 필수 필드 실패 시 `422 {"detail":"파싱 실패","failed_fields":[...]}` 반환
+  - `GET /api/analyses` → 전체 분석 최신순 `list[AnalysisSummary]` 반환 (`?judgment=매수&run_id=1` 필터 지원)
   - `GET /api/runs/{run_id}/analyses` → `list[AnalysisSummary]` 반환 (`?judgment=매수` 필터 지원)
   - `GET /api/analyses/{id}` → `AnalysisRead` 반환, 없으면 404
   - `GET /api/analyses/{id}/history` → 동일 ticker의 `list[AnalysisSummary]` 반환 (최신순)
@@ -140,6 +141,7 @@
 - `pytest backend/tests/test_analyses_router.py` 통과
   - `POST /api/analyses` 정상 마크다운 → 201, `judgment` 필드 파싱값 응답 확인
   - `POST /api/analyses` 판정 누락 마크다운 → `422`, `failed_fields` 포함 확인
+  - `GET /api/analyses?judgment=매수` → 전체 분석 중 매수 판정만 최신순 반환 확인
   - `GET /api/runs/{run_id}/analyses?judgment=매수` → 매수 판정만 반환 확인
   - `GET /api/analyses/{id}/history` → 동일 ticker 이력 최신순 정렬 확인
 
@@ -223,7 +225,7 @@
 - `src/api/runs.ts`: runs 관련 API 함수
   - `fetchRuns()`, `fetchRun(runId)`, `createRun(memo)`
 - `src/api/analyses.ts`: analyses 관련 API 함수
-  - `fetchAnalyses(runId, judgment?)`, `fetchAnalysis(id)`, `fetchHistory(id)`, `createAnalysis(payload)`
+  - `fetchAnalyses(runId, judgment?)`, `fetchAllAnalyses(filters?)`, `fetchAnalysis(id)`, `fetchHistory(id)`, `createAnalysis(payload)`
 - `src/hooks/useRuns.ts`: `useQuery` / `useMutation` 훅
 - `src/hooks/useAnalyses.ts`: `useQuery` / `useMutation` 훅
 - TypeScript 타입 정의 (`src/types/index.ts`): `Run`, `Analysis`, `AnalysisSummary`
@@ -248,6 +250,7 @@
 
 **완료 조건**
 - 브라우저 `http://localhost:5173` 접속 시 실행 목록 렌더링 확인
+- 브라우저 `/runs` 접속 시 실행 목록 렌더링 확인
 - "새 실행 만들기" 클릭 → 목록 갱신 확인 (React Query invalidation)
 - 항목 클릭 → `/runs/{id}` URL 이동 확인
 
@@ -309,3 +312,30 @@
 - `ParsedSummaryCard` 정상 표시 확인 (judgment 배지 색상 구분: 매수=green, 홀드=yellow, 매도=red)
 - 사이드바 이력 목록 렌더링 확인
 - 이력 항목 클릭 → URL 변경 및 페이지 내용 갱신 확인
+
+---
+
+## Follow-up Tickets
+
+---
+
+### GREED-15 · [FE] AnalysisListPage 구현
+
+**선행 작업:** GREED-6, GREED-10
+
+**작업 내용**
+- `src/pages/AnalysisListPage.tsx`: 전체 분석 목록 페이지 (`/analyses`)
+  - `GET /api/analyses`로 전체 분석 최신순 조회
+  - 판정 필터 탭: 전체 / 매수 / 홀드 / 매도 (`?judgment=` query)
+  - 실행 ID 필터 입력 또는 선택 (`?run_id=` query)
+  - 각 항목: `created_at`, `ticker`, `name`, `judgment`, `model`, `run_id` 표시
+  - 항목 클릭 시 `/analyses/:id` 이동
+- `src/App.tsx`
+  - `/analyses`를 placeholder가 아닌 `AnalysisListPage`로 연결
+  - `/runs`를 placeholder가 아닌 `RunListPage`로 연결
+
+**완료 조건**
+- 브라우저 `/analyses` 접속 시 전체 분석 목록 렌더링 확인
+- "매수" 탭 클릭 → `?judgment=매수` 요청 및 필터링 결과 표시 확인
+- 실행 ID 필터 적용 → `?run_id={id}` 요청 및 해당 실행 분석만 표시 확인
+- 항목 클릭 → `/analyses/{id}` URL 이동 확인
