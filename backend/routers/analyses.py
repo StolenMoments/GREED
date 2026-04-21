@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ router = APIRouter(tags=["analyses"])
 def create_analysis_endpoint(
     payload: AnalysisCreate,
     db: Session = Depends(get_db),
-) -> AnalysisRead:
+) -> AnalysisRead | Response:
     if get_run(db, payload.run_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 

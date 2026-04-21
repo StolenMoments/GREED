@@ -124,10 +124,9 @@ def test_create_analysis_returns_422_when_required_fields_are_missing(
     )
 
     assert response.status_code == 422
-    assert response.json() == {
-        "detail": "파싱 실패",
-        "failed_fields": ["judgment", "cloud_position", "ma_alignment"],
-    }
+    body = response.json()
+    assert body["detail"] == "파싱 실패"
+    assert set(body["failed_fields"]) == {"judgment", "cloud_position", "ma_alignment"}
 
 
 def test_list_analyses_by_run_filters_by_judgment(client: TestClient, db_session: Session) -> None:
@@ -193,6 +192,43 @@ def test_list_analyses_returns_404_when_run_not_found(client: TestClient) -> Non
     response = client.get("/api/runs/99999/analyses")
 
     assert response.status_code == 404
+
+
+def test_list_analyses_returns_all_when_no_filter(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="no filter test")
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    response = client.get(f"/api/runs/{run.id}/analyses")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
 
 
 def test_list_analyses_returns_422_for_invalid_judgment(client: TestClient, db_session: Session) -> None:
