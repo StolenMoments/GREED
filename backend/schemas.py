@@ -64,6 +64,23 @@ class AnalysisRead(AnalysisSummary):
     stop_loss: float | None
 
 
+class JobTriggerRequest(BaseModel):
+    ticker: str = Field(..., max_length=20)
+    run_id: int
+
+
+class JobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    ticker: str
+    run_id: int
+    status: str
+    error_message: str | None
+    analysis_id: int | None
+    created_at: datetime
+
+
 class StockPriceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

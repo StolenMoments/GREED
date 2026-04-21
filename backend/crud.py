@@ -6,7 +6,7 @@ from typing import NamedTuple
 from sqlalchemy import Select, desc, func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Analysis, Run, StockPrice
+from backend.models import Analysis, AnalysisJob, Run, StockPrice
 from backend.schemas import AnalysisCreate
 from backend.timezone import seoul_now
 
@@ -93,6 +93,33 @@ def get_analysis(db: Session, analysis_id: int) -> Analysis | None:
 def get_analysis_history(db: Session, ticker: str) -> list[Analysis]:
     stmt = select(Analysis).where(Analysis.ticker == ticker).order_by(*ANALYSIS_ORDER_BY)
     return list(db.scalars(stmt).all())
+
+
+def create_job(db: Session, ticker: str, run_id: int) -> AnalysisJob:
+    job = AnalysisJob(ticker=ticker, run_id=run_id, status="pending")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_job(db: Session, job_id: int) -> AnalysisJob | None:
+    return db.get(AnalysisJob, job_id)
+
+
+def update_job_done(db: Session, job: AnalysisJob, analysis_id: int) -> None:
+    job.status = "done"
+    job.analysis_id = analysis_id
+    job.error_message = None
+    db.commit()
+    db.refresh(job)
+
+
+def update_job_failed(db: Session, job: AnalysisJob, error_message: str) -> None:
+    job.status = "failed"
+    job.error_message = error_message
+    db.commit()
+    db.refresh(job)
 
 
 def get_stock_price(db: Session, ticker: str) -> StockPrice | None:

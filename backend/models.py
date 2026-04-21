@@ -57,6 +57,26 @@ class Analysis(Base):
     run: Mapped[Run] = relationship("Run", back_populates="analyses")
 
 
+class AnalysisJob(Base):
+    __tablename__ = "analysis_jobs"
+    __table_args__ = (
+        Index("ix_analysis_jobs_run_id", "run_id"),
+        Index("ix_analysis_jobs_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String, nullable=False)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+
+
 class StockPrice(Base):
     __tablename__ = "stock_prices"
 
