@@ -35,14 +35,14 @@ function LoadingRows() {
     <div className="divide-y divide-amber-100/10 rounded-lg border border-amber-100/10 bg-slate-950/45">
       {Array.from({ length: 6 }, (_, index) => (
         <div
-          className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_0.8fr] items-center gap-4 px-5 py-4"
+          className="grid grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] items-center gap-4 px-5 py-4"
           key={index}
         >
           <div className="space-y-2">
             <div className="h-4 w-24 animate-pulse rounded bg-slate-700/60" />
             <div className="h-3 w-36 animate-pulse rounded bg-slate-800/80" />
           </div>
-          <div className="h-7 w-14 animate-pulse rounded-full bg-slate-800/80" />
+          <div className="h-8 w-16 animate-pulse rounded-full bg-slate-800/80" />
           <div className="h-4 w-16 animate-pulse rounded bg-slate-800/80" />
           <div className="h-4 w-20 animate-pulse rounded bg-slate-800/80" />
           <div className="h-4 w-16 animate-pulse rounded bg-slate-800/80" />
@@ -71,12 +71,12 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
   return (
     <button
       aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
-      className="grid w-full grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_0.8fr] items-center gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70"
+      className="grid w-full grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] items-center gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70"
       onClick={() => navigate(`/analyses/${analysis.id}`)}
       type="button"
     >
       <span className="min-w-0">
-        <span className="block truncate text-base font-semibold text-slate-50">
+        <span className="block truncate text-lg font-semibold text-slate-50">
           {analysis.name}
         </span>
         <span className="mt-1 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
@@ -86,7 +86,7 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
 
       <span
         className={[
-          'w-fit rounded-full border px-3 py-1 text-xs font-semibold',
+          'inline-flex min-w-16 justify-center rounded-full border px-3.5 py-1.5 text-sm font-semibold',
           judgmentStyles[analysis.judgment],
         ].join(' ')}
       >
@@ -235,7 +235,7 @@ function StockListPage() {
         <EmptyState activeLabel={activeLabel} />
       ) : (
         <div className="overflow-hidden rounded-lg border border-amber-100/10 bg-slate-950/45 shadow-2xl shadow-slate-950/30">
-          <div className="grid grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_0.8fr] gap-4 border-b border-amber-100/10 bg-slate-950/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <div className="grid grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] gap-4 border-b border-amber-100/10 bg-slate-950/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
             <span>ticker / name</span>
             <span>judgment</span>
             <span>trend</span>
