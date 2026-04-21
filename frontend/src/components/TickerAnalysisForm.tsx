@@ -98,13 +98,28 @@ function TickerAnalysisForm({
     }
   }
 
-  function handleRetry() {
+  async function handleRetry() {
+    const retryTicker = trimmedTicker;
     setDismissedJobId(job?.id ?? null);
     setJobId(null);
     setServerError(null);
     setShowValidation(false);
     notifiedAnalysisIdRef.current = null;
-    triggerAnalysis.reset();
+
+    if (!retryTicker) return;
+
+    try {
+      const createdJob = await triggerAnalysis.mutateAsync({
+        ticker: retryTicker,
+        run_id: runId,
+      });
+      setDismissedJobId(null);
+      setJobId(createdJob.id);
+      notifiedAnalysisIdRef.current = null;
+    } catch (error) {
+      setJobId(null);
+      setServerError(getAxiosMessage(error));
+    }
   }
 
   return (
@@ -158,7 +173,7 @@ function TickerAnalysisForm({
         </form>
       </div>
 
-      {job || serverError || jobQuery.isError ? (
+      {job || serverError || jobQuery.isError || triggerAnalysis.isPending ? (
         <div
           className={[
             'mt-5 rounded-lg border px-4 py-4 transition duration-300 ease-out motion-reduce:transition-none',
@@ -201,7 +216,7 @@ function TickerAnalysisForm({
             ) : job?.status === 'failed' || serverError || jobQuery.isError ? (
               <button
                 className="w-fit rounded-md border border-rose-100/25 px-4 py-2 text-sm font-semibold text-rose-50 transition hover:bg-rose-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-200/70"
-                onClick={handleRetry}
+                onClick={() => void handleRetry()}
                 type="button"
               >
                 다시 시도

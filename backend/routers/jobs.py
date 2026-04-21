@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -218,8 +219,9 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
 
 def _run_claude(csv_text: str) -> str:
     prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
+    cmd = ["claude.cmd", "-p"] if sys.platform == "win32" else ["claude", "-p"]
     result = subprocess.run(
-        ["claude", "-p"],
+        cmd,
         capture_output=True,
         input=prompt,
         text=True,
