@@ -1,7 +1,13 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import ManualInputModal from '../components/ManualInputModal';
 import { useAnalyses } from '../hooks/useAnalyses';
-import type { AnalysisFilters, AnalysisSummary, Judgment } from '../types';
+import type {
+  Analysis,
+  AnalysisFilters,
+  AnalysisSummary,
+  Judgment,
+} from '../types';
 
 const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '전체' },
@@ -119,8 +125,10 @@ function StockRow({ analysis }: { analysis: AnalysisSummary }) {
 }
 
 function StockListPage() {
+  const navigate = useNavigate();
   const { runId: runIdParam } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const runId = parseRunId(runIdParam);
   const requestedJudgment = searchParams.get('judgment');
   const activeJudgment = isValidJudgment(requestedJudgment)
@@ -137,6 +145,15 @@ function StockListPage() {
 
   const activeLabel =
     judgmentTabs.find((tab) => tab.value === activeJudgment)?.label ?? '전체';
+
+  function handleManualSaved(analysis: Analysis) {
+    if (analysis.run_id !== runId) {
+      navigate(`/runs/${analysis.run_id}`);
+      return;
+    }
+
+    void refetch();
+  }
 
   if (!runId) {
     return (
@@ -170,37 +187,47 @@ function StockListPage() {
           </p>
         </div>
 
-        <div
-          className="flex shrink-0 items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1"
-          role="tablist"
-        >
-          {judgmentTabs.map((tab) => {
-            const isActive = tab.value === activeJudgment;
+        <div className="flex shrink-0 flex-col items-end gap-3">
+          <button
+            className="rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+            onClick={() => setIsManualModalOpen(true)}
+            type="button"
+          >
+            수동 입력
+          </button>
 
-            return (
-              <button
-                aria-selected={isActive}
-                className={[
-                  'min-w-16 rounded-md px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
-                  isActive
-                    ? 'bg-amber-300 text-slate-950'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-slate-50',
-                ].join(' ')}
-                key={tab.label}
-                onClick={() => {
-                  if (tab.value) {
-                    setSearchParams({ judgment: tab.value });
-                  } else {
-                    setSearchParams({});
-                  }
-                }}
-                role="tab"
-                type="button"
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+          <div
+            className="flex items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1"
+            role="tablist"
+          >
+            {judgmentTabs.map((tab) => {
+              const isActive = tab.value === activeJudgment;
+
+              return (
+                <button
+                  aria-selected={isActive}
+                  className={[
+                    'min-w-16 rounded-md px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
+                    isActive
+                      ? 'bg-amber-300 text-slate-950'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-slate-50',
+                  ].join(' ')}
+                  key={tab.label}
+                  onClick={() => {
+                    if (tab.value) {
+                      setSearchParams({ judgment: tab.value });
+                    } else {
+                      setSearchParams({});
+                    }
+                  }}
+                  role="tab"
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -244,6 +271,13 @@ function StockListPage() {
           </div>
         </div>
       )}
+
+      <ManualInputModal
+        defaultRunId={runId}
+        isOpen={isManualModalOpen}
+        onClose={() => setIsManualModalOpen(false)}
+        onSaved={handleManualSaved}
+      />
     </section>
   );
 }
