@@ -246,6 +246,36 @@ def test_parse_markdown_extracts_transformed_example_markdown_table() -> None:
     assert result.data["stop_loss"] == 1990.0
 
 
+def test_parse_markdown_accepts_colon_inside_bold_with_modifier() -> None:
+    """LLM sometimes outputs '**필드:** 수식어 값' — colon inside bold + modifier word."""
+    markdown = """
+### 1. 현재 구조 요약
+
+- **추세:** 강한 상승 (전주 70,400 → 118,900, 주간 +68.9%)
+- **구름대 위치:** 구름 위 (종가 118,900 >> 구름 상단 35,925)
+- **MA 배열:** 정배열 (MA20 > MA60 > MA120)
+
+### 4. 매매 판정
+**매수**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 진입 조건 | 눌림 대기 | 110,000 |
+| 1차 목표 | 전고점 | 130,000 |
+| 손절 기준 | 추세 이탈 | 100,000 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.failed == []
+    assert result.data["judgment"] == "매수"
+    assert result.data["trend"] == "상승"
+    assert result.data["cloud_position"] == "구름 위"
+    assert result.data["ma_alignment"] == "정배열"
+
+
 def test_parse_markdown_collects_all_failed_required_fields() -> None:
     result = parse_markdown("")
 
