@@ -99,7 +99,7 @@ function App() {
         </header>
 
         <Routes>
-          <Route element={<RunListPage />} path="/" />
+          <Route element={<Navigate replace to="/runs" />} path="/" />
           <Route element={<RunListPage />} path="/runs" />
           <Route element={<RunDetailPlaceholder />} path="/runs/:runId" />
           <Route

@@ -20,12 +20,15 @@ function formatRunDate(value: string) {
   return dateFormatter.format(date);
 }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(
+  error: unknown,
+  fallback = '실행 목록을 불러오지 못했습니다.',
+) {
   if (error instanceof Error) {
     return error.message;
   }
 
-  return '실행 목록을 불러오지 못했습니다.';
+  return fallback;
 }
 
 function RunSkeleton() {
@@ -118,7 +121,7 @@ export function RunListPage() {
           className="rounded-lg border border-red-300/20 bg-red-950/35 px-4 py-3 text-sm text-red-100"
           role="alert"
         >
-          {getErrorMessage(createRunMutation.error)}
+          {getErrorMessage(createRunMutation.error, '실행 생성에 실패했습니다.')}
         </div>
       )}
 
@@ -150,7 +153,7 @@ export function RunListPage() {
         </div>
       )}
 
-      {runs.length > 0 && (
+      {runsQuery.isSuccess && runs.length > 0 && (
         <div className="grid gap-3">
           {runs.map((run) => (
             <RunRow key={run.id} run={run} />
