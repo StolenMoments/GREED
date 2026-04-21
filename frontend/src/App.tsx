@@ -35,7 +35,7 @@ function PlaceholderRoute({
   const content = routePlaceholders[route];
 
   return (
-    <section className="rounded-lg border border-amber-200/10 bg-slate-900/72 p-8 shadow-2xl shadow-slate-950/40">
+    <section className="rounded-lg border border-amber-200/10 bg-slate-900/75 p-8 shadow-2xl shadow-slate-950/40">
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
         {content.eyebrow}
       </p>
@@ -98,6 +98,7 @@ function App() {
             element={<PlaceholderRoute route="settings" />}
             path="/settings"
           />
+          <Route element={<Navigate replace to="/runs" />} path="*" />
         </Routes>
       </div>
     </main>
