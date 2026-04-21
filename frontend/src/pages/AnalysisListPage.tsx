@@ -3,25 +3,15 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { judgmentStyles } from '../constants/analysisStyles';
 import { useAllAnalyses } from '../hooks/useAnalyses';
 import type { AnalysisFilters, AnalysisSummary, Judgment } from '../types';
+import { formatDate } from '../utils/formatDate';
 
 const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '전체' },
   { label: '매수', value: '매수' },
   { label: '홀드', value: '홀드' },
+  { label: '관망', value: '관망' },
   { label: '매도', value: '매도' },
 ];
-
-const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
-function formatDate(value: string) {
-  return dateFormatter.format(new Date(value));
-}
 
 function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
@@ -88,14 +78,18 @@ function EmptyState({
   );
 }
 
-function AnalysisRow({ analysis }: { analysis: AnalysisSummary }) {
-  const navigate = useNavigate();
-
+function AnalysisRow({
+  analysis,
+  onSelect,
+}: {
+  analysis: AnalysisSummary;
+  onSelect: () => void;
+}) {
   return (
     <button
       aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
       className="grid w-full gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70 xl:grid-cols-[9rem_1.1fr_0.55fr_0.8fr_6rem] xl:items-center"
-      onClick={() => navigate(`/analyses/${analysis.id}`)}
+      onClick={onSelect}
       type="button"
     >
       <span className="text-sm font-medium text-slate-300">
@@ -134,6 +128,7 @@ function AnalysisRow({ analysis }: { analysis: AnalysisSummary }) {
 }
 
 function AnalysisListPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedJudgment = searchParams.get('judgment');
   const activeJudgment = isValidJudgment(requestedJudgment)
@@ -186,6 +181,10 @@ function AnalysisListPage() {
   function handleRunFilterSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextRunId = parseRunId(runIdInput);
+
+    if (!nextRunId) {
+      setRunIdInput('');
+    }
 
     updateFilters({
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
@@ -255,7 +254,6 @@ function AnalysisListPage() {
             <input
               className="h-10 w-28 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
               id="run-id-filter"
-              inputMode="numeric"
               min={1}
               onChange={(event) => setRunIdInput(event.target.value)}
               placeholder="예: 12"
@@ -316,7 +314,11 @@ function AnalysisListPage() {
           </div>
           <div className="divide-y divide-amber-100/10">
             {analyses.map((analysis) => (
-              <AnalysisRow analysis={analysis} key={analysis.id} />
+              <AnalysisRow
+                analysis={analysis}
+                key={analysis.id}
+                onSelect={() => navigate(`/analyses/${analysis.id}`)}
+              />
             ))}
           </div>
         </div>

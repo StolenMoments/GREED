@@ -1,13 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useCreateRun, useRuns } from '../hooks/useRuns';
 import type { Run } from '../types';
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('ko-KR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
+import { formatDate } from '../utils/formatDate';
 
 function LoadingRows() {
   return (
