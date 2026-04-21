@@ -5,5 +5,5 @@ pydantic>=2,<3
 click
 httpx
 pytest
-FinanceDataReader
+finance-datareader
 tzdata
