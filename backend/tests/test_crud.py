@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -14,9 +15,11 @@ from backend.crud import (
     get_analysis_history,
     get_run,
     get_runs,
+    upsert_stock_price,
 )
 from backend.database import Base
 from backend.schemas import AnalysisCreate
+from backend.timezone import seoul_now
 
 
 @pytest.fixture()
@@ -40,6 +43,13 @@ def test_create_run_persists_run(db_session: Session) -> None:
     assert run.memo == "first run"
     assert run.analysis_count == 0
     assert get_run(db_session, run.id) is not None
+
+
+def test_create_run_uses_seoul_time(db_session: Session) -> None:
+    run = create_run(db_session, memo="seoul time")
+
+    now_in_seoul = seoul_now().replace(tzinfo=None)
+    assert abs(now_in_seoul - run.created_at.replace(tzinfo=None)) < timedelta(seconds=5)
 
 
 def test_get_runs_includes_analysis_count(db_session: Session) -> None:
@@ -176,3 +186,15 @@ def test_get_analysis_history_orders_by_newest_first(db_session: Session) -> Non
 
     assert [analysis.id for analysis in history] == [newer.id, older.id]
     assert get_analysis(db_session, newer.id).ticker == "005930"
+
+
+def test_upsert_stock_price_uses_seoul_time(db_session: Session) -> None:
+    stock_price = upsert_stock_price(
+        db_session,
+        ticker="005930",
+        price_date=date(2026, 4, 21),
+        close_price=70000,
+    )
+
+    now_in_seoul = seoul_now().replace(tzinfo=None)
+    assert abs(now_in_seoul - stock_price.fetched_at.replace(tzinfo=None)) < timedelta(seconds=5)

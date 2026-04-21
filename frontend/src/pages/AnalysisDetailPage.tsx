@@ -6,16 +6,9 @@ import PriceLevels from '../components/PriceLevels';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
 import { useStockPrice } from '../hooks/useStockPrice';
+import { formatDate } from '../utils/formatDate';
 import { parseMarkdown } from '../utils/parseMarkdown';
 import type { AnalysisSummary } from '../types';
-
-const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
 
 function parseAnalysisId(idParam: string | undefined) {
   if (!idParam) {
@@ -24,10 +17,6 @@ function parseAnalysisId(idParam: string | undefined) {
 
   const parsed = Number(idParam);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function formatDate(value: string) {
-  return dateFormatter.format(new Date(value));
 }
 
 function LoadingPanel() {

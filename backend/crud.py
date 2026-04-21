@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.models import Analysis, Run, StockPrice
 from backend.schemas import AnalysisCreate
+from backend.timezone import seoul_now
 
 
 RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
@@ -110,7 +111,7 @@ def upsert_stock_price(
         db.add(row)
     row.price_date = price_date
     row.close_price = close_price
-    row.fetched_at = datetime.now().astimezone()
+    row.fetched_at = seoul_now()
     db.commit()
     db.refresh(row)
     return row
@@ -123,4 +124,3 @@ def _run_with_count_stmt() -> Select[tuple[Run, int]]:
         .group_by(Run.id)
         .order_by(*RUN_ORDER_BY)
     )
-
