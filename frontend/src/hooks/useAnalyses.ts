@@ -54,7 +54,8 @@ export function useCreateAnalysis() {
     mutationFn: (payload: CreateAnalysisPayload) => createAnalysis(payload),
     onSuccess: (analysis) => {
       queryClient.invalidateQueries({ queryKey: analysisKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: runKeys.all });
+      queryClient.invalidateQueries({ queryKey: runKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: runKeys.detail(analysis.run_id) });
       queryClient.setQueryData(analysisKeys.detail(analysis.id), analysis);
     },
   });

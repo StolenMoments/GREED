@@ -43,10 +43,10 @@ export interface CreateAnalysisPayload {
   name: string;
   model: string;
   markdown: string;
-  judgment: string;
-  trend: string;
-  cloud_position: string;
-  ma_alignment: string;
+  judgment: Judgment;
+  trend: Trend;
+  cloud_position: CloudPosition;
+  ma_alignment: MaAlignment;
   entry_price?: number | null;
   target_price?: number | null;
   stop_loss?: number | null;
