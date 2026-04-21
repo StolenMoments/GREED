@@ -88,7 +88,7 @@ function AnalysisRow({
   return (
     <button
       aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
-      className="grid w-full gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70 xl:grid-cols-[9rem_1.1fr_0.55fr_0.8fr_6rem] xl:items-center"
+      className="grid w-full gap-6 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70 xl:grid-cols-[9rem_1.1fr_0.55fr_0.8fr_6rem] xl:items-center"
       onClick={onSelect}
       type="button"
     >
@@ -301,7 +301,7 @@ function AnalysisListPage() {
         <EmptyState hasFilters={hasFilters} onClear={handleClearFilters} />
       ) : (
         <div className="overflow-hidden rounded-lg border border-amber-100/10 bg-slate-950/45 shadow-2xl shadow-slate-950/30">
-          <div className="hidden grid-cols-[9rem_1.1fr_0.55fr_0.8fr_6rem] gap-4 border-b border-amber-100/10 bg-slate-950/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:grid">
+          <div className="hidden grid-cols-[9rem_1.1fr_0.55fr_0.8fr_6rem] gap-6 border-b border-amber-100/10 bg-slate-950/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:grid">
             <span>created</span>
             <span>ticker / name</span>
             <span>judgment</span>
