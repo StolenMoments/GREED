@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
+import RunListPage from './pages/RunListPage';
 import StockListPage from './pages/StockListPage';
 
 const navItems = [
@@ -9,12 +10,6 @@ const navItems = [
 ];
 
 const routePlaceholders = {
-  runs: {
-    eyebrow: 'screening runs',
-    title: 'Run history is ready for API data.',
-    description:
-      'This route will list weekly screening batches from the FastAPI backend.',
-  },
   analyses: {
     eyebrow: 'ai analysis',
     title: 'Analysis review workspace is ready.',
@@ -91,7 +86,7 @@ function App() {
 
         <Routes>
           <Route element={<Navigate replace to="/runs" />} path="/" />
-          <Route element={<PlaceholderRoute route="runs" />} path="/runs" />
+          <Route element={<RunListPage />} path="/runs" />
           <Route element={<StockListPage />} path="/runs/:runId" />
           <Route
             element={<PlaceholderRoute route="analyses" />}
