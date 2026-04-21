@@ -26,7 +26,7 @@ PRICE_PATTERNS: dict[str, re.Pattern[str]] = {
     "stop_loss": re.compile(r"^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
 }
 
-JUDGMENT_BOLD_PATTERN = re.compile(r"\*\*(매수|홀드|매도)\*\*")
+JUDGMENT_BOLD_PATTERN = re.compile(r"\*\*\[?\s*(매수|홀드|매도)\s*\]?\*\*")
 JUDGMENT_FALLBACK_PATTERN = re.compile(
     r"^\s*(?:[-*]\s*)?(?:[\[\(\"'`]+)?(매수|홀드|매도)(?:[\]\)\"'`]+)?\s*$",
     re.MULTILINE,

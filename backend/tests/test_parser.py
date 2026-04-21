@@ -276,6 +276,24 @@ def test_parse_markdown_accepts_colon_inside_bold_with_modifier() -> None:
     assert result.data["ma_alignment"] == "정배열"
 
 
+def test_parse_markdown_accepts_bracketed_bold_judgment() -> None:
+    """LLM follows the system prompt template literally: **[매수]** instead of **매수**."""
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 정배열
+
+### 4. 매매 판정
+**[매수]**
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.data["judgment"] == "매수"
+
+
 def test_parse_markdown_collects_all_failed_required_fields() -> None:
     result = parse_markdown("")
 
