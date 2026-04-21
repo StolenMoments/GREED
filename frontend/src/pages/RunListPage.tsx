@@ -74,7 +74,7 @@ function RunRow({ run, onSelect }: { run: Run; onSelect: () => void }) {
         </span>
       </span>
 
-      <span className="text-sm font-medium text-slate-300">
+      <span className="whitespace-nowrap text-sm font-medium text-slate-300">
         {formatDate(run.created_at)}
       </span>
 

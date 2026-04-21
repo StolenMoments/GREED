@@ -92,7 +92,7 @@ function AnalysisRow({
       onClick={onSelect}
       type="button"
     >
-      <span className="text-sm font-medium text-slate-300">
+      <span className="whitespace-nowrap text-sm font-medium text-slate-300">
         {formatDate(analysis.created_at)}
       </span>
 
