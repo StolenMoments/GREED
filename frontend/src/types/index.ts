@@ -54,4 +54,5 @@ export interface CreateAnalysisPayload {
 
 export interface AnalysisFilters {
   judgment?: Judgment;
+  run_id?: number;
 }

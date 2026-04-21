@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
+import AnalysisListPage from './pages/AnalysisListPage';
 import RunListPage from './pages/RunListPage';
 import StockListPage from './pages/StockListPage';
 
@@ -10,12 +11,6 @@ const navItems = [
 ];
 
 const routePlaceholders = {
-  analyses: {
-    eyebrow: 'ai analysis',
-    title: 'Analysis review workspace is ready.',
-    description:
-      'This route will render markdown-based stock analysis with GFM support.',
-  },
   settings: {
     eyebrow: 'workspace',
     title: 'Personal workflow settings are ready.',
@@ -88,10 +83,7 @@ function App() {
           <Route element={<Navigate replace to="/runs" />} path="/" />
           <Route element={<RunListPage />} path="/runs" />
           <Route element={<StockListPage />} path="/runs/:runId" />
-          <Route
-            element={<PlaceholderRoute route="analyses" />}
-            path="/analyses"
-          />
+          <Route element={<AnalysisListPage />} path="/analyses" />
           <Route
             element={<AnalysisDetailPage />}
             path="/analyses/:id"
