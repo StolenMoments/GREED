@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.crud import create_analysis, get_analyses_by_run, get_analysis, get_analysis_history, get_run
@@ -22,9 +23,9 @@ def create_analysis_endpoint(
 
     parse_result = parse_markdown(payload.markdown)
     if not parse_result.success:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"detail": "파싱 실패", "failed_fields": parse_result.failed},
+            content={"detail": "파싱 실패", "failed_fields": parse_result.failed},
         )
 
     analysis_payload = payload.model_copy(update=parse_result.data)

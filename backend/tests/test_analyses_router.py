@@ -125,10 +125,8 @@ def test_create_analysis_returns_422_when_required_fields_are_missing(
 
     assert response.status_code == 422
     assert response.json() == {
-        "detail": {
-            "detail": "파싱 실패",
-            "failed_fields": ["judgment", "cloud_position", "ma_alignment"],
-        }
+        "detail": "파싱 실패",
+        "failed_fields": ["judgment", "cloud_position", "ma_alignment"],
     }
 
 
@@ -244,3 +242,41 @@ def test_get_analysis_history_returns_same_ticker_newest_first(
     assert response.status_code == 200
     body = response.json()
     assert [item["id"] for item in body] == [newer.id, older.id]
+
+
+def test_get_analysis_returns_analysis_detail(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="detail run")
+    analysis = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+
+    response = client.get(f"/api/analyses/{analysis.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == analysis.id
+    assert body["ticker"] == "005930"
+    assert body["markdown"] == VALID_MARKDOWN
+
+
+def test_get_analysis_returns_404_when_not_found(client: TestClient) -> None:
+    response = client.get("/api/analyses/99999")
+
+    assert response.status_code == 404
+
+
+def test_get_analysis_history_returns_404_when_not_found(client: TestClient) -> None:
+    response = client.get("/api/analyses/99999/history")
+
+    assert response.status_code == 404
