@@ -1,18 +1,13 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { RunListPage } from './pages/RunListPage';
 
 const navItems = [
-  { to: '/runs', label: 'Runs' },
-  { to: '/analyses', label: 'Analyses' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/runs', label: '실행' },
+  { to: '/analyses', label: '분석' },
+  { to: '/settings', label: '설정' },
 ];
 
 const routePlaceholders = {
-  runs: {
-    eyebrow: 'screening runs',
-    title: 'Run history is ready for API data.',
-    description:
-      'This route will list weekly screening batches from the FastAPI backend.',
-  },
   analyses: {
     eyebrow: 'ai analysis',
     title: 'Analysis review workspace is ready.',
@@ -49,6 +44,22 @@ function PlaceholderRoute({
   );
 }
 
+function RunDetailPlaceholder() {
+  return (
+    <section className="rounded-lg border border-amber-200/10 bg-slate-900/75 p-8 shadow-2xl shadow-slate-950/40">
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
+        run detail
+      </p>
+      <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-50">
+        종목 목록 페이지가 준비 중입니다.
+      </h2>
+      <p className="mt-3 max-w-2xl text-base leading-7 text-slate-300">
+        실행 항목 클릭 시 상세 URL로 이동하는 흐름은 연결되어 있습니다.
+      </p>
+    </section>
+  );
+}
+
 function App() {
   return (
     <main className="min-h-screen px-6 py-12 text-slate-50">
@@ -59,11 +70,11 @@ function App() {
               greed
             </p>
             <h1 className="text-4xl font-semibold tracking-tight">
-              Frontend workspace initialized.
+              AI 기술적 분석 저널
             </h1>
             <p className="max-w-3xl text-base leading-7 text-slate-300">
-              Vite, React, TypeScript, Tailwind CSS, React Router, Axios, React
-              Markdown, Remark GFM, and TanStack Query are configured.
+              주간 실행과 종목별 분석 결과를 한 화면에서 빠르게 훑고
+              필요한 상세 흐름으로 이어갑니다.
             </p>
           </div>
 
@@ -88,8 +99,9 @@ function App() {
         </header>
 
         <Routes>
-          <Route element={<Navigate replace to="/runs" />} path="/" />
-          <Route element={<PlaceholderRoute route="runs" />} path="/runs" />
+          <Route element={<RunListPage />} path="/" />
+          <Route element={<RunListPage />} path="/runs" />
+          <Route element={<RunDetailPlaceholder />} path="/runs/:runId" />
           <Route
             element={<PlaceholderRoute route="analyses" />}
             path="/analyses"
