@@ -3,14 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pythonExe = process.platform === "win32" ? "python.exe" : "python";
 
 const commands = [
   {
     name: "back",
     color: "\x1b[36m",
-    command: "python",
+    command: pythonExe,
     args: ["-m", "uvicorn", "backend.main:app", "--reload"],
     cwd: rootDir,
+    shell: false,
   },
   {
     name: "front",
@@ -24,6 +26,7 @@ const commands = [
       "5173",
     ],
     cwd: path.join(rootDir, "frontend"),
+    shell: false,
   },
 ];
 
@@ -44,7 +47,10 @@ function spawnCommand(config) {
   const child = spawn(config.command, config.args, {
     cwd: config.cwd,
     env: process.env,
-    shell: process.platform === "win32" && config.command !== process.execPath,
+    shell:
+      typeof config.shell === "boolean"
+        ? config.shell
+        : process.platform === "win32" && config.command !== process.execPath,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -55,6 +61,9 @@ function spawnCommand(config) {
   child.on("exit", (code, signal) => {
     children.delete(child.pid);
     if (!shuttingDown) {
+      if (config.name === "back" && code === 0) {
+        return;
+      }
       shutdown(code ?? (signal ? 1 : 0));
     }
   });
