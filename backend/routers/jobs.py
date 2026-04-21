@@ -70,14 +70,15 @@ def run_analysis_pipeline(job_id: int) -> None:
             return
 
         ticker = job.ticker.strip().zfill(6)
+        job_output_dir = PICK_OUTPUT_DIR / "jobs" / str(job.id)
         try:
             stock_name = _resolve_stock_name(ticker)
-            _run_pick(ticker, stock_name)
+            _run_pick(ticker, stock_name, job_output_dir)
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
 
-        csv_path = _latest_csv_path(ticker)
+        csv_path = _latest_csv_path(ticker, job_output_dir)
         if csv_path is None:
             update_job_failed(db, job, "pick: CSV 파일 생성 안 됨")
             return
@@ -94,6 +95,9 @@ def run_analysis_pipeline(job_id: int) -> None:
             return
         except RuntimeError as exc:
             update_job_failed(db, job, f"claude: {str(exc)[:300]}")
+            return
+        except Exception as exc:
+            update_job_failed(db, job, f"claude: {exc}")
             return
 
         if not raw:
@@ -126,10 +130,10 @@ def run_analysis_pipeline(job_id: int) -> None:
         db.close()
 
 
-def _run_pick(ticker: str, stock_name: str) -> None:
+def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
     from scripts.pick import run_pick
 
-    run_pick(ticker, years=5, output_dir=str(PICK_OUTPUT_DIR), stock_name=stock_name)
+    run_pick(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
 
 
 def _resolve_stock_name(ticker: str) -> str:
@@ -138,8 +142,8 @@ def _resolve_stock_name(ticker: str) -> str:
     return resolve_stock_name(ticker)
 
 
-def _latest_csv_path(ticker: str) -> Path | None:
-    files = sorted(PICK_OUTPUT_DIR.glob(f"{ticker}_*.csv"), key=lambda path: path.stat().st_mtime)
+def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
+    files = sorted(output_dir.glob(f"{ticker}_*.csv"), key=lambda path: path.stat().st_mtime)
     if not files:
         return None
     return files[-1]
@@ -148,8 +152,9 @@ def _latest_csv_path(ticker: str) -> Path | None:
 def _run_claude(csv_text: str) -> str:
     prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
     result = subprocess.run(
-        ["claude", "-p", prompt],
+        ["claude", "-p"],
         capture_output=True,
+        input=prompt,
         text=True,
         timeout=CLAUDE_TIMEOUT_SECONDS,
     )

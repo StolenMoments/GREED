@@ -44,6 +44,7 @@ greed/
 │   ├── cli.py
 │   ├── routers/
 │   │   ├── analyses.py
+│   │   ├── jobs.py
 │   │   ├── runs.py
 │   │   └── stock.py
 │   └── tests/
@@ -126,6 +127,20 @@ greed/
 | `price_date` | DATE | 가격 기준일 |
 | `close_price` | REAL | 종가 |
 | `fetched_at` | DATETIME | 조회 및 저장 시각 |
+
+#### analysis_jobs
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | INTEGER PK AUTOINCREMENT | 잡 ID |
+| `ticker` | TEXT | 분석할 종목 코드 |
+| `run_id` | INTEGER FK | 분석 결과가 저장될 실행 |
+| `status` | TEXT | `pending`, `done`, `failed` |
+| `error_message` | TEXT NULLABLE | 실패 단계와 사유 |
+| `analysis_id` | INTEGER FK NULLABLE | 성공 시 생성된 분석 ID |
+| `created_at` | DATETIME | 생성 시각 |
+
+인덱스: `run_id`, `status`
 
 ## 4. 마크다운 파서
 
@@ -217,6 +232,47 @@ Base URL: `http://localhost:8000/api`
 - 당일 캐시가 있으면 DB 값을 반환한다.
 - 캐시가 없으면 FinanceDataReader로 최근 10일 데이터를 조회하고 마지막 종가를 저장한다.
 - 조회 실패 시 `404`와 `가격 데이터를 가져올 수 없습니다.`를 반환한다.
+
+### 5-4. Jobs
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `POST` | `/jobs/trigger-analysis` | 티커 분석 잡 생성 및 백그라운드 실행 |
+| `GET` | `/jobs/{job_id}` | 잡 상태 조회 |
+
+`POST /jobs/trigger-analysis`
+
+```json
+{
+  "ticker": "005930",
+  "run_id": 1
+}
+```
+
+성공 응답은 `202 Accepted`이며 `status`는 최초 `pending`이다. 백그라운드 작업은 job별 `pick_output/jobs/{job_id}/` 디렉터리에 주봉 CSV를 생성하고, Claude CLI에는 긴 CSV 프롬프트를 stdin으로 전달한다.
+
+```json
+{
+  "id": 1,
+  "ticker": "005930",
+  "run_id": 1,
+  "status": "pending",
+  "error_message": null,
+  "analysis_id": null,
+  "created_at": "2026-04-21T20:00:00"
+}
+```
+
+프론트엔드는 `GET /jobs/{job_id}`를 1~2초 간격으로 폴링한다. 성공 시 `status=done`과 `analysis_id`가 채워지고, 실패 시 `status=failed`와 `error_message`가 채워진다.
+
+실패 메시지 접두사:
+
+| 단계 | 형식 |
+| --- | --- |
+| `pick` | `pick: {예외 메시지}` 또는 `pick: CSV 파일 생성 안 됨` |
+| `claude` | `claude: 180s 타임아웃 초과`, `claude: 빈 응답 반환`, `claude: {예외 메시지}` |
+| `parser` | `parser: [필드명, ...] 필드 누락. 원본 앞 300자: ...` |
+| `db` | `db: {예외 메시지}` |
 
 ## 6. CLI
 
