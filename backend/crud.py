@@ -115,17 +115,19 @@ def get_jobs(db: Session, run_id: int | None = None) -> list[AnalysisJob]:
     return list(db.scalars(stmt.order_by(*JOB_ORDER_BY)).all())
 
 
-def update_job_done(db: Session, job: AnalysisJob, analysis_id: int) -> None:
+def update_job_done(db: Session, job: AnalysisJob, analysis_id: int, raw_markdown: str | None = None) -> None:
     job.status = "done"
     job.analysis_id = analysis_id
     job.error_message = None
+    job.raw_markdown = raw_markdown
     db.commit()
     db.refresh(job)
 
 
-def update_job_failed(db: Session, job: AnalysisJob, error_message: str) -> None:
+def update_job_failed(db: Session, job: AnalysisJob, error_message: str, raw_markdown: str | None = None) -> None:
     job.status = "failed"
     job.error_message = error_message
+    job.raw_markdown = raw_markdown
     db.commit()
     db.refresh(job)
 

@@ -175,7 +175,7 @@ def run_analysis_pipeline(job_id: int) -> None:
         parse_result = parse_markdown(raw)
         if not parse_result.success:
             failed_str = ", ".join(parse_result.failed)
-            update_job_failed(db, job, f"parser: [{failed_str}] 필드 누락. 원본 앞 300자: {raw[:300]}")
+            update_job_failed(db, job, f"parser: [{failed_str}] 필드 누락. 원본 앞 300자: {raw[:300]}", raw_markdown=raw)
             return
 
         try:
@@ -190,7 +190,7 @@ def run_analysis_pipeline(job_id: int) -> None:
                     **parse_result.data,
                 ),
             )
-            update_job_done(db, job, analysis.id)
+            update_job_done(db, job, analysis.id, raw_markdown=raw)
         except Exception as exc:
             db.rollback()
             update_job_failed(db, job, f"db: {exc}")

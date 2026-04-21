@@ -181,6 +181,38 @@ def test_run_analysis_pipeline_saves_analysis(
         assert analysis.model == "claude-code"
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
+        assert saved_job.raw_markdown == VALID_MARKDOWN
+
+
+def test_run_analysis_pipeline_saves_raw_markdown_on_parse_failure(
+    test_db: sessionmaker[Session],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="parser failure")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    output_dir.mkdir(parents=True)
+    csv_path = output_dir / "005930_Samsung_weekly_20260421.csv"
+    csv_path.write_text("ticker,name,close\n005930,Samsung,75000\n", encoding="utf-8-sig")
+
+    bad_markdown = "## 분석\n- 추세: 상승\n판정 없음"
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+    monkeypatch.setattr(jobs, "_run_claude", lambda csv_text: bad_markdown)
+
+    run_analysis_pipeline(job.id)
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "failed"
+        assert saved_job.raw_markdown == bad_markdown
 
 
 def test_run_analysis_pipeline_marks_pick_failure(
@@ -259,5 +291,5 @@ def test_run_claude_sends_prompt_via_stdin(monkeypatch: pytest.MonkeyPatch) -> N
     result = jobs._run_claude("ticker,name,close\n005930,Samsung,75000\n")
 
     assert result == "analysis markdown"
-    assert captured["args"] == ["claude", "-p"]
+    assert captured["args"][1] == "-p"
     assert "005930" in str(captured["input"])

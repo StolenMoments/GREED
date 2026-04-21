@@ -77,6 +77,7 @@ class JobRead(BaseModel):
     run_id: int
     status: str
     error_message: str | None
+    raw_markdown: str | None
     analysis_id: int | None
     created_at: datetime
 

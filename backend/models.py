@@ -69,6 +69,7 @@ class AnalysisJob(Base):
     run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
