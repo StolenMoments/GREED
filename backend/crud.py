@@ -68,10 +68,7 @@ def get_analyses_by_run(
     run_id: int,
     judgment: str | None = None,
 ) -> list[Analysis]:
-    stmt = select(Analysis).where(Analysis.run_id == run_id)
-    if judgment is not None:
-        stmt = stmt.where(Analysis.judgment == judgment)
-    return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
+    return get_analyses(db, judgment=judgment, run_id=run_id)
 
 
 def get_analyses(

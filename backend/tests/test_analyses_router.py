@@ -354,6 +354,61 @@ def test_list_all_analyses_returns_422_for_invalid_judgment(client: TestClient) 
     assert response.status_code == 422
 
 
+def test_list_all_analyses_filters_by_judgment_and_run_id(client: TestClient, db_session: Session) -> None:
+    first_run = create_run(db_session, memo="combined filter 1")
+    second_run = create_run(db_session, memo="combined filter 2")
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=first_run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=second_run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=second_run.id,
+            ticker="035420",
+            name="NAVER",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    response = client.get("/api/analyses", params={"judgment": "매수", "run_id": second_run.id})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["judgment"] == "매수"
+    assert body[0]["ticker"] == "000660"
+
+
 def test_list_analyses_returns_422_for_invalid_judgment(client: TestClient, db_session: Session) -> None:
     run = create_run(db_session, memo="invalid judgment test")
     response = client.get(f"/api/runs/{run.id}/analyses", params={"judgment": "잘못된값"})
