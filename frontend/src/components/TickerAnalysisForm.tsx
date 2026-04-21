@@ -99,7 +99,7 @@ function TickerAnalysisForm({
   }
 
   async function handleRetry() {
-    const retryTicker = trimmedTicker;
+    const retryTicker = trimmedTicker || job?.ticker || '';
     setDismissedJobId(job?.id ?? null);
     setJobId(null);
     setServerError(null);
