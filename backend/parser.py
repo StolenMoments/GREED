@@ -10,9 +10,11 @@ OPTIONAL_FIELDS = ("entry_price", "target_price", "stop_loss")
 NONE_TOKENS = {"n/a", "na", "-", "미정", "없음", "none"}
 
 FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
-    "trend": re.compile(r"추세:\s*(상승|하락|횡보)"),
-    "cloud_position": re.compile(r"구름대 위치:\s*(구름 위|구름 안|구름 아래)"),
-    "ma_alignment": re.compile(r"MA 배열:\s*(정배열|역배열|혼조)"),
+    "trend": re.compile(r"\*{0,2}추세\*{0,2}\s*:\s*(상승|하락|횡보)"),
+    "cloud_position": re.compile(
+        r"\*{0,2}구름대 위치\*{0,2}\s*:\s*(구름 위|구름 안|구름 아래)",
+    ),
+    "ma_alignment": re.compile(r"\*{0,2}MA 배열\*{0,2}\s*:\s*(정배열|역배열|혼조)"),
 }
 
 # 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 컬럼 추가 시 패턴 재검토 필요.
