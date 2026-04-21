@@ -37,7 +37,8 @@ def run_group() -> None:
 @click.option("--memo", default=None, help="Optional run memo.")
 @click.pass_context
 def create_run(ctx: click.Context, memo: str | None) -> None:
-    response = _post_json(ctx.obj["api_base_url"], "/runs", {"memo": memo})
+    with httpx.Client(base_url=ctx.obj["api_base_url"], timeout=10.0) as client:
+        response = _post_json(client, "/runs", {"memo": memo})
     if response.status_code != 201:
         _echo_failure("run", response)
         raise click.exceptions.Exit(1)
@@ -65,14 +66,15 @@ def save_analysis(
     model_name: str,
     file_path: Path,
 ) -> None:
-    success = _save_analysis_file(
-        api_base_url=ctx.obj["api_base_url"],
-        run_id=run_id,
-        ticker=ticker,
-        name=name,
-        model_name=model_name,
-        file_path=file_path,
-    )
+    with httpx.Client(base_url=ctx.obj["api_base_url"], timeout=10.0) as client:
+        success = _save_analysis_file(
+            client=client,
+            run_id=run_id,
+            ticker=ticker,
+            name=name,
+            model_name=model_name,
+            file_path=file_path,
+        )
     if not success:
         raise click.exceptions.Exit(1)
 
@@ -87,25 +89,26 @@ def save_analysis_dir(ctx: click.Context, run_id: int, model_name: str, dir_path
     success_count = 0
     failure_count = 0
 
-    for file_path in markdown_files:
-        try:
-            ticker, name = parse_analysis_filename(file_path)
-        except ValueError as exc:
-            click.echo(f"[FAIL] {file_path.name} - {exc}")
-            failure_count += 1
-            continue
+    with httpx.Client(base_url=ctx.obj["api_base_url"], timeout=10.0) as client:
+        for file_path in markdown_files:
+            try:
+                ticker, name = parse_analysis_filename(file_path)
+            except ValueError as exc:
+                click.echo(f"[FAIL] {file_path.name} - {exc}")
+                failure_count += 1
+                continue
 
-        if _save_analysis_file(
-            api_base_url=ctx.obj["api_base_url"],
-            run_id=run_id,
-            ticker=ticker,
-            name=name,
-            model_name=model_name,
-            file_path=file_path,
-        ):
-            success_count += 1
-        else:
-            failure_count += 1
+            if _save_analysis_file(
+                client=client,
+                run_id=run_id,
+                ticker=ticker,
+                name=name,
+                model_name=model_name,
+                file_path=file_path,
+            ):
+                success_count += 1
+            else:
+                failure_count += 1
 
     click.echo(f"성공: {success_count}개 / 실패: {failure_count}개 / Run ID: {run_id}")
     if failure_count:
@@ -122,7 +125,7 @@ def parse_analysis_filename(file_path: Path) -> tuple[str, str]:
     if not ticker:
         raise ValueError("파일명에서 ticker 추출 실패")
 
-    if len(parts) >= 4 and parts[-2] == "weekly" and parts[-1].isdigit():
+    if len(parts) >= 4 and parts[-2] == "weekly" and len(parts[-1]) == 8 and parts[-1].isdigit():
         name_parts = parts[1:-2]
     else:
         name_parts = parts[1:]
@@ -136,7 +139,7 @@ def parse_analysis_filename(file_path: Path) -> tuple[str, str]:
 
 def _save_analysis_file(
     *,
-    api_base_url: str,
+    client: httpx.Client,
     run_id: int,
     ticker: str,
     name: str,
@@ -153,7 +156,7 @@ def _save_analysis_file(
         **PLACEHOLDER_PARSED_FIELDS,
     }
 
-    response = _post_json(api_base_url, "/analyses", payload)
+    response = _post_json(client, "/analyses", payload)
     if response.status_code == 201:
         body = response.json()
         click.echo(f"[OK] {body['ticker']} {body['name']} — {body['judgment']}")
@@ -163,10 +166,9 @@ def _save_analysis_file(
     return False
 
 
-def _post_json(api_base_url: str, path: str, payload: dict[str, Any]) -> httpx.Response:
+def _post_json(client: httpx.Client, path: str, payload: dict[str, Any]) -> httpx.Response:
     try:
-        with httpx.Client(base_url=api_base_url, timeout=10.0) as client:
-            return client.post(path, json=payload)
+        return client.post(path, json=payload)
     except httpx.RequestError as exc:
         raise click.ClickException(f"API 요청 실패: {exc}") from exc
 
