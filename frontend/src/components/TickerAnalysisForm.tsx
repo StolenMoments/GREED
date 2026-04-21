@@ -29,7 +29,7 @@ function TickerAnalysisForm({
   const trimmedTicker = ticker.trim();
   const job = jobQuery.data;
   const isPending = triggerAnalysis.isPending || job?.status === 'pending';
-  const isSubmitDisabled = isPending || trimmedTicker.length === 0;
+  const isSubmitDisabled = isPending;
 
   const statusTone = useMemo(() => {
     if (job?.status === 'done') {

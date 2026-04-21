@@ -33,9 +33,9 @@ export type ParsedMarkdown =
 const noneTokens = new Set(['n/a', 'na', '-', '미정', '없음', 'none']);
 
 const fieldPatterns = {
-  trend: /추세:\s*(상승|하락|횡보)/,
-  cloud_position: /구름대 위치:\s*(구름 위|구름 안|구름 아래)/,
-  ma_alignment: /MA 배열:\s*(정배열|역배열|혼조)/,
+  trend: /\*{0,2}추세\*{0,2}\s*:\s*(상승|하락|횡보)/,
+  cloud_position: /\*{0,2}구름대 위치\*{0,2}\s*:\s*(구름 위|구름 안|구름 아래)/,
+  ma_alignment: /\*{0,2}MA 배열\*{0,2}\s*:\s*(정배열|역배열|혼조)/,
 } as const;
 
 const pricePatterns = {
