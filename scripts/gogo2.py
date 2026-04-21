@@ -236,9 +236,11 @@ def get_ticker_list(market, min_marcap_billions=500):
 # ────────────────────────────────────────
 # 6. 진행 상태 저장/로드
 # ────────────────────────────────────────
-PROGRESS_FILE = "screening_progress.json"
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pick_output")
+PROGRESS_FILE = os.path.join(OUTPUT_DIR, "screening_progress.json")
 
 def load_progress():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     today = datetime.today().strftime("%Y-%m-%d")
     if os.path.exists(PROGRESS_FILE):
         with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
@@ -311,7 +313,8 @@ RESULT_COLS = [
 ]
 
 def get_result_filename():
-    return f"screening_{datetime.today().strftime('%Y%m%d')}.csv"
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    return os.path.join(OUTPUT_DIR, f"screening_{datetime.today().strftime('%Y%m%d')}.csv")
 
 def flush_to_csv(batch_hits, filename, lock):
     if not batch_hits:
