@@ -6,19 +6,29 @@ export type ParsedField =
   | 'cloud_position'
   | 'ma_alignment';
 
-export interface ParsedMarkdown {
-  data: {
-    judgment?: Judgment;
-    trend?: Trend;
-    cloud_position?: CloudPosition;
-    ma_alignment?: MaAlignment;
-    entry_price: number | null;
-    target_price: number | null;
-    stop_loss: number | null;
-  };
-  failed: ParsedField[];
-  success: boolean;
-}
+type PriceData = {
+  entry_price: number | null;
+  target_price: number | null;
+  stop_loss: number | null;
+};
+
+type RequiredData = PriceData & {
+  judgment: Judgment;
+  trend: Trend;
+  cloud_position: CloudPosition;
+  ma_alignment: MaAlignment;
+};
+
+type PartialData = PriceData & {
+  judgment?: Judgment;
+  trend?: Trend;
+  cloud_position?: CloudPosition;
+  ma_alignment?: MaAlignment;
+};
+
+export type ParsedMarkdown =
+  | { success: true; data: RequiredData; failed: [] }
+  | { success: false; data: PartialData; failed: [ParsedField, ...ParsedField[]] };
 
 const noneTokens = new Set(['n/a', 'na', '-', '미정', '없음', 'none']);
 
@@ -56,18 +66,30 @@ export function parseMarkdown(markdown: string): ParsedMarkdown {
   if (!cloudPosition) failed.push('cloud_position');
   if (!maAlignment) failed.push('ma_alignment');
 
+  const priceData: PriceData = {
+    entry_price: parsePrice(markdown, pricePatterns.entry_price),
+    target_price: parsePrice(markdown, pricePatterns.target_price),
+    stop_loss: parsePrice(markdown, pricePatterns.stop_loss),
+  };
+
+  if (failed.length === 0) {
+    return {
+      success: true,
+      data: {
+        ...priceData,
+        judgment: judgment as Judgment,
+        trend: trend as Trend,
+        cloud_position: cloudPosition as CloudPosition,
+        ma_alignment: maAlignment as MaAlignment,
+      },
+      failed: [],
+    };
+  }
+
   return {
-    data: {
-      judgment,
-      trend,
-      cloud_position: cloudPosition,
-      ma_alignment: maAlignment,
-      entry_price: parsePrice(markdown, pricePatterns.entry_price),
-      target_price: parsePrice(markdown, pricePatterns.target_price),
-      stop_loss: parsePrice(markdown, pricePatterns.stop_loss),
-    },
-    failed,
-    success: failed.length === 0,
+    success: false,
+    data: { ...priceData, judgment, trend, cloud_position: cloudPosition, ma_alignment: maAlignment },
+    failed: failed as [ParsedField, ...ParsedField[]],
   };
 }
 

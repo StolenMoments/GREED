@@ -41,7 +41,8 @@ function ManualInputModal({
   const createRunMutation = useCreateRun();
   const createAnalysisMutation = useCreateAnalysis();
   const [step, setStep] = useState(1);
-  const [model, setModel] = useState<string>(modelOptions[0]);
+  type ModelOption = (typeof modelOptions)[number];
+  const [model, setModel] = useState<ModelOption>(modelOptions[0]);
   const [runMode, setRunMode] = useState<'existing' | 'new'>('existing');
   const [selectedRunId, setSelectedRunId] = useState<number | undefined>(
     defaultRunId,
@@ -58,6 +59,15 @@ function ManualInputModal({
     runMode === 'existing'
       ? selectedRunId ?? defaultRunId ?? runs[0]?.id
       : undefined;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !isSaving) onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSaving, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -110,10 +120,10 @@ function ManualInputModal({
         name: name.trim(),
         model,
         markdown,
-        judgment: parsed.data.judgment!,
-        trend: parsed.data.trend!,
-        cloud_position: parsed.data.cloud_position!,
-        ma_alignment: parsed.data.ma_alignment!,
+        judgment: parsed.data.judgment,
+        trend: parsed.data.trend,
+        cloud_position: parsed.data.cloud_position,
+        ma_alignment: parsed.data.ma_alignment,
         entry_price: parsed.data.entry_price,
         target_price: parsed.data.target_price,
         stop_loss: parsed.data.stop_loss,
@@ -138,6 +148,7 @@ function ManualInputModal({
 
   return (
     <div
+      aria-labelledby="manual-modal-title"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm"
       role="dialog"
@@ -148,7 +159,7 @@ function ManualInputModal({
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
               manual input
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">
+            <h2 className="mt-2 text-2xl font-semibold text-slate-50" id="manual-modal-title">
               수동 분석 입력
             </h2>
           </div>
