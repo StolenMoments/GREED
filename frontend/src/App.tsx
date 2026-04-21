@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import StockListPage from './pages/StockListPage';
 
 const navItems = [
   { to: '/runs', label: 'Runs' },
@@ -90,9 +91,14 @@ function App() {
         <Routes>
           <Route element={<Navigate replace to="/runs" />} path="/" />
           <Route element={<PlaceholderRoute route="runs" />} path="/runs" />
+          <Route element={<StockListPage />} path="/runs/:runId" />
           <Route
             element={<PlaceholderRoute route="analyses" />}
             path="/analyses"
+          />
+          <Route
+            element={<PlaceholderRoute route="analyses" />}
+            path="/analyses/:analysisId"
           />
           <Route
             element={<PlaceholderRoute route="settings" />}
