@@ -56,15 +56,14 @@ function EmptyState({
   );
 }
 
-function RunRow({ run }: { run: Run }) {
-  const navigate = useNavigate();
+function RunRow({ run, onSelect }: { run: Run; onSelect: () => void }) {
   const memo = run.memo?.trim();
 
   return (
     <button
       aria-label={`실행 ${run.id} 상세 보기`}
       className="grid w-full gap-4 px-5 py-5 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70 md:grid-cols-[1fr_9rem_7rem] md:items-center md:gap-5"
-      onClick={() => navigate(`/runs/${run.id}`)}
+      onClick={onSelect}
       type="button"
     >
       <span className="min-w-0">
@@ -136,12 +135,23 @@ function RunListPage() {
 
       {createRun.isError ? (
         <div className="rounded-lg border border-rose-200/20 bg-rose-950/20 px-6 py-5">
-          <p className="text-sm font-semibold text-rose-100">
-            새 실행을 만들지 못했습니다.
-          </p>
-          <p className="mt-1 text-sm text-rose-100/70">
-            백엔드 응답 상태를 확인한 뒤 다시 시도하세요.
-          </p>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-rose-100">
+                새 실행을 만들지 못했습니다.
+              </p>
+              <p className="mt-1 text-sm text-rose-100/70">
+                백엔드 응답 상태를 확인한 뒤 다시 시도하세요.
+              </p>
+            </div>
+            <button
+              className="rounded-md border border-rose-100/25 px-4 py-2 text-sm font-semibold text-rose-50 transition hover:bg-rose-100/10"
+              onClick={handleCreateRun}
+              type="button"
+            >
+              다시 시도
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -181,7 +191,7 @@ function RunListPage() {
           </div>
           <div className="divide-y divide-amber-100/10">
             {runs.map((run) => (
-              <RunRow key={run.id} run={run} />
+              <RunRow key={run.id} run={run} onSelect={() => navigate(`/runs/${run.id}`)} />
             ))}
           </div>
         </div>
