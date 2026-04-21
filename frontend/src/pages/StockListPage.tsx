@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import ManualInputModal from '../components/ManualInputModal';
+import TickerAnalysisForm from '../components/TickerAnalysisForm';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalyses } from '../hooks/useAnalyses';
 import type {
@@ -208,6 +209,11 @@ function StockListPage() {
           </div>
         </div>
       </div>
+
+      <TickerAnalysisForm
+        runId={runId}
+        onAnalysisCreated={() => void refetch()}
+      />
 
       {isError ? (
         <div className="rounded-lg border border-rose-200/20 bg-rose-950/20 px-6 py-5">
