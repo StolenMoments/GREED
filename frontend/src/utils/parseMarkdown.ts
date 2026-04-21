@@ -8,8 +8,11 @@ export type ParsedField =
 
 type PriceData = {
   entry_price: number | null;
+  entry_price_max: number | null;
   target_price: number | null;
+  target_price_max: number | null;
   stop_loss: number | null;
+  stop_loss_max: number | null;
 };
 
 type RequiredData = PriceData & {
@@ -66,10 +69,16 @@ export function parseMarkdown(markdown: string): ParsedMarkdown {
   if (!cloudPosition) failed.push('cloud_position');
   if (!maAlignment) failed.push('ma_alignment');
 
+  const [entry_price, entry_price_max] = parsePriceRange(markdown, pricePatterns.entry_price);
+  const [target_price, target_price_max] = parsePriceRange(markdown, pricePatterns.target_price);
+  const [stop_loss, stop_loss_max] = parsePriceRange(markdown, pricePatterns.stop_loss);
   const priceData: PriceData = {
-    entry_price: parsePrice(markdown, pricePatterns.entry_price),
-    target_price: parsePrice(markdown, pricePatterns.target_price),
-    stop_loss: parsePrice(markdown, pricePatterns.stop_loss),
+    entry_price,
+    entry_price_max,
+    target_price,
+    target_price_max,
+    stop_loss,
+    stop_loss_max,
   };
 
   if (failed.length === 0) {
@@ -105,12 +114,19 @@ function matchField(markdown: string, pattern: RegExp): string | undefined {
   return pattern.exec(markdown)?.[1]?.trim();
 }
 
-function parsePrice(markdown: string, pattern: RegExp): number | null {
+function parsePriceRange(markdown: string, pattern: RegExp): [number | null, number | null] {
   const rawValue = pattern.exec(markdown)?.[1]?.trim();
   if (!rawValue || noneTokens.has(rawValue.toLocaleLowerCase())) {
-    return null;
+    return [null, null];
   }
 
-  const numberMatch = /\d[\d,]*/.exec(rawValue);
-  return numberMatch ? Number(numberMatch[0].replaceAll(',', '')) : null;
+  const matches = rawValue.match(/\d[\d,]*/g);
+  if (!matches) return [null, null];
+
+  const values = matches.map((m) => Number(m.replaceAll(',', '')));
+  if (values.length === 1) return [values[0], null];
+
+  const lo = Math.min(values[0], values[1]);
+  const hi = Math.max(values[0], values[1]);
+  return [lo, hi !== lo ? hi : null];
 }

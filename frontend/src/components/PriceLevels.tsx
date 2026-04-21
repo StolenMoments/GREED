@@ -16,15 +16,21 @@ const toneStyles = {
 interface PriceLevelsProps {
   currentPrice?: StockPrice;
   entryPrice?: number | null;
+  entryPriceMax?: number | null;
   targetPrice?: number | null;
+  targetPriceMax?: number | null;
   stopLoss?: number | null;
+  stopLossMax?: number | null;
 }
 
 function PriceLevels({
   currentPrice,
   entryPrice,
+  entryPriceMax,
   targetPrice,
+  targetPriceMax,
   stopLoss,
+  stopLossMax,
 }: PriceLevelsProps) {
   const current = currentPrice?.close_price;
 
@@ -49,9 +55,9 @@ function PriceLevels({
       </div>
 
       <div className="mt-6 space-y-4 border-t border-slate-800/70 pt-5">
-        <PriceRow label="목표가" price={targetPrice} current={current} tone="target" />
-        <PriceRow label="진입가" price={entryPrice} current={current} tone="entry" />
-        <PriceRow label="손절가" price={stopLoss} current={current} tone="stop" />
+        <PriceRow label="목표가" price={targetPrice} priceMax={targetPriceMax} current={current} tone="target" />
+        <PriceRow label="진입가" price={entryPrice} priceMax={entryPriceMax} current={current} tone="entry" />
+        <PriceRow label="손절가" price={stopLoss} priceMax={stopLossMax} current={current} tone="stop" />
       </div>
     </aside>
   );
@@ -61,16 +67,32 @@ function PriceRow({
   current,
   label,
   price,
+  priceMax,
   tone,
 }: {
   current?: number;
   label: string;
   price?: number | null;
+  priceMax?: number | null;
   tone: keyof typeof toneStyles;
 }) {
   const colorClass = toneStyles[tone];
+  const isRange = price != null && priceMax != null;
   const pct =
-    price != null && current !== undefined ? calcPct(price, current) : null;
+    price != null && current !== undefined && !isRange ? calcPct(price, current) : null;
+
+  if (isRange) {
+    return (
+      <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-3">
+        <span className={`text-sm font-medium ${colorClass}`}>{label}</span>
+        <span className={`text-right tabular-nums text-lg font-medium ${colorClass}`}>
+          {priceFormatter.format(price)}
+          <span className="mx-1.5 font-normal text-slate-500">~</span>
+          {priceFormatter.format(priceMax)}원
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3">

@@ -28,10 +28,16 @@ def init_db() -> None:
 
 def _migrate() -> None:
     with engine.connect() as conn:
-        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(analysis_jobs)"))]
-        if "raw_markdown" not in cols:
+        jobs_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(analysis_jobs)"))]
+        if "raw_markdown" not in jobs_cols:
             conn.execute(text("ALTER TABLE analysis_jobs ADD COLUMN raw_markdown TEXT"))
             conn.commit()
+
+        analyses_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(analyses)"))]
+        for col in ("entry_price_max", "target_price_max", "stop_loss_max"):
+            if col not in analyses_cols:
+                conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col} REAL"))
+        conn.commit()
 
 
 def get_db() -> Generator[Session, None, None]:

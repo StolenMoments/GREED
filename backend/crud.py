@@ -56,8 +56,11 @@ def create_analysis(db: Session, obj: AnalysisCreate) -> Analysis:
         cloud_position=obj.cloud_position,
         ma_alignment=obj.ma_alignment,
         entry_price=obj.entry_price,
+        entry_price_max=obj.entry_price_max,
         target_price=obj.target_price,
+        target_price_max=obj.target_price_max,
         stop_loss=obj.stop_loss,
+        stop_loss_max=obj.stop_loss_max,
     )
     db.add(analysis)
     db.commit()

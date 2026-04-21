@@ -33,8 +33,11 @@ def test_parse_markdown_extracts_required_and_optional_fields() -> None:
         "cloud_position": "구름 위",
         "ma_alignment": "정배열",
         "entry_price": 75000.0,
+        "entry_price_max": None,
         "target_price": 82000.0,
+        "target_price_max": None,
         "stop_loss": 71500.0,
+        "stop_loss_max": None,
     }
 
 
@@ -93,7 +96,7 @@ def test_parse_markdown_reports_missing_required_field() -> None:
     assert result.data["stop_loss"] is None
 
 
-def test_parse_markdown_uses_lower_bound_for_price_ranges() -> None:
+def test_parse_markdown_captures_price_ranges() -> None:
     markdown = """
 ### 1. 현재 구조 요약
 - 추세: 상승
@@ -116,6 +119,9 @@ def test_parse_markdown_uses_lower_bound_for_price_ranges() -> None:
     assert result.success is True
     assert result.data["judgment"] == "홀드"
     assert result.data["entry_price"] == 53000.0
+    assert result.data["entry_price_max"] == 55000.0
+    assert result.data["target_price_max"] is None
+    assert result.data["stop_loss_max"] is None
 
 
 def test_parse_markdown_returns_none_for_na_tokens() -> None:
@@ -242,8 +248,11 @@ def test_parse_markdown_extracts_transformed_example_markdown_table() -> None:
     assert result.data["cloud_position"] == "구름 위"
     assert result.data["ma_alignment"] == "혼조"
     assert result.data["entry_price"] == 2100.0
+    assert result.data["entry_price_max"] == 2220.0
     assert result.data["target_price"] == 2500.0
+    assert result.data["target_price_max"] is None
     assert result.data["stop_loss"] == 1990.0
+    assert result.data["stop_loss_max"] is None
 
 
 def test_parse_markdown_accepts_colon_inside_bold_with_modifier() -> None:

@@ -59,7 +59,9 @@ def parse_markdown(markdown: str) -> ParseResult:
 
     for field_name, pattern in PRICE_PATTERNS.items():
         match = pattern.search(markdown)
-        data[field_name] = _parse_price(match.group(1)) if match is not None else None
+        price_min, price_max = _parse_price(match.group(1)) if match is not None else (None, None)
+        data[field_name] = price_min
+        data[f"{field_name}_max"] = price_max
 
     return ParseResult(
         data=data,
@@ -80,17 +82,19 @@ def _extract_judgment(markdown: str) -> str | None:
     return None
 
 
-def _parse_price(raw_value: str) -> float | None:
+def _parse_price(raw_value: str) -> tuple[float | None, float | None]:
     cleaned = raw_value.strip()
-    if not cleaned:
-        return None
-
-    if cleaned.casefold() in NONE_TOKENS:
-        return None
+    if not cleaned or cleaned.casefold() in NONE_TOKENS:
+        return None, None
 
     # 한국 주식 가격은 정수 전용 — 소수점 미지원 의도적 생략
-    number_match = re.search(r"\d[\d,]*", cleaned)
-    if number_match is None:
-        return None
+    numbers = re.findall(r"\d[\d,]*", cleaned)
+    if not numbers:
+        return None, None
 
-    return float(number_match.group(0).replace(",", ""))
+    values = [float(n.replace(",", "")) for n in numbers]
+    if len(values) == 1:
+        return values[0], None
+
+    lo, hi = min(values[0], values[1]), max(values[0], values[1])
+    return lo, (hi if hi != lo else None)

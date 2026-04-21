@@ -38,8 +38,11 @@ class AnalysisCreate(BaseModel):
     cloud_position: str
     ma_alignment: str
     entry_price: float | None = None
+    entry_price_max: float | None = None
     target_price: float | None = None
+    target_price_max: float | None = None
     stop_loss: float | None = None
+    stop_loss_max: float | None = None
 
 
 class AnalysisSummary(BaseModel):
@@ -60,8 +63,11 @@ class AnalysisSummary(BaseModel):
 class AnalysisRead(AnalysisSummary):
     markdown: str
     entry_price: float | None
+    entry_price_max: float | None
     target_price: float | None
+    target_price_max: float | None
     stop_loss: float | None
+    stop_loss_max: float | None
 
 
 class JobTriggerRequest(BaseModel):

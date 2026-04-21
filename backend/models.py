@@ -46,8 +46,11 @@ class Analysis(Base):
     cloud_position: Mapped[str] = mapped_column(String, nullable=False)
     ma_alignment: Mapped[str] = mapped_column(String, nullable=False)
     entry_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entry_price_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    target_price_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_loss_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=seoul_now,

@@ -29,8 +29,11 @@ export interface AnalysisSummary {
 export interface Analysis extends AnalysisSummary {
   markdown: string;
   entry_price: number | null;
+  entry_price_max: number | null;
   target_price: number | null;
+  target_price_max: number | null;
   stop_loss: number | null;
+  stop_loss_max: number | null;
 }
 
 export interface CreateRunPayload {
@@ -48,8 +51,11 @@ export interface CreateAnalysisPayload {
   cloud_position: CloudPosition;
   ma_alignment: MaAlignment;
   entry_price?: number | null;
+  entry_price_max?: number | null;
   target_price?: number | null;
+  target_price_max?: number | null;
   stop_loss?: number | null;
+  stop_loss_max?: number | null;
 }
 
 export interface AnalysisFilters {
