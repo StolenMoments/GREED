@@ -245,10 +245,13 @@ def _claude_cmd() -> list[str]:
     # claude.cmd (batch wrapper) doesn't propagate claude.exe exit codes,
     # so batch artifacts ("Active code page", "Terminate batch job") leak into stdout.
     # Call claude.exe directly when available.
-    npm_root = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules"
-    exe = npm_root / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
-    if exe.exists():
-        return [str(exe), "-p"]
+    candidates = [
+        Path.home() / ".local" / "bin" / "claude.exe",
+        Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe",
+    ]
+    for exe in candidates:
+        if exe.exists():
+            return [str(exe), "-p"]
     return ["claude.cmd", "-p"]
 
 
