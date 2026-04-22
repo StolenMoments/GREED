@@ -65,10 +65,13 @@ export interface AnalysisFilters {
 
 export type JobStatus = 'pending' | 'done' | 'failed';
 
+export type AnalysisModel = 'claude' | 'codex' | 'gemini';
+
 export interface Job {
   id: number;
   ticker: string;
   run_id: number;
+  model: string;
   status: JobStatus;
   error_message: string | null;
   analysis_id: number | null;
@@ -78,6 +81,7 @@ export interface Job {
 export interface JobTriggerRequest {
   ticker: string;
   run_id: number;
+  model: AnalysisModel;
 }
 
 export interface StockPrice {

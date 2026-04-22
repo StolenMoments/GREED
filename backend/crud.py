@@ -99,8 +99,8 @@ def get_analysis_history(db: Session, ticker: str) -> list[Analysis]:
     return list(db.scalars(stmt).all())
 
 
-def create_job(db: Session, ticker: str, run_id: int) -> AnalysisJob:
-    job = AnalysisJob(ticker=ticker, run_id=run_id, status="pending")
+def create_job(db: Session, ticker: str, run_id: int, model: str = "claude") -> AnalysisJob:
+    job = AnalysisJob(ticker=ticker, run_id=run_id, model=model, status="pending")
     db.add(job)
     db.commit()
     db.refresh(job)

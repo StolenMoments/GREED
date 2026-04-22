@@ -73,6 +73,7 @@ class AnalysisRead(AnalysisSummary):
 class JobTriggerRequest(BaseModel):
     ticker: str = Field(..., max_length=20)
     run_id: int
+    model: str = Field(default="claude", max_length=50)
 
 
 class JobRead(BaseModel):
@@ -81,6 +82,7 @@ class JobRead(BaseModel):
     id: int
     ticker: str
     run_id: int
+    model: str
     status: str
     error_message: str | None
     raw_markdown: str | None

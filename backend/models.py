@@ -70,6 +70,7 @@ class AnalysisJob(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String, nullable=False)
     run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    model: Mapped[str] = mapped_column(String, default="claude", nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)

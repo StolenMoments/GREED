@@ -32,6 +32,9 @@ def _migrate() -> None:
         if "raw_markdown" not in jobs_cols:
             conn.execute(text("ALTER TABLE analysis_jobs ADD COLUMN raw_markdown TEXT"))
             conn.commit()
+        if "model" not in jobs_cols:
+            conn.execute(text("ALTER TABLE analysis_jobs ADD COLUMN model TEXT NOT NULL DEFAULT 'claude'"))
+            conn.commit()
 
         analyses_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(analyses)"))]
         for col in ("entry_price_max", "target_price_max", "stop_loss_max"):

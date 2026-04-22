@@ -3,11 +3,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useJobPolling, useRunJobs, useTriggerAnalysis } from '../hooks/useJobs';
+import type { AnalysisModel } from '../types';
 
 interface TickerAnalysisFormProps {
   runId: number;
   onAnalysisCreated?: () => void;
 }
+
+const MODEL_OPTIONS = [
+  { id: 'claude' as AnalysisModel, label: 'Claude', provider: 'Anthropic' },
+  { id: 'codex'  as AnalysisModel, label: 'Codex',  provider: 'OpenAI'    },
+  { id: 'gemini' as AnalysisModel, label: 'Gemini', provider: 'Google'    },
+] as const;
 
 function getAxiosMessage(error: unknown) {
   const axiosError = error as AxiosError<{ detail?: string }>;
@@ -19,6 +26,7 @@ function TickerAnalysisForm({
   onAnalysisCreated,
 }: TickerAnalysisFormProps) {
   const [ticker, setTicker] = useState('');
+  const [model, setModel] = useState<AnalysisModel>('claude');
   const [jobId, setJobId] = useState<number | null>(null);
   const [dismissedJobId, setDismissedJobId] = useState<number | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -88,6 +96,7 @@ function TickerAnalysisForm({
       const createdJob = await triggerAnalysis.mutateAsync({
         ticker: trimmedTicker,
         run_id: runId,
+        model,
       });
       setDismissedJobId(null);
       setJobId(createdJob.id);
@@ -112,6 +121,7 @@ function TickerAnalysisForm({
       const createdJob = await triggerAnalysis.mutateAsync({
         ticker: retryTicker,
         run_id: runId,
+        model,
       });
       setDismissedJobId(null);
       setJobId(createdJob.id);
@@ -141,6 +151,28 @@ function TickerAnalysisForm({
           className="flex w-full flex-col gap-3 sm:max-w-md"
           onSubmit={(event) => void handleSubmit(event)}
         >
+          <div className={isPending ? 'pointer-events-none opacity-60' : ''}>
+            <span className="mb-2 block text-sm font-semibold text-slate-200">분석 엔진</span>
+            <div className="grid grid-cols-3 gap-2">
+              {MODEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setModel(opt.id)}
+                  className={[
+                    'rounded-lg border px-4 py-3 text-left transition duration-150',
+                    model === opt.id
+                      ? 'border-amber-300/80 bg-amber-300/10 text-amber-50'
+                      : 'border-slate-800 bg-slate-950/50 text-slate-300 hover:border-slate-600 hover:bg-slate-900/40',
+                  ].join(' ')}
+                >
+                  <span className="block text-sm font-semibold leading-none">{opt.label}</span>
+                  <span className="mt-1.5 block text-xs text-slate-400">{opt.provider}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="block">
             <span className="text-sm font-semibold text-slate-200">Ticker</span>
             <div className="mt-2 flex gap-2">

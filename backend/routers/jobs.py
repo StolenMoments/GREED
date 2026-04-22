@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -94,7 +95,7 @@ NaN 처리: NaN 구간 지표는 판단에서 제외하고 명시.
 CSV는 5년치 주봉 데이터입니다. 마지막 26행은 선행스팬 전용 미래 구름 행입니다.
 기술적 분석을 수행하고 매수/홀드/매도 판정을 내려주세요."""
 
-CLAUDE_TIMEOUT_SECONDS = 180
+CLAUDE_TIMEOUT_SECONDS = 300
 PICK_OUTPUT_DIR = Path("pick_output")
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -110,7 +111,7 @@ def trigger_analysis_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     ticker = payload.ticker.strip().zfill(6)
-    job = create_job(db, ticker=ticker, run_id=payload.run_id)
+    job = create_job(db, ticker=ticker, run_id=payload.run_id, model=payload.model)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job
 
@@ -156,20 +157,28 @@ def run_analysis_pipeline(job_id: int) -> None:
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
+        selected_model = job.model or "claude"
+        if selected_model == "codex":
+            runner, analysis_model = _run_codex, "codex-cli"
+        elif selected_model == "gemini":
+            runner, analysis_model = _run_gemini, "gemini-cli"
+        else:
+            runner, analysis_model = _run_claude, "claude-code"
+
         try:
-            raw = _run_claude(csv_text)
+            raw = runner(csv_text)
         except subprocess.TimeoutExpired:
-            update_job_failed(db, job, "claude: 180s 타임아웃 초과")
+            update_job_failed(db, job, f"{selected_model}: 180s 타임아웃 초과")
             return
         except RuntimeError as exc:
-            update_job_failed(db, job, f"claude: {str(exc)[:300]}")
+            update_job_failed(db, job, f"{selected_model}: {str(exc)[:300]}")
             return
         except Exception as exc:
-            update_job_failed(db, job, f"claude: {exc}")
+            update_job_failed(db, job, f"{selected_model}: {exc}")
             return
 
         if not raw:
-            update_job_failed(db, job, "claude: 빈 응답 반환")
+            update_job_failed(db, job, f"{selected_model}: 빈 응답 반환")
             return
 
         parse_result = parse_markdown(raw)
@@ -185,7 +194,7 @@ def run_analysis_pipeline(job_id: int) -> None:
                     run_id=job.run_id,
                     ticker=ticker,
                     name=stock_name or ticker,
-                    model="claude-code",
+                    model=analysis_model,
                     markdown=raw,
                     **parse_result.data,
                 ),
@@ -217,9 +226,71 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
     return files[-1]
 
 
+def _trim_csv(csv_text: str, max_data_rows: int) -> str:
+    lines = csv_text.strip().splitlines()
+    header, data_rows = lines[0], lines[1:]
+    future_rows, hist_rows = data_rows[-26:], data_rows[:-26]
+    trimmed = hist_rows[-max_data_rows:] if len(hist_rows) > max_data_rows else hist_rows
+    return "\n".join([header] + trimmed + future_rows)
+
+
+def _claude_cmd() -> list[str]:
+    if sys.platform != "win32":
+        return ["claude", "-p"]
+    # claude.cmd (batch wrapper) doesn't propagate claude.exe exit codes,
+    # so batch artifacts ("Active code page", "Terminate batch job") leak into stdout.
+    # Call claude.exe directly when available.
+    npm_root = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules"
+    exe = npm_root / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+    if exe.exists():
+        return [str(exe), "-p"]
+    return ["claude.cmd", "-p"]
+
+
 def _run_claude(csv_text: str) -> str:
     prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
-    cmd = ["claude.cmd", "-p"] if sys.platform == "win32" else ["claude", "-p"]
+    result = subprocess.run(
+        _claude_cmd(),
+        capture_output=True,
+        input=prompt,
+        text=True,
+        timeout=CLAUDE_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout)[:300])
+    return result.stdout.strip()
+
+
+def _parse_codex_output(output: str) -> str:
+    # Strip Windows chcp artifact ("Active code page: NNN") that leaks into stdout
+    lines = output.splitlines()
+    filtered = [ln for ln in lines if not re.match(r'^Active code page:\s*\d+$', ln.strip())]
+    candidate = "\n".join(filtered).strip()
+    # If output wrapped in conversation format (user/codex/tokens sections), extract response only
+    conv_match = re.search(r'\ncodex\n(.+?)(?:\ntokens used\b|$)', candidate, re.DOTALL)
+    if conv_match:
+        return conv_match.group(1).strip()
+    return candidate
+
+
+def _run_codex(csv_text: str) -> str:
+    prompt = f"{SYSTEM_PROMPT}\n\n{_trim_csv(csv_text, 200)}"
+    cmd = ["codex.cmd", "exec", "-"] if sys.platform == "win32" else ["codex", "exec", "-"]
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        input=prompt,
+        text=True,
+        timeout=CLAUDE_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout)[:300])
+    return _parse_codex_output(result.stdout)
+
+
+def _run_gemini(csv_text: str) -> str:
+    prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
+    cmd = ["gemini"]
     result = subprocess.run(
         cmd,
         capture_output=True,
