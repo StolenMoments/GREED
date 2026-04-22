@@ -290,7 +290,12 @@ def _run_codex(csv_text: str) -> str:
 
 def _run_gemini(csv_text: str) -> str:
     prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
-    cmd = ["gemini"]
+    # Pass prompt via stdin; -p "" triggers non-interactive (headless) mode
+    cmd = (
+        ["gemini.cmd", "-p", "", "--output-format", "text"]
+        if sys.platform == "win32"
+        else ["gemini", "-p", "", "--output-format", "text"]
+    )
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -299,5 +304,7 @@ def _run_gemini(csv_text: str) -> str:
         timeout=CLAUDE_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr[:300])
-    return result.stdout.strip()
+        raise RuntimeError((result.stderr or result.stdout)[:300])
+    lines = result.stdout.splitlines()
+    filtered = [ln for ln in lines if not re.match(r'^Active code page:\s*\d+$', ln.strip())]
+    return "\n".join(filtered).strip()
