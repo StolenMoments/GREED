@@ -30,7 +30,7 @@ def add_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_liquidity_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df["trading_value"] = (df["close"] * df["volume"]).round(0)
+    df["trading_value"] = df["trading_value"].round(0)
     df["volume_ma20"] = df["volume"].rolling(20).mean().round(0)
     df["volume_ratio_20"] = (df["volume"] / df["volume_ma20"].where(df["volume_ma20"] != 0)).round(2)
     return df
@@ -60,6 +60,7 @@ def add_ichimoku_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
     cloud_spans = df[["ichi_lead1", "ichi_lead2"]]
     df["cloud_top"] = cloud_spans.max(axis=1, skipna=False)
     df["cloud_bottom"] = cloud_spans.min(axis=1, skipna=False)
+    df["cloud_thickness"] = (df["cloud_top"] - df["cloud_bottom"]).round(0)
 
     cloud_top = df["cloud_top"].where(df["cloud_top"] != 0)
     close = df["close"].where(df["close"] != 0)
@@ -115,6 +116,7 @@ def fetch_weekly(ticker: str, years: int) -> pd.DataFrame:
 
     # 컬럼명 소문자 정규화
     df_daily.columns = [c.lower() for c in df_daily.columns]
+    df_daily["trading_value"] = df_daily["close"] * df_daily["volume"]
 
     # 주봉 리샘플 (월요일 기준, 마지막 영업일 기준으로 close)
     ohlcv = df_daily.resample("W-MON", label="left", closed="left").agg(
@@ -123,6 +125,7 @@ def fetch_weekly(ticker: str, years: int) -> pd.DataFrame:
         low=("low",     "min"),
         close=("close", "last"),
         volume=("volume", "sum"),
+        trading_value=("trading_value", "sum"),
     ).dropna(subset=["close"])
 
     ohlcv.index.name = "date"
@@ -208,7 +211,7 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
         "trading_value", "volume_ma20", "volume_ratio_20",
         "ma20", "ma60", "ma120",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
-        "cloud_top", "cloud_bottom",
+        "cloud_top", "cloud_bottom", "cloud_thickness",
         "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
     ]
     df = df.reindex(columns=cols)
@@ -217,7 +220,7 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
         "trading_value", "volume_ma20",
         "ma20", "ma60", "ma120",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
-        "cloud_top", "cloud_bottom",
+        "cloud_top", "cloud_bottom", "cloud_thickness",
     ]
     ratio_cols = [
         "volume_ratio_20",

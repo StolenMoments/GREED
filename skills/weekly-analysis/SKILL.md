@@ -38,21 +38,29 @@ CSV 전체 내용을 읽어 아래 [분석 지침]에 따라 마크다운을 생
   date       주봉 시작일 (월요일 기준)
   open/high/low/close  주간 시가/고가/저가/종가
   volume     주간 누적 거래량
+  trading_value        일별 거래대금(close*volume)의 주간 합계
+  volume_ma20          20주 평균 거래량
+  volume_ratio_20      현재 거래량 / 20주 평균 거래량
   ma20/ma60/ma120      종가 기준 20/60/120주 이동평균
   ichi_conv  일목 전환선 (9주 고저 중간값)
   ichi_base  일목 기준선 (26주 고저 중간값)
   ichi_lead1 선행스팬A (전환+기준)/2, 26주 앞에 기록
   ichi_lead2 선행스팬B 52주 고저 중간값, 26주 앞에 기록
   ichi_lag   후행스팬, 현재 종가를 26주 앞 행에 기록
+  cloud_top/cloud_bottom     max/min(ichi_lead1, ichi_lead2)
+  cloud_thickness            cloud_top - cloud_bottom
+  cloud_thickness_pct        현재 종가 대비 구름 두께 비율
+  close_vs_cloud_top_pct     구름 상단 대비 종가 위치 비율
+  conv_base_gap_pct          현재 종가 대비 전환선-기준선 간격 비율
 
 일목구름 해석:
   구름 위: 가격 > max(lead1, lead2) → 상승 지지 구조
   구름 안: min < 가격 < max → 방향성 불확실
   구름 아래: 가격 < min(lead1, lead2) → 하락 압력 구조
-  구름 두께: |lead1 - lead2| 클수록 지지/저항 강함
+  구름 두께: cloud_thickness가 클수록 지지/저항 강함
   미래 구름: open/high/low/close 가 비어 있는 마지막 26행은
              선행스팬 전용 행. 향후 구름 방향 판단용.
-             현재 가격 분석에는 사용하지 않음.
+             현재 가격 분석에는 사용하지 않으며, 두께 판단에는 cloud_thickness를 사용.
 
 이동평균 배열:
   정배열: ma20 > ma60 > ma120 → 중장기 상승 추세
