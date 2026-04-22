@@ -1,13 +1,12 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
+import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable';
 import ManualInputModal from '../components/ManualInputModal';
 import TickerAnalysisForm from '../components/TickerAnalysisForm';
-import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalyses } from '../hooks/useAnalyses';
 import type {
   Analysis,
   AnalysisFilters,
-  AnalysisSummary,
   Judgment,
 } from '../types';
 
@@ -31,28 +30,6 @@ function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
 }
 
-function LoadingRows() {
-  return (
-    <div className="divide-y divide-amber-100/10 rounded-lg border border-amber-100/10 bg-slate-950/45">
-      {Array.from({ length: 6 }, (_, index) => (
-        <div
-          className="grid grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] items-center gap-4 px-5 py-4"
-          key={index}
-        >
-          <div className="space-y-2">
-            <div className="h-4 w-24 animate-pulse rounded bg-slate-700/60" />
-            <div className="h-3 w-36 animate-pulse rounded bg-slate-800/80" />
-          </div>
-          <div className="h-8 w-16 animate-pulse rounded-full bg-slate-800/80" />
-          <div className="h-4 w-16 animate-pulse rounded bg-slate-800/80" />
-          <div className="h-4 w-20 animate-pulse rounded bg-slate-800/80" />
-          <div className="h-4 w-16 animate-pulse rounded bg-slate-800/80" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function EmptyState({ activeLabel }: { activeLabel: string }) {
   return (
     <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-12 text-center">
@@ -63,47 +40,6 @@ function EmptyState({ activeLabel }: { activeLabel: string }) {
         다른 판정 탭을 선택해 이 실행의 종목을 다시 확인하세요.
       </p>
     </div>
-  );
-}
-
-function StockRow({ analysis }: { analysis: AnalysisSummary }) {
-  const navigate = useNavigate();
-
-  return (
-    <button
-      aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
-      className="grid w-full grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] items-center gap-4 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70"
-      onClick={() => navigate(`/analyses/${analysis.id}`)}
-      type="button"
-    >
-      <span className="min-w-0">
-        <span className="block truncate text-lg font-semibold text-slate-50">
-          {analysis.name}
-        </span>
-        <span className="mt-1 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-          {analysis.ticker}
-        </span>
-      </span>
-
-      <span
-        className={[
-          'inline-flex min-w-16 justify-center rounded-full border px-3.5 py-1.5 text-sm font-semibold',
-          judgmentStyles[analysis.judgment],
-        ].join(' ')}
-      >
-        {analysis.judgment}
-      </span>
-
-      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.trend, '상승', '하락')]}`}>
-        {analysis.trend}
-      </span>
-      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.cloud_position, '구름 위', '구름 아래')]}`}>
-        {analysis.cloud_position}
-      </span>
-      <span className={`text-sm font-medium ${signalStyles[getSignalTone(analysis.ma_alignment, '정배열', '역배열')]}`}>
-        {analysis.ma_alignment}
-      </span>
-    </button>
   );
 }
 
@@ -236,24 +172,15 @@ function StockListPage() {
           </div>
         </div>
       ) : isLoading ? (
-        <LoadingRows />
+        <AnalysisTableLoading rowCount={6} />
       ) : analyses.length === 0 ? (
         <EmptyState activeLabel={activeLabel} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-amber-100/10 bg-slate-950/45 shadow-2xl shadow-slate-950/30">
-          <div className="grid grid-cols-[minmax(14rem,1.35fr)_7rem_0.75fr_0.75fr_0.75fr] gap-4 border-b border-amber-100/10 bg-slate-950/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            <span>ticker / name</span>
-            <span>judgment</span>
-            <span>trend</span>
-            <span>cloud</span>
-            <span>ma</span>
-          </div>
-          <div className="divide-y divide-amber-100/10">
-            {analyses.map((analysis) => (
-              <StockRow analysis={analysis} key={analysis.id} />
-            ))}
-          </div>
-        </div>
+        <AnalysisTable
+          analyses={analyses}
+          onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
+          showSignals
+        />
       )}
 
       <ManualInputModal
