@@ -177,6 +177,7 @@ def run_analysis_pipeline(job_id: int) -> None:
         if csv_path is None:
             update_job_failed(db, job, "pick: CSV 파일 생성 안 됨")
             return
+        stock_name = _stock_name_from_csv_filename(csv_path, ticker) or stock_name
 
         try:
             csv_text = csv_path.read_text(encoding="utf-8-sig")
@@ -250,6 +251,14 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
     if not files:
         return None
     return files[-1]
+
+
+def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
+    pattern = rf"^{re.escape(ticker)}_(?P<name>.+)_weekly_\d{{8}}$"
+    match = re.match(pattern, csv_path.stem)
+    if match is None:
+        return ""
+    return match.group("name").strip()
 
 
 def _trim_csv(csv_text: str, max_data_rows: int) -> str:

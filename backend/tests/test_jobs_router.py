@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -203,6 +204,46 @@ def test_run_analysis_pipeline_saves_analysis(
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
         assert saved_job.raw_markdown == VALID_MARKDOWN
+
+
+def test_run_analysis_pipeline_uses_csv_filename_name_when_lookup_is_empty(
+    test_db: sessionmaker[Session],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="filename name fallback")
+        job = crud.create_job(db, ticker="036800", run_id=run.id, model="codex")
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    output_dir.mkdir(parents=True)
+    csv_path = output_dir / "036800_나이스정보통신_weekly_20260422.csv"
+    csv_path.write_text("ticker,name,close\n036800,나이스정보통신,36350\n", encoding="utf-8-sig")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "")
+    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+    monkeypatch.setattr(jobs, "_run_codex", lambda csv_text: VALID_MARKDOWN)
+
+    run_analysis_pipeline(job.id)
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "done"
+        assert saved_job.analysis_id is not None
+
+        analysis = crud.get_analysis(db, saved_job.analysis_id)
+        assert analysis is not None
+        assert analysis.name == "나이스정보통신"
+        assert analysis.model == "codex-cli"
+
+
+def test_stock_name_from_csv_filename_allows_names_with_underscores() -> None:
+    csv_path = Path("005930_Samsung_Electronics_weekly_20260422.csv")
+
+    assert jobs._stock_name_from_csv_filename(csv_path, "005930") == "Samsung_Electronics"
 
 
 def test_run_analysis_pipeline_saves_raw_markdown_on_parse_failure(
