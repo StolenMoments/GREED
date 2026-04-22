@@ -29,6 +29,13 @@ def add_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_liquidity_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    df["trading_value"] = (df["close"] * df["volume"]).round(0)
+    df["volume_ma20"] = df["volume"].rolling(20).mean().round(0)
+    df["volume_ratio_20"] = (df["volume"] / df["volume_ma20"].where(df["volume_ma20"] != 0)).round(2)
+    return df
+
+
 def add_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
     high = df["high"]
     low  = df["low"]
@@ -46,6 +53,20 @@ def add_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
     # 후행스팬 = 현재 종가, 26주 뒤에 기록 (shift(-26))
     df["ichi_lag"]   = df["close"].shift(-26)
 
+    return df
+
+
+def add_ichimoku_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    cloud_spans = df[["ichi_lead1", "ichi_lead2"]]
+    df["cloud_top"] = cloud_spans.max(axis=1, skipna=False)
+    df["cloud_bottom"] = cloud_spans.min(axis=1, skipna=False)
+
+    cloud_top = df["cloud_top"].where(df["cloud_top"] != 0)
+    close = df["close"].where(df["close"] != 0)
+
+    df["cloud_thickness_pct"] = ((df["cloud_top"] - df["cloud_bottom"]) / close * 100).round(2)
+    df["close_vs_cloud_top_pct"] = ((df["close"] - df["cloud_top"]) / cloud_top * 100).round(2)
+    df["conv_base_gap_pct"] = ((df["ichi_conv"] - df["ichi_base"]) / close * 100).round(2)
     return df
 
 
@@ -184,13 +205,31 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
     cols = [
         "ticker", "name",
         "open", "high", "low", "close", "volume",
+        "trading_value", "volume_ma20", "volume_ratio_20",
         "ma20", "ma60", "ma120",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
+        "cloud_top", "cloud_bottom",
+        "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
     ]
     df = df.reindex(columns=cols)
+    integer_cols = [
+        "open", "high", "low", "close", "volume",
+        "trading_value", "volume_ma20",
+        "ma20", "ma60", "ma120",
+        "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
+        "cloud_top", "cloud_bottom",
+    ]
+    ratio_cols = [
+        "volume_ratio_20",
+        "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
+    ]
+    for col in integer_cols:
+        df[col] = df[col].round(0).astype("Int64")
+    for col in ratio_cols:
+        df[col] = df[col].round(2)
     df.index = df.index.strftime("%Y-%m-%d")
 
-    df.to_csv(filename, encoding="utf-8-sig", float_format="%.0f")
+    df.to_csv(filename, encoding="utf-8-sig")
     return filename
 
 
@@ -236,10 +275,13 @@ def run_pick(ticker: str, years: int = 5, output_dir: str = "./output", no_futur
         
     df = fetch_weekly(ticker, years)
     df = add_moving_averages(df)
+    df = add_liquidity_indicators(df)
     df = add_ichimoku(df)
+    df = add_ichimoku_derived_indicators(df)
 
     if not no_future_cloud:
         df = append_future_cloud(df)
+        df = add_ichimoku_derived_indicators(df)
 
     df = trim_to_years(df, years)
     filepath = save_csv(df, ticker, stock_name, output_dir)
