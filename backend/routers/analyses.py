@@ -36,9 +36,10 @@ def create_analysis_endpoint(
 def list_analyses_endpoint(
     judgment: JudgmentEnum | None = None,
     run_id: int | None = None,
+    q: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[AnalysisSummary]:
-    return get_analyses(db, judgment=judgment.value if judgment else None, run_id=run_id)
+    return get_analyses(db, judgment=judgment.value if judgment else None, run_id=run_id, q=q)
 
 
 @router.get("/api/runs/{run_id}/analyses", response_model=list[AnalysisSummary])

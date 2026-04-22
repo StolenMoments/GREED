@@ -61,6 +61,7 @@ export interface CreateAnalysisPayload {
 export interface AnalysisFilters {
   judgment?: Judgment;
   run_id?: number;
+  q?: string;
 }
 
 export type JobStatus = 'pending' | 'done' | 'failed';

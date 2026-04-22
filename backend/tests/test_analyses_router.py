@@ -348,6 +348,46 @@ def test_list_all_analyses_filters_by_run_id(client: TestClient, db_session: Ses
     assert [item["id"] for item in body] == [selected.id]
 
 
+def test_list_all_analyses_filters_by_ticker_or_name(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="global query filter")
+    samsung = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    ticker_response = client.get("/api/analyses", params={"q": "593"})
+    name_response = client.get("/api/analyses", params={"q": "삼성"})
+
+    assert ticker_response.status_code == 200
+    assert [item["id"] for item in ticker_response.json()] == [samsung.id]
+    assert name_response.status_code == 200
+    assert [item["id"] for item in name_response.json()] == [samsung.id]
+
+
 def test_list_all_analyses_returns_422_for_invalid_judgment(client: TestClient) -> None:
     response = client.get("/api/analyses", params={"judgment": "잘못된값"})
 
@@ -406,6 +446,16 @@ def test_list_all_analyses_filters_by_judgment_and_run_id(client: TestClient, db
     body = response.json()
     assert len(body) == 1
     assert body[0]["judgment"] == "매수"
+    assert body[0]["ticker"] == "000660"
+
+    response = client.get(
+        "/api/analyses",
+        params={"judgment": "매수", "run_id": second_run.id, "q": "000"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
     assert body[0]["ticker"] == "000660"
 
 

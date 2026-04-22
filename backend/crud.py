@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import NamedTuple
 
-from sqlalchemy import Select, desc, func, select
+from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.models import Analysis, AnalysisJob, Run, StockPrice
@@ -80,12 +80,23 @@ def get_analyses(
     db: Session,
     judgment: str | None = None,
     run_id: int | None = None,
+    q: str | None = None,
 ) -> list[Analysis]:
     stmt = select(Analysis)
     if judgment is not None:
         stmt = stmt.where(Analysis.judgment == judgment)
     if run_id is not None:
         stmt = stmt.where(Analysis.run_id == run_id)
+    if q is not None:
+        query = q.strip()
+        if query:
+            pattern = f"%{_escape_like(query)}%"
+            stmt = stmt.where(
+                or_(
+                    Analysis.ticker.ilike(pattern, escape="\\"),
+                    Analysis.name.ilike(pattern, escape="\\"),
+                )
+            )
     return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
 
 
@@ -164,3 +175,7 @@ def _run_with_count_stmt() -> Select[tuple[Run, int]]:
         .group_by(Run.id)
         .order_by(*RUN_ORDER_BY)
     )
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

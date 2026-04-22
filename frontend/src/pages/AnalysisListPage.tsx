@@ -26,30 +26,31 @@ function parseRunId(value: string | null) {
 
 function EmptyState({
   hasFilters,
+  hasSearch,
   onClear,
 }: {
   hasFilters: boolean;
+  hasSearch: boolean;
   onClear: () => void;
 }) {
   return (
     <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-12 text-center">
       <p className="text-sm font-semibold text-slate-100">
-        조건에 맞는 분석이 없습니다.
+        {hasSearch ? '검색 조건에 맞는 분석이 없습니다.' : '조건에 맞는 분석이 없습니다.'}
       </p>
       <p className="mt-2 text-sm text-slate-400">
         {hasFilters
           ? '필터를 조정해 다른 분석을 확인하세요.'
           : '분석이 저장되면 최신 항목부터 여기에 표시됩니다.'}
       </p>
-      {hasFilters ? (
-        <button
-          className="mt-6 rounded-md border border-amber-200/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-          onClick={onClear}
-          type="button"
-        >
-          필터 초기화
-        </button>
-      ) : null}
+      <button
+        className="mt-6 rounded-md border border-amber-200/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:border-slate-700/60 disabled:text-slate-600 disabled:hover:bg-transparent"
+        disabled={!hasFilters}
+        onClick={onClear}
+        type="button"
+      >
+        필터 초기화
+      </button>
     </div>
   );
 }
@@ -62,6 +63,8 @@ function AnalysisListPage() {
     ? requestedJudgment
     : undefined;
   const activeRunId = parseRunId(searchParams.get('run_id'));
+  const activeQuery = (searchParams.get('q') ?? '').trim();
+  const [queryInput, setQueryInput] = useState(activeQuery);
   const [runIdInput, setRunIdInput] = useState(
     activeRunId ? String(activeRunId) : '',
   );
@@ -69,8 +72,9 @@ function AnalysisListPage() {
     () => ({
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
+      ...(activeQuery ? { q: activeQuery } : {}),
     }),
-    [activeJudgment, activeRunId],
+    [activeJudgment, activeQuery, activeRunId],
   );
   const {
     data: analyses = [],
@@ -78,13 +82,38 @@ function AnalysisListPage() {
     isLoading,
     refetch,
   } = useAllAnalyses(filters);
-  const hasFilters = Boolean(activeJudgment || activeRunId);
+  const hasFilters = Boolean(activeJudgment || activeRunId || activeQuery);
 
   useEffect(() => {
     setRunIdInput(activeRunId ? String(activeRunId) : '');
   }, [activeRunId]);
 
-  function updateFilters(next: AnalysisFilters) {
+  useEffect(() => {
+    setQueryInput(activeQuery);
+  }, [activeQuery]);
+
+  useEffect(() => {
+    const nextQuery = queryInput.trim();
+
+    if (nextQuery === activeQuery) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      updateFilters(
+        {
+          ...(activeJudgment ? { judgment: activeJudgment } : {}),
+          ...(activeRunId ? { run_id: activeRunId } : {}),
+          ...(nextQuery ? { q: nextQuery } : {}),
+        },
+        true,
+      );
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeJudgment, activeQuery, activeRunId, queryInput]);
+
+  function updateFilters(next: AnalysisFilters, replace = false) {
     const params = new URLSearchParams();
 
     if (next.judgment) {
@@ -95,13 +124,18 @@ function AnalysisListPage() {
       params.set('run_id', String(next.run_id));
     }
 
-    setSearchParams(params);
+    if (next.q) {
+      params.set('q', next.q);
+    }
+
+    setSearchParams(params, replace ? { replace: true } : undefined);
   }
 
   function handleJudgmentChange(judgment?: Judgment) {
     updateFilters({
       ...(judgment ? { judgment } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
+      ...(activeQuery ? { q: activeQuery } : {}),
     });
   }
 
@@ -116,10 +150,12 @@ function AnalysisListPage() {
     updateFilters({
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
       ...(nextRunId ? { run_id: nextRunId } : {}),
+      ...(activeQuery ? { q: activeQuery } : {}),
     });
   }
 
   function handleClearFilters() {
+    setQueryInput('');
     setRunIdInput('');
     setSearchParams({});
   }
@@ -165,39 +201,52 @@ function AnalysisListPage() {
           </div>
 
           <form
-            className="flex flex-wrap items-center gap-2"
+            className="flex flex-wrap items-end justify-end gap-2"
             onSubmit={handleRunFilterSubmit}
           >
             <label
-              className="text-sm font-medium text-slate-400"
+              className="flex min-w-64 flex-col gap-1.5 text-sm font-medium text-slate-400"
+              htmlFor="analysis-query-filter"
+            >
+              종목 검색
+              <input
+                className="h-10 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
+                id="analysis-query-filter"
+                onChange={(event) => setQueryInput(event.target.value)}
+                placeholder="종목명 또는 티커"
+                type="search"
+                value={queryInput}
+              />
+            </label>
+            <label
+              className="flex flex-col gap-1.5 text-sm font-medium text-slate-400"
               htmlFor="run-id-filter"
             >
               실행 ID
+              <input
+                className="h-10 w-28 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
+                id="run-id-filter"
+                min={1}
+                onChange={(event) => setRunIdInput(event.target.value)}
+                placeholder="예: 12"
+                type="number"
+                value={runIdInput}
+              />
             </label>
-            <input
-              className="h-10 w-28 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
-              id="run-id-filter"
-              min={1}
-              onChange={(event) => setRunIdInput(event.target.value)}
-              placeholder="예: 12"
-              type="number"
-              value={runIdInput}
-            />
             <button
               className="h-10 rounded-md border border-amber-200/20 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
               type="submit"
             >
               적용
             </button>
-            {hasFilters ? (
-              <button
-                className="h-10 rounded-md px-3 text-sm font-semibold text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                onClick={handleClearFilters}
-                type="button"
-              >
-                초기화
-              </button>
-            ) : null}
+            <button
+              className="h-10 rounded-md px-3 text-sm font-semibold text-slate-400 transition hover:bg-slate-800 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:text-slate-700 disabled:hover:bg-transparent disabled:hover:text-slate-700"
+              disabled={!hasFilters}
+              onClick={handleClearFilters}
+              type="button"
+            >
+              초기화
+            </button>
           </form>
         </div>
       </div>
@@ -225,7 +274,11 @@ function AnalysisListPage() {
       ) : isLoading ? (
         <AnalysisTableLoading />
       ) : analyses.length === 0 ? (
-        <EmptyState hasFilters={hasFilters} onClear={handleClearFilters} />
+        <EmptyState
+          hasFilters={hasFilters}
+          hasSearch={Boolean(activeQuery)}
+          onClear={handleClearFilters}
+        />
       ) : (
         <AnalysisTable
           analyses={analyses}

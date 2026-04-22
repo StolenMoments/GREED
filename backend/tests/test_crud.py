@@ -11,6 +11,7 @@ from backend.crud import (
     create_analysis,
     create_run,
     create_job,
+    get_analyses,
     get_analyses_by_run,
     get_analysis,
     get_analysis_history,
@@ -137,6 +138,47 @@ def test_get_analyses_by_run_filters_by_judgment(db_session: Session) -> None:
 
     assert [analysis.id for analysis in all_analyses] == [hold_analysis.id, buy_analysis.id]
     assert [analysis.id for analysis in buy_analyses] == [buy_analysis.id]
+
+
+def test_get_analyses_filters_by_ticker_or_name(db_session: Session) -> None:
+    run = create_run(db_session, memo="query filter")
+
+    samsung = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="claude",
+            markdown="samsung markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    hynix = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="claude",
+            markdown="hynix markdown",
+            judgment="보유",
+            trend="횡보",
+            cloud_position="구름 속",
+            ma_alignment="혼조",
+        ),
+    )
+
+    ticker_matches = get_analyses(db_session, q="593")
+    name_matches = get_analyses(db_session, q="삼성")
+    blank_query_matches = get_analyses(db_session, q="   ")
+
+    assert [analysis.id for analysis in ticker_matches] == [samsung.id]
+    assert [analysis.id for analysis in name_matches] == [samsung.id]
+    assert [analysis.id for analysis in blank_query_matches] == [hynix.id, samsung.id]
 
 
 def test_get_analysis_history_orders_by_newest_first(db_session: Session) -> None:
