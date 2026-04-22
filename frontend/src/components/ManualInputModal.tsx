@@ -125,8 +125,11 @@ function ManualInputModal({
         cloud_position: parsed.data.cloud_position,
         ma_alignment: parsed.data.ma_alignment,
         entry_price: parsed.data.entry_price,
+        entry_price_max: parsed.data.entry_price_max,
         target_price: parsed.data.target_price,
+        target_price_max: parsed.data.target_price_max,
         stop_loss: parsed.data.stop_loss,
+        stop_loss_max: parsed.data.stop_loss_max,
       };
 
       const analysis = await createAnalysisMutation.mutateAsync(payload);

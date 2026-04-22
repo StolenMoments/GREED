@@ -41,8 +41,8 @@ const fieldPatterns = {
   ma_alignment: /\*{0,2}MA 배열\*{0,2}\s*:\s*(정배열|역배열|혼조)/,
 } as const;
 
+const entryPricePattern = /^\|\s*[^|\n]*진입[^|\n]*\|.*?\|\s*([^|\n]+)\|?\s*$/gm;
 const pricePatterns = {
-  entry_price: /^\|[^|]*진입\s*조건[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
   target_price: /^\|\s*1차\s*목표[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
   stop_loss: /^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$/m,
 } as const;
@@ -69,7 +69,9 @@ export function parseMarkdown(markdown: string): ParsedMarkdown {
   if (!cloudPosition) failed.push('cloud_position');
   if (!maAlignment) failed.push('ma_alignment');
 
-  const [entry_price, entry_price_max] = parsePriceRange(markdown, pricePatterns.entry_price);
+  const [entry_price, entry_price_max] = parsePriceValues(
+    Array.from(markdown.matchAll(entryPricePattern), (match) => match[1] ?? ''),
+  );
   const [target_price, target_price_max] = parsePriceRange(markdown, pricePatterns.target_price);
   const [stop_loss, stop_loss_max] = parsePriceRange(markdown, pricePatterns.stop_loss);
   const priceData: PriceData = {
@@ -116,17 +118,23 @@ function matchField(markdown: string, pattern: RegExp): string | undefined {
 
 function parsePriceRange(markdown: string, pattern: RegExp): [number | null, number | null] {
   const rawValue = pattern.exec(markdown)?.[1]?.trim();
-  if (!rawValue || noneTokens.has(rawValue.toLocaleLowerCase())) {
-    return [null, null];
-  }
+  return parsePriceValues(rawValue ? [rawValue] : []);
+}
 
-  const matches = rawValue.match(/\d[\d,]*/g);
-  if (!matches) return [null, null];
+function parsePriceValues(rawValues: string[]): [number | null, number | null] {
+  const values = rawValues.flatMap((rawValue) => {
+    const cleaned = rawValue.trim();
+    if (!cleaned || noneTokens.has(cleaned.toLocaleLowerCase())) {
+      return [];
+    }
 
-  const values = matches.map((m) => Number(m.replaceAll(',', '')));
-  if (values.length === 1) return [values[0], null];
+    const matches = cleaned.match(/\d[\d,]*/g);
+    return matches?.map((m) => Number(m.replaceAll(',', ''))) ?? [];
+  });
 
-  const lo = Math.min(values[0], values[1]);
-  const hi = Math.max(values[0], values[1]);
+  if (values.length === 0) return [null, null];
+
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
   return [lo, hi !== lo ? hi : null];
 }

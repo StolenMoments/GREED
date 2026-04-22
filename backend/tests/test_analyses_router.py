@@ -36,6 +36,27 @@ VALID_MARKDOWN = """
 """
 
 
+INVALID_PRICE_MARKDOWN = """
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+**홀드**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
+| 1차 목표 | 2차 저항 도달 | 1,963원 |
+| 손절 기준 | 2차 지지 이탈 | 1,626원 |
+"""
+
+
 @pytest.fixture()
 def client() -> Generator[TestClient, None, None]:
     engine = create_engine(
@@ -132,6 +153,32 @@ def test_create_analysis_returns_422_when_required_fields_are_missing(
     body = response.json()
     assert body["detail"] == "파싱 실패"
     assert set(body["failed_fields"]) == {"judgment", "cloud_position", "ma_alignment"}
+
+
+def test_create_analysis_returns_422_when_price_scenario_is_inconsistent(
+    client: TestClient, db_session: Session
+) -> None:
+    run = create_run(db_session, memo="invalid price analysis run")
+
+    response = client.post(
+        "/api/analyses",
+        json={
+            "run_id": run.id,
+            "ticker": "291650",
+            "name": "압타머사이언스",
+            "model": "gpt-5.4",
+            "markdown": INVALID_PRICE_MARKDOWN,
+            "judgment": "보류",
+            "trend": "보류",
+            "cloud_position": "보류",
+            "ma_alignment": "보류",
+        },
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["detail"] == "파싱 실패"
+    assert body["failed_fields"] == ["price_consistency"]
 
 
 def test_list_analyses_by_run_filters_by_judgment(client: TestClient, db_session: Session) -> None:

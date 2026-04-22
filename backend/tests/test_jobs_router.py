@@ -36,6 +36,27 @@ VALID_MARKDOWN = """
 """
 
 
+INVALID_PRICE_MARKDOWN = """
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+**홀드**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
+| 1차 목표 | 2차 저항 도달 | 1,963원 |
+| 손절 기준 | 2차 지지 이탈 | 1,626원 |
+"""
+
+
 @pytest.fixture()
 def test_db() -> Generator[sessionmaker[Session], None, None]:
     engine = create_engine(
@@ -213,6 +234,37 @@ def test_run_analysis_pipeline_saves_raw_markdown_on_parse_failure(
         assert saved_job is not None
         assert saved_job.status == "failed"
         assert saved_job.raw_markdown == bad_markdown
+
+
+def test_run_analysis_pipeline_rejects_inconsistent_price_scenario(
+    test_db: sessionmaker[Session],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="price consistency failure")
+        job = crud.create_job(db, ticker="291650", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    output_dir.mkdir(parents=True)
+    csv_path = output_dir / "291650_Aptamer_weekly_20260421.csv"
+    csv_path.write_text("ticker,name,close\n291650,Aptamer,1707\n", encoding="utf-8-sig")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Aptamer")
+    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+    monkeypatch.setattr(jobs, "_run_claude", lambda csv_text: INVALID_PRICE_MARKDOWN)
+
+    run_analysis_pipeline(job.id)
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "failed"
+        assert saved_job.raw_markdown == INVALID_PRICE_MARKDOWN
+        assert saved_job.error_message is not None
+        assert "price_consistency" in saved_job.error_message
 
 
 def test_run_analysis_pipeline_marks_pick_failure(

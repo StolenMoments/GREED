@@ -19,9 +19,9 @@ FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
     "ma_alignment": re.compile(r"\*{0,2}MA 배열\*{0,2}\s*:\s*\*{0,2}\s*(정배열|역배열|혼조)"),
 }
 
-# 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 컬럼 추가 시 패턴 재검토 필요.
+# 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 진입 행은 눌림/돌파 2개 행도 허용한다.
+ENTRY_PRICE_PATTERN = re.compile(r"^\|\s*[^|\n]*진입[^|\n]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE)
 PRICE_PATTERNS: dict[str, re.Pattern[str]] = {
-    "entry_price": re.compile(r"^\|[^|]*진입\s*조건[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
     "target_price": re.compile(r"^\|\s*1차\s*목표[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
     "stop_loss": re.compile(r"^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
 }
@@ -57,11 +57,19 @@ def parse_markdown(markdown: str) -> ParseResult:
             continue
         data[field_name] = match.group(1).strip()
 
+    entry_values = ENTRY_PRICE_PATTERN.findall(markdown)
+    price_min, price_max = _parse_price_values(entry_values)
+    data["entry_price"] = price_min
+    data["entry_price_max"] = price_max
+
     for field_name, pattern in PRICE_PATTERNS.items():
         match = pattern.search(markdown)
         price_min, price_max = _parse_price(match.group(1)) if match is not None else (None, None)
         data[field_name] = price_min
         data[f"{field_name}_max"] = price_max
+
+    if _has_price_consistency_error(data):
+        failed.append("price_consistency")
 
     return ParseResult(
         data=data,
@@ -83,18 +91,47 @@ def _extract_judgment(markdown: str) -> str | None:
 
 
 def _parse_price(raw_value: str) -> tuple[float | None, float | None]:
-    cleaned = raw_value.strip()
-    if not cleaned or cleaned.casefold() in NONE_TOKENS:
+    return _parse_price_values([raw_value])
+
+
+def _parse_price_values(raw_values: list[str]) -> tuple[float | None, float | None]:
+    values: list[float] = []
+    for raw_value in raw_values:
+        cleaned = raw_value.strip()
+        if not cleaned or cleaned.casefold() in NONE_TOKENS:
+            continue
+
+        # 한국 주식 가격은 정수 전용 — 소수점 미지원 의도적 생략
+        values.extend(float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", cleaned))
+
+    if not values:
         return None, None
 
-    # 한국 주식 가격은 정수 전용 — 소수점 미지원 의도적 생략
-    numbers = re.findall(r"\d[\d,]*", cleaned)
-    if not numbers:
-        return None, None
-
-    values = [float(n.replace(",", "")) for n in numbers]
-    if len(values) == 1:
-        return values[0], None
-
-    lo, hi = min(values[0], values[1]), max(values[0], values[1])
+    lo, hi = min(values), max(values)
     return lo, (hi if hi != lo else None)
+
+
+def _has_price_consistency_error(data: dict[str, str | float | None]) -> bool:
+    # 매도는 보유분 정리/진입 회피 의미로 쓰이므로 롱 포지션 가격 관계를 강제하지 않는다.
+    if data.get("judgment") not in {"매수", "홀드"}:
+        return False
+
+    entry_min = _as_float(data.get("entry_price"))
+    if entry_min is None:
+        return False
+    entry_max = _as_float(data.get("entry_price_max")) or entry_min
+
+    target_min = _as_float(data.get("target_price"))
+    target_max = _as_float(data.get("target_price_max")) or target_min
+    if target_max is not None and target_max < entry_max:
+        return True
+
+    stop_min = _as_float(data.get("stop_loss"))
+    if stop_min is not None and stop_min > entry_min:
+        return True
+
+    return False
+
+
+def _as_float(value: str | float | None) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None

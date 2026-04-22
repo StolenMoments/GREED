@@ -335,12 +335,12 @@ function AnalysisDetailPage() {
       <div className="flex flex-col gap-4">
         <PriceLevels
           currentPrice={stockPrice}
-          entryPrice={parsed.data.entry_price}
-          entryPriceMax={parsed.data.entry_price_max}
-          targetPrice={parsed.data.target_price}
-          targetPriceMax={parsed.data.target_price_max}
-          stopLoss={parsed.data.stop_loss}
-          stopLossMax={parsed.data.stop_loss_max}
+          entryPrice={analysis.entry_price ?? parsed.data.entry_price}
+          entryPriceMax={analysis.entry_price_max ?? parsed.data.entry_price_max}
+          targetPrice={analysis.target_price ?? parsed.data.target_price}
+          targetPriceMax={analysis.target_price_max ?? parsed.data.target_price_max}
+          stopLoss={analysis.stop_loss ?? parsed.data.stop_loss}
+          stopLossMax={analysis.stop_loss_max ?? parsed.data.stop_loss_max}
         />
         <HistoryList
           activeId={analysis.id}

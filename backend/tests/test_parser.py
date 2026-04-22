@@ -124,6 +124,87 @@ def test_parse_markdown_captures_price_ranges() -> None:
     assert result.data["stop_loss_max"] is None
 
 
+def test_parse_markdown_captures_two_entry_scenarios() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+**홀드**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
+| 1차 목표 | 다음 저항 도달 | 2,150원 |
+| 손절 기준 | 2차 지지 이탈 | 1,626원 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.failed == []
+    assert result.data["entry_price"] == 1659.0
+    assert result.data["entry_price_max"] == 1998.0
+    assert result.data["target_price"] == 2150.0
+    assert result.data["stop_loss"] == 1626.0
+
+
+def test_parse_markdown_rejects_long_target_below_highest_entry() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+**홀드**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
+| 1차 목표 | 2차 저항 도달 | 1,963원 |
+| 손절 기준 | 1차 지지 이탈 | 1,626원 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is False
+    assert "price_consistency" in result.failed
+    assert result.data["entry_price"] == 1659.0
+    assert result.data["entry_price_max"] == 1998.0
+    assert result.data["target_price"] == 1963.0
+
+
+def test_parse_markdown_skips_price_consistency_for_sell() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 하락
+- 구름대 위치: 구름 아래
+- MA 배열: 역배열
+
+### 4. 매매 판정
+**매도**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 진입 조건 | 반등 시 보유분 정리 | 1,998원 |
+| 1차 목표 | 하단 확인 | 1,963원 |
+| 손절 기준 | 의미 없음 | 1,626원 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert "price_consistency" not in result.failed
+
+
 def test_parse_markdown_returns_none_for_na_tokens() -> None:
     markdown = """
 ### 1. 현재 구조 요약
