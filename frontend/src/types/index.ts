@@ -6,6 +6,8 @@ export type CloudPosition = '구름 위' | '구름 안' | '구름 아래';
 
 export type MaAlignment = '정배열' | '역배열' | '혼조';
 
+export type EntryCandidateFilter = 'all' | 'pullback' | 'breakout';
+
 export interface Run {
   id: number;
   memo: string | null;
@@ -84,6 +86,7 @@ export interface AnalysisFilters {
   run_id?: number;
   q?: string;
   entry_gap_lte?: number;
+  entry_candidate?: EntryCandidateFilter;
 }
 
 export interface AnalysisPaginationParams {

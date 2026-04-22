@@ -143,7 +143,7 @@ function TickerAnalysisForm({
             티커 분석 실행
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            종목 코드를 입력하면 이 실행에 연결된 분석 잡을 만들고 완료될 때까지 상태를 확인합니다.
+            국내 종목코드 또는 미국 티커를 입력하면 이 실행에 연결된 분석 잡을 만들고 완료될 때까지 상태를 확인합니다.
           </p>
         </div>
 
@@ -186,7 +186,7 @@ function TickerAnalysisForm({
                 ].join(' ')}
                 disabled={isPending}
                 onChange={(event) => setTicker(event.target.value.toUpperCase())}
-                placeholder="005930"
+                placeholder="005930 / AAPL"
                 value={ticker}
               />
               <button

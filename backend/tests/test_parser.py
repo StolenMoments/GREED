@@ -124,6 +124,34 @@ def test_parse_markdown_captures_price_ranges() -> None:
     assert result.data["stop_loss_max"] is None
 
 
+def test_parse_markdown_preserves_decimal_price_values() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 혼조
+
+### 4. 매매 판정
+**홀드**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | $266.17 |
+| 돌파 진입 | 1차 저항 돌파 확인 | 272.50달러 |
+| 1차 목표 | 다음 저항 도달 | $285.75 |
+| 손절 기준 | 지지 이탈 | 259.40달러 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.data["entry_price"] == 266.17
+    assert result.data["entry_price_max"] == 272.50
+    assert result.data["target_price"] == 285.75
+    assert result.data["stop_loss"] == 259.40
+
+
 def test_parse_markdown_captures_two_entry_scenarios() -> None:
     markdown = """
 ### 1. 현재 구조 요약

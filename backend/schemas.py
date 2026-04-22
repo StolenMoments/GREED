@@ -12,6 +12,12 @@ class JudgmentEnum(str, Enum):
     sell = "매도"
 
 
+class EntryCandidateFilterEnum(str, Enum):
+    all = "all"
+    pullback = "pullback"
+    breakout = "breakout"
+
+
 class RunCreate(BaseModel):
     memo: str | None = None
 

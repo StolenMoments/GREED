@@ -1,6 +1,5 @@
 import type { StockPrice } from '../types';
-
-const priceFormatter = new Intl.NumberFormat('ko-KR');
+import { formatPriceByTicker } from '../utils/formatPrice';
 
 function calcPct(price: number, current: number): string {
   const pct = ((price - current) / current) * 100;
@@ -14,6 +13,7 @@ const toneStyles = {
 } as const;
 
 interface PriceLevelsProps {
+  ticker: string;
   currentPrice?: StockPrice;
   entryPrice?: number | null;
   entryPriceMax?: number | null;
@@ -24,6 +24,7 @@ interface PriceLevelsProps {
 }
 
 function PriceLevels({
+  ticker,
   currentPrice,
   entryPrice,
   entryPriceMax,
@@ -33,6 +34,7 @@ function PriceLevels({
   stopLossMax,
 }: PriceLevelsProps) {
   const current = currentPrice?.close_price;
+  const priceTicker = currentPrice?.ticker ?? ticker;
 
   return (
     <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-6">
@@ -47,7 +49,7 @@ function PriceLevels({
 
       <div className="mt-5">
         <p className="tabular-nums text-4xl font-semibold tracking-tight text-amber-100">
-          {current !== undefined ? `${priceFormatter.format(current)}원` : '—'}
+          {formatPriceByTicker(current, priceTicker) ?? '—'}
         </p>
         <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-600">
           현재가
@@ -55,9 +57,9 @@ function PriceLevels({
       </div>
 
       <div className="mt-6 space-y-4 border-t border-slate-800/70 pt-5">
-        <PriceRow label="목표가" price={targetPrice} priceMax={targetPriceMax} current={current} tone="target" />
-        <PriceRow label="진입가" price={entryPrice} priceMax={entryPriceMax} current={current} tone="entry" />
-        <PriceRow label="손절가" price={stopLoss} priceMax={stopLossMax} current={current} tone="stop" />
+        <PriceRow label="목표가" price={targetPrice} priceMax={targetPriceMax} current={current} ticker={priceTicker} tone="target" />
+        <PriceRow label="진입가" price={entryPrice} priceMax={entryPriceMax} current={current} ticker={priceTicker} tone="entry" />
+        <PriceRow label="손절가" price={stopLoss} priceMax={stopLossMax} current={current} ticker={priceTicker} tone="stop" />
       </div>
     </aside>
   );
@@ -68,12 +70,14 @@ function PriceRow({
   label,
   price,
   priceMax,
+  ticker,
   tone,
 }: {
   current?: number;
   label: string;
   price?: number | null;
   priceMax?: number | null;
+  ticker: string;
   tone: keyof typeof toneStyles;
 }) {
   const colorClass = toneStyles[tone];
@@ -86,9 +90,9 @@ function PriceRow({
       <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-3">
         <span className={`text-sm font-medium ${colorClass}`}>{label}</span>
         <span className={`text-right tabular-nums text-lg font-medium ${colorClass}`}>
-          {priceFormatter.format(price)}
+          {formatPriceByTicker(price, ticker)}
           <span className="mx-1.5 font-normal text-slate-500">~</span>
-          {priceFormatter.format(priceMax)}원
+          {formatPriceByTicker(priceMax, ticker)}
         </span>
       </div>
     );
@@ -100,7 +104,7 @@ function PriceRow({
       <span
         className={`text-right tabular-nums text-lg font-semibold ${price != null ? colorClass : 'text-slate-600'}`}
       >
-        {price != null ? `${priceFormatter.format(price)}원` : '—'}
+        {formatPriceByTicker(price, ticker) ?? '—'}
       </span>
       <span
         className={`tabular-nums text-sm font-medium ${pct !== null ? colorClass : 'text-slate-700'}`}

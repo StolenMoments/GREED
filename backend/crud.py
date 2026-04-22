@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
@@ -16,6 +16,12 @@ RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
 ANALYSIS_ORDER_BY = (desc(Analysis.created_at), desc(Analysis.id))
 JOB_ORDER_BY = (desc(AnalysisJob.created_at), desc(AnalysisJob.id))
 ENTRY_NEAR_THRESHOLD_PCT = 2.0
+EntryCandidateFilter = Literal["all", "pullback", "breakout"]
+ENTRY_CANDIDATE_LABELS: dict[EntryCandidateFilter, set[str] | None] = {
+    "all": None,
+    "pullback": {"눌림"},
+    "breakout": {"돌파"},
+}
 
 
 class RunRow(NamedTuple):
@@ -130,6 +136,7 @@ def get_analyses_page(
     run_id: int | None = None,
     q: str | None = None,
     entry_gap_lte: float | None = None,
+    entry_candidate: EntryCandidateFilter = "all",
     page: int = 1,
     page_size: int = 25,
 ) -> AnalysisPageRow:
@@ -141,9 +148,15 @@ def get_analyses_page(
         rows = [
             row
             for row in _with_entry_gap(db, analyses)
-            if _has_near_entry(row, entry_gap_lte)
+            if _has_near_entry(row, entry_gap_lte, entry_candidate)
         ]
-        rows.sort(key=lambda row: (row.entry_gap_pct or 0, -row.created_at.timestamp(), -row.id))
+        rows.sort(
+            key=lambda row: (
+                _entry_gap_sort_value(row, entry_candidate),
+                -row.created_at.timestamp(),
+                -row.id,
+            )
+        )
         total = len(rows)
         items = rows[offset : offset + page_size]
     else:
@@ -285,11 +298,43 @@ def _build_entry_candidate_row(
     )
 
 
-def _has_near_entry(row: AnalysisSummaryRow, threshold: float) -> bool:
+def _has_near_entry(
+    row: AnalysisSummaryRow,
+    threshold: float,
+    entry_candidate: EntryCandidateFilter = "all",
+) -> bool:
     return any(
-        candidate.gap_pct is not None and candidate.gap_pct <= threshold
+        gap_pct is not None and gap_pct <= threshold
+        for gap_pct in _entry_candidate_gaps(row, entry_candidate)
+    )
+
+
+def _entry_gap_sort_value(
+    row: AnalysisSummaryRow,
+    entry_candidate: EntryCandidateFilter,
+) -> float:
+    gaps = [
+        gap_pct
+        for gap_pct in _entry_candidate_gaps(row, entry_candidate)
+        if gap_pct is not None
+    ]
+    return min(gaps) if gaps else float("inf")
+
+
+def _entry_candidate_gaps(
+    row: AnalysisSummaryRow,
+    entry_candidate: EntryCandidateFilter,
+) -> list[float | None]:
+    labels = ENTRY_CANDIDATE_LABELS[entry_candidate]
+    if labels is None:
+        candidate_gaps = [candidate.gap_pct for candidate in row.entry_candidates]
+        return candidate_gaps or [row.entry_gap_pct]
+
+    return [
+        candidate.gap_pct
         for candidate in row.entry_candidates
-    ) or (row.entry_gap_pct is not None and row.entry_gap_pct <= threshold)
+        if candidate.label in labels
+    ]
 
 
 def calc_entry_gap_pct(

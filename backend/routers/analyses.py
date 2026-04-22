@@ -19,8 +19,16 @@ from backend.crud import (
 )
 from backend.database import get_db
 from backend.parser import parse_markdown
-from backend.schemas import AnalysisCreate, AnalysisPage, AnalysisRead, AnalysisSummary, JudgmentEnum
+from backend.schemas import (
+    AnalysisCreate,
+    AnalysisPage,
+    AnalysisRead,
+    AnalysisSummary,
+    EntryCandidateFilterEnum,
+    JudgmentEnum,
+)
 from backend.stock_price import fetch_latest_close
+from backend.tickers import normalize_ticker
 
 
 router = APIRouter(tags=["analyses"])
@@ -41,7 +49,7 @@ def create_analysis_endpoint(
             content={"detail": "파싱 실패", "failed_fields": parse_result.failed},
         )
 
-    analysis_payload = payload.model_copy(update=parse_result.data)
+    analysis_payload = payload.model_copy(update={"ticker": normalize_ticker(payload.ticker), **parse_result.data})
     return create_analysis(db, analysis_payload)
 
 
@@ -51,6 +59,7 @@ def list_analyses_endpoint(
     run_id: int | None = None,
     q: str | None = None,
     entry_gap_lte: float | None = Query(default=None, ge=0),
+    entry_candidate: EntryCandidateFilterEnum = EntryCandidateFilterEnum.all,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -66,6 +75,7 @@ def list_analyses_endpoint(
             run_id=run_id,
             q=q,
             entry_gap_lte=entry_gap_lte,
+            entry_candidate=entry_candidate.value,
             page=page,
             page_size=page_size,
         )._asdict()
@@ -117,7 +127,8 @@ def _refresh_candidate_stock_prices(
         if analysis.entry_price is not None
     }
 
-    for ticker in tickers:
+    for raw_ticker in tickers:
+        ticker = normalize_ticker(raw_ticker)
         cached = get_stock_price(db, ticker)
         if cached is not None and cached.price_date >= date.today():
             continue

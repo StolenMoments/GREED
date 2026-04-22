@@ -34,6 +34,7 @@ export type ParsedMarkdown =
   | { success: false; data: PartialData; failed: [ParsedField, ...ParsedField[]] };
 
 const noneTokens = new Set(['n/a', 'na', '-', '미정', '없음', 'none']);
+const priceValuePattern = /\d[\d,]*(?:\.\d+)?/g;
 
 const fieldPatterns = {
   trend: /\*{0,2}추세\*{0,2}\s*:\s*(상승|하락|횡보)/,
@@ -128,7 +129,7 @@ function parsePriceValues(rawValues: string[]): [number | null, number | null] {
       return [];
     }
 
-    const matches = cleaned.match(/\d[\d,]*/g);
+    const matches = cleaned.match(priceValuePattern);
     return matches?.map((m) => Number(m.replaceAll(',', ''))) ?? [];
   });
 

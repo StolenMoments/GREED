@@ -9,12 +9,14 @@ from backend import crud
 from backend.database import get_db
 from backend.schemas import StockPriceRead
 from backend.stock_price import fetch_latest_close
+from backend.tickers import normalize_ticker
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
 
 
 @router.get("/{ticker}/price", response_model=StockPriceRead)
 def get_stock_price(ticker: str, db: Session = Depends(get_db)) -> StockPriceRead:
+    ticker = normalize_ticker(ticker)
     cached = crud.get_stock_price(db, ticker)
     if cached is not None and cached.price_date >= date.today():
         return cached  # type: ignore[return-value]

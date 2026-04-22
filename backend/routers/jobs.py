@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -20,9 +21,10 @@ from backend.crud import (
 from backend.database import SessionLocal, get_db
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
+from backend.tickers import market_for_ticker, normalize_ticker
 
 
-SYSTEM_PROMPT = """당신은 한국 주식시장 전문 기술적 분석가입니다.
+KR_SYSTEM_PROMPT = """당신은 한국 주식시장 전문 기술적 분석가입니다.
 주봉(Weekly) OHLCV 데이터와 기술적 지표를 기반으로 분석하며,
 반드시 아래 규칙을 따릅니다.
 
@@ -121,6 +123,19 @@ NaN 처리: NaN 구간 지표는 판단에서 제외하고 명시.
 CSV는 5년치 주봉 데이터입니다. 마지막 26행은 선행스팬 전용 미래 구름 행입니다.
 기술적 분석을 수행하고 매수/홀드/매도 판정을 내려주세요."""
 
+SYSTEM_PROMPT = KR_SYSTEM_PROMPT
+
+US_SYSTEM_PROMPT = KR_SYSTEM_PROMPT.replace(
+    "당신은 한국 주식시장 전문 기술적 분석가입니다.",
+    "당신은 미국 주식시장 전문 기술적 분석가입니다.",
+).replace(
+    "date       주봉 시작일 (월요일 기준)",
+    "date       주봉 종료일 (금요일 기준)",
+).replace(
+    "가격은 가능하면 실제 숫자와 원 단위로 쓰고",
+    "가격은 가능하면 실제 숫자와 달러 단위로 쓰고",
+)
+
 CLAUDE_TIMEOUT_SECONDS = 300
 PICK_OUTPUT_DIR = Path("pick_output")
 
@@ -136,7 +151,7 @@ def trigger_analysis_endpoint(
     if get_run(db, payload.run_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
-    ticker = payload.ticker.strip().zfill(6)
+    ticker = normalize_ticker(payload.ticker)
     job = create_job(db, ticker=ticker, run_id=payload.run_id, model=payload.model)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job
@@ -164,7 +179,7 @@ def run_analysis_pipeline(job_id: int) -> None:
         if job is None:
             return
 
-        ticker = job.ticker.strip().zfill(6)
+        ticker = normalize_ticker(job.ticker)
         job_output_dir = PICK_OUTPUT_DIR / "jobs" / str(job.id)
         try:
             stock_name = _resolve_stock_name(ticker)
@@ -185,6 +200,7 @@ def run_analysis_pipeline(job_id: int) -> None:
             update_job_failed(db, job, f"pick: {exc}")
             return
         selected_model = job.model or "claude"
+        system_prompt = _system_prompt_for_ticker(ticker)
         if selected_model == "codex":
             runner, analysis_model = _run_codex, "codex-cli"
         elif selected_model == "gemini":
@@ -193,7 +209,7 @@ def run_analysis_pipeline(job_id: int) -> None:
             runner, analysis_model = _run_claude, "claude-code"
 
         try:
-            raw = runner(csv_text)
+            raw = _call_runner(runner, csv_text, system_prompt)
         except subprocess.TimeoutExpired:
             update_job_failed(db, job, f"{selected_model}: 180s 타임아웃 초과")
             return
@@ -235,15 +251,44 @@ def run_analysis_pipeline(job_id: int) -> None:
 
 
 def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+    if market_for_ticker(ticker) == "US":
+        from scripts.pick_us import run_pick_us
+
+        run_pick_us(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
+        return
+
     from scripts.pick import run_pick
 
     run_pick(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
 
 
 def _resolve_stock_name(ticker: str) -> str:
-    from scripts.pick import resolve_stock_name
+    if market_for_ticker(ticker) == "US":
+        from scripts.pick_us import resolve_stock_name
 
+        return resolve_stock_name(ticker)
+
+    from scripts.pick import resolve_stock_name
     return resolve_stock_name(ticker)
+
+
+def _system_prompt_for_ticker(ticker: str) -> str:
+    return US_SYSTEM_PROMPT if market_for_ticker(ticker) == "US" else KR_SYSTEM_PROMPT
+
+
+def _call_runner(
+    runner: Callable[..., str],
+    csv_text: str,
+    system_prompt: str,
+) -> str:
+    try:
+        code = runner.__code__
+        accepts_varargs = bool(code.co_flags & 0x04)
+        if code.co_argcount >= 2 or accepts_varargs:
+            return runner(csv_text, system_prompt)
+    except AttributeError:
+        pass
+    return runner(csv_text)
 
 
 def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
@@ -285,8 +330,8 @@ def _claude_cmd() -> list[str]:
     return ["claude.cmd", "-p"]
 
 
-def _run_claude(csv_text: str) -> str:
-    prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
+def _run_claude(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
+    prompt = f"{system_prompt}\n\n{csv_text}"
     result = subprocess.run(
         _claude_cmd(),
         capture_output=True,
@@ -311,8 +356,8 @@ def _parse_codex_output(output: str) -> str:
     return candidate
 
 
-def _run_codex(csv_text: str) -> str:
-    prompt = f"{SYSTEM_PROMPT}\n\n{_trim_csv(csv_text, 200)}"
+def _run_codex(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
+    prompt = f"{system_prompt}\n\n{_trim_csv(csv_text, 200)}"
     cmd = ["codex.cmd", "exec", "-"] if sys.platform == "win32" else ["codex", "exec", "-"]
     result = subprocess.run(
         cmd,
@@ -326,8 +371,8 @@ def _run_codex(csv_text: str) -> str:
     return _parse_codex_output(result.stdout)
 
 
-def _run_gemini(csv_text: str) -> str:
-    prompt = f"{SYSTEM_PROMPT}\n\n{csv_text}"
+def _run_gemini(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
+    prompt = f"{system_prompt}\n\n{csv_text}"
     # Pass prompt via stdin; -p "" triggers non-interactive (headless) mode
     cmd = (
         ["gemini.cmd", "-p", "", "--output-format", "text"]

@@ -116,6 +116,24 @@ def test_trigger_analysis_creates_pending_job(
     assert called_job_ids == [body["id"]]
 
 
+def test_trigger_analysis_keeps_us_ticker(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(jobs, "run_analysis_pipeline", lambda job_id: called_job_ids.append(job_id))
+    with test_db() as db:
+        run = crud.create_run(db, memo="us job trigger")
+
+    response = client.post("/api/jobs/trigger-analysis", json={"ticker": "aapl", "run_id": run.id})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["ticker"] == "AAPL"
+    assert called_job_ids == [body["id"]]
+
+
 def test_trigger_analysis_returns_404_when_run_missing(client: TestClient) -> None:
     response = client.post("/api/jobs/trigger-analysis", json={"ticker": "005930", "run_id": 99999})
 
@@ -204,6 +222,40 @@ def test_run_analysis_pipeline_saves_analysis(
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
         assert saved_job.raw_markdown == VALID_MARKDOWN
+
+
+def test_run_analysis_pipeline_saves_us_analysis_without_zero_padding(
+    test_db: sessionmaker[Session],
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="us pipeline success")
+        job = crud.create_job(db, ticker="AAPL", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    output_dir.mkdir(parents=True)
+    csv_path = output_dir / "AAPL_Apple Inc_weekly_20260422.csv"
+    csv_path.write_text("ticker,name,close\nAAPL,Apple Inc,266.17\n", encoding="utf-8-sig")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Apple Inc")
+    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+    monkeypatch.setattr(jobs, "_run_claude", lambda csv_text: VALID_MARKDOWN)
+
+    run_analysis_pipeline(job.id)
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "done"
+        assert saved_job.analysis_id is not None
+
+        analysis = crud.get_analysis(db, saved_job.analysis_id)
+        assert analysis is not None
+        assert analysis.ticker == "AAPL"
+        assert analysis.name == "Apple Inc"
 
 
 def test_run_analysis_pipeline_uses_csv_filename_name_when_lookup_is_empty(

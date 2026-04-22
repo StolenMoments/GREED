@@ -3,14 +3,18 @@ import {
   judgmentStyles,
   signalStyles,
 } from '../constants/analysisStyles';
-import type { AnalysisSummary, EntryCandidate } from '../types';
+import type {
+  AnalysisSummary,
+  EntryCandidate,
+  EntryCandidateFilter,
+} from '../types';
 import { formatDate } from '../utils/formatDate';
+import { formatPriceByTicker } from '../utils/formatPrice';
 
 const baseTableGrid =
   'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_9rem_minmax(6rem,0.45fr)_5rem]';
 const entryGapTableGrid =
   'xl:grid-cols-[minmax(13rem,1.25fr)_7rem_minmax(11rem,0.95fr)_8rem_minmax(6rem,0.45fr)_5rem]';
-const priceFormatter = new Intl.NumberFormat('ko-KR');
 
 function getTableGrid(showEntryGap: boolean) {
   return showEntryGap ? entryGapTableGrid : baseTableGrid;
@@ -82,23 +86,44 @@ export function AnalysisTableLoading({
   );
 }
 
-function formatPrice(price: number | null) {
-  return price == null ? null : `${priceFormatter.format(price)}원`;
-}
-
-function formatCandidatePrice(candidate: EntryCandidate) {
-  const entry = formatPrice(candidate.price);
-  const entryMax = formatPrice(candidate.price_max);
+function formatCandidatePrice(candidate: EntryCandidate, ticker: string) {
+  const entry = formatPriceByTicker(candidate.price, ticker);
+  const entryMax = formatPriceByTicker(candidate.price_max, ticker);
 
   return entryMax ? `${entry}~${entryMax}` : entry;
 }
 
-function EntryGapCell({ analysis }: { analysis: AnalysisSummary }) {
-  const currentPrice = formatPrice(analysis.current_price);
+function getCandidatePriority(
+  candidate: EntryCandidate,
+  entryCandidateFilter: EntryCandidateFilter,
+) {
+  if (entryCandidateFilter === 'pullback') {
+    return candidate.label === '눌림' ? 0 : 1;
+  }
+
+  if (entryCandidateFilter === 'breakout') {
+    return candidate.label === '돌파' ? 0 : 1;
+  }
+
+  return 0;
+}
+
+function EntryGapCell({
+  analysis,
+  entryCandidateFilter = 'all',
+}: {
+  analysis: AnalysisSummary;
+  entryCandidateFilter?: EntryCandidateFilter;
+}) {
+  const currentPrice = formatPriceByTicker(analysis.current_price, analysis.ticker);
   const dateLabel = analysis.current_price_date
     ? analysis.current_price_date.slice(5).replace('-', '/')
     : null;
-  const candidates = analysis.entry_candidates;
+  const candidates = [...analysis.entry_candidates].sort(
+    (a, b) =>
+      getCandidatePriority(a, entryCandidateFilter) -
+      getCandidatePriority(b, entryCandidateFilter),
+  );
 
   return (
     <span className="min-w-0 space-y-1.5">
@@ -118,7 +143,7 @@ function EntryGapCell({ analysis }: { analysis: AnalysisSummary }) {
                 {candidate.label}
               </span>
               <span className="truncate text-xs font-medium text-slate-500">
-                {formatCandidatePrice(candidate)}
+                {formatCandidatePrice(candidate, analysis.ticker)}
               </span>
               <span
                 className={[
@@ -146,12 +171,14 @@ function EntryGapCell({ analysis }: { analysis: AnalysisSummary }) {
 
 export function AnalysisTable({
   analyses,
+  entryCandidateFilter = 'all',
   onSelect,
   showEntryGap = false,
   showRunId = false,
   showSignals = false,
 }: {
   analyses: AnalysisSummary[];
+  entryCandidateFilter?: EntryCandidateFilter;
   onSelect: (analysis: AnalysisSummary) => void;
   showEntryGap?: boolean;
   showRunId?: boolean;
@@ -205,7 +232,12 @@ export function AnalysisTable({
               {analysis.judgment}
             </span>
 
-            {showEntryGap ? <EntryGapCell analysis={analysis} /> : null}
+            {showEntryGap ? (
+              <EntryGapCell
+                analysis={analysis}
+                entryCandidateFilter={entryCandidateFilter}
+              />
+            ) : null}
 
             <span className="translate-x-1 whitespace-nowrap text-sm font-medium text-slate-300">
               {formatDate(analysis.created_at)}

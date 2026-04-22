@@ -2,7 +2,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable';
 import { useAllAnalyses } from '../hooks/useAnalyses';
-import type { AnalysisFilters, Judgment } from '../types';
+import type { AnalysisFilters, EntryCandidateFilter, Judgment } from '../types';
 
 const DEFAULT_PAGE_SIZE = 25;
 const ENTRY_GAP_FILTER_PCT = 2;
@@ -12,6 +12,15 @@ const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '매수', value: '매수' },
   { label: '홀드', value: '홀드' },
   { label: '매도', value: '매도' },
+];
+
+const entryCandidateTabs: Array<{
+  label: string;
+  value: EntryCandidateFilter;
+}> = [
+  { label: '전체 2%', value: 'all' },
+  { label: '눌림 2%', value: 'pullback' },
+  { label: '돌파 2%', value: 'breakout' },
 ];
 
 interface PaginationControlsProps {
@@ -25,6 +34,12 @@ interface PaginationControlsProps {
 
 function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
+}
+
+function isValidEntryCandidate(
+  value: string | null,
+): value is EntryCandidateFilter {
+  return entryCandidateTabs.some((tab) => tab.value === value);
 }
 
 function parseRunId(value: string | null) {
@@ -65,18 +80,30 @@ function getVisiblePages(page: number, totalPages: number) {
 }
 
 function EmptyState({
+  entryCandidateFilter,
   hasFilters,
   hasSearch,
   onClear,
 }: {
+  entryCandidateFilter?: EntryCandidateFilter;
   hasFilters: boolean;
   hasSearch: boolean;
   onClear: () => void;
 }) {
+  const entryCandidateEmptyMessages: Record<EntryCandidateFilter, string> = {
+    all: '진입 2% 이내 후보가 없습니다.',
+    pullback: '눌림 2% 이내 후보가 없습니다.',
+    breakout: '돌파 2% 이내 후보가 없습니다.',
+  };
+
   return (
     <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-12 text-center">
       <p className="text-sm font-semibold text-slate-100">
-        {hasSearch ? '검색 조건에 맞는 분석이 없습니다.' : '조건에 맞는 분석이 없습니다.'}
+        {hasSearch
+          ? '검색 조건에 맞는 분석이 없습니다.'
+          : entryCandidateFilter
+            ? entryCandidateEmptyMessages[entryCandidateFilter]
+            : '조건에 맞는 분석이 없습니다.'}
       </p>
       <p className="mt-2 text-sm text-slate-400">
         {hasFilters
@@ -199,6 +226,12 @@ function AnalysisListPage() {
   const activePageSize = parsePageSize(searchParams.get('page_size'));
   const activeEntryGapLte = parseEntryGapLte(searchParams.get('entry_gap_lte'));
   const isEntryGapFilterActive = activeEntryGapLte === ENTRY_GAP_FILTER_PCT;
+  const requestedEntryCandidate = searchParams.get('entry_candidate');
+  const activeEntryCandidate = isEntryGapFilterActive
+    ? isValidEntryCandidate(requestedEntryCandidate)
+      ? requestedEntryCandidate
+      : 'all'
+    : undefined;
   const [queryInput, setQueryInput] = useState(activeQuery);
   const [runIdInput, setRunIdInput] = useState(
     activeRunId ? String(activeRunId) : '',
@@ -209,8 +242,15 @@ function AnalysisListPage() {
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
       ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+      ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
     }),
-    [activeEntryGapLte, activeJudgment, activeQuery, activeRunId],
+    [
+      activeEntryCandidate,
+      activeEntryGapLte,
+      activeJudgment,
+      activeQuery,
+      activeRunId,
+    ],
   );
   const {
     data: analysisPage,
@@ -250,13 +290,21 @@ function AnalysisListPage() {
           ...(activeRunId ? { run_id: activeRunId } : {}),
           ...(nextQuery ? { q: nextQuery } : {}),
           ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+          ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
         },
         true,
       );
     }, 300);
 
     return () => window.clearTimeout(timeoutId);
-  }, [activeEntryGapLte, activeJudgment, activeQuery, activeRunId, queryInput]);
+  }, [
+    activeEntryCandidate,
+    activeEntryGapLte,
+    activeJudgment,
+    activeQuery,
+    activeRunId,
+    queryInput,
+  ]);
 
   useEffect(() => {
     if (
@@ -289,6 +337,7 @@ function AnalysisListPage() {
 
     if (next.entry_gap_lte !== undefined) {
       params.set('entry_gap_lte', String(next.entry_gap_lte));
+      params.set('entry_candidate', next.entry_candidate ?? 'all');
     }
 
     params.set('page', String(nextPage));
@@ -303,6 +352,7 @@ function AnalysisListPage() {
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
       ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+      ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
     });
   }
 
@@ -319,15 +369,24 @@ function AnalysisListPage() {
       ...(nextRunId ? { run_id: nextRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
       ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+      ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
     });
   }
 
-  function handleEntryGapToggle() {
+  function handleEntryGapFilterChange(entryCandidate: EntryCandidateFilter) {
+    const shouldClear =
+      isEntryGapFilterActive && activeEntryCandidate === entryCandidate;
+
     updateFilters({
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
-      ...(!isEntryGapFilterActive ? { entry_gap_lte: ENTRY_GAP_FILTER_PCT } : {}),
+      ...(!shouldClear
+        ? {
+            entry_candidate: entryCandidate,
+            entry_gap_lte: ENTRY_GAP_FILTER_PCT,
+          }
+        : {}),
     });
   }
 
@@ -417,19 +476,31 @@ function AnalysisListPage() {
                 value={runIdInput}
               />
             </label>
-            <button
-              aria-pressed={isEntryGapFilterActive}
-              className={[
-                'h-10 rounded-md border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
-                isEntryGapFilterActive
-                  ? 'border-amber-300 bg-amber-300 text-slate-950'
-                  : 'border-amber-200/20 text-amber-100 hover:bg-amber-100/10',
-              ].join(' ')}
-              onClick={handleEntryGapToggle}
-              type="button"
+            <div
+              aria-label="진입 후보 2% 이내 필터"
+              className="flex h-10 items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1"
             >
-              진입 2% 이내
-            </button>
+              {entryCandidateTabs.map((tab) => {
+                const isActive = activeEntryCandidate === tab.value;
+
+                return (
+                  <button
+                    aria-pressed={isActive}
+                    className={[
+                      'h-8 rounded-md px-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
+                      isActive
+                        ? 'bg-amber-300 text-slate-950'
+                        : 'text-amber-100 hover:bg-amber-100/10',
+                    ].join(' ')}
+                    key={tab.value}
+                    onClick={() => handleEntryGapFilterChange(tab.value)}
+                    type="button"
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
             <button
               className="h-10 rounded-md border border-amber-200/20 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
               type="submit"
@@ -474,6 +545,7 @@ function AnalysisListPage() {
         <EmptyState
           hasFilters={hasFilters}
           hasSearch={Boolean(activeQuery)}
+          entryCandidateFilter={activeEntryCandidate}
           onClear={handleClearFilters}
         />
       ) : (
@@ -485,6 +557,7 @@ function AnalysisListPage() {
         >
           <AnalysisTable
             analyses={analyses}
+            entryCandidateFilter={activeEntryCandidate ?? 'all'}
             onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
             showEntryGap
             showRunId

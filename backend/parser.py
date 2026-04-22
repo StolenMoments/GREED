@@ -8,6 +8,7 @@ REQUIRED_FIELDS = ("judgment", "trend", "cloud_position", "ma_alignment")
 OPTIONAL_FIELDS = ("entry_price", "target_price", "stop_loss")
 # "없음", "none" 은 스펙 외 방어적 추가 — LLM 출력 변형 대응
 NONE_TOKENS = {"n/a", "na", "-", "미정", "없음", "none"}
+PRICE_VALUE_PATTERN = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
     # \*{0,2}\s* after colon handles "**필드:** 값" (colon inside bold markers)
@@ -136,8 +137,7 @@ def _parse_price_values(raw_values: list[str]) -> tuple[float | None, float | No
         if not cleaned or cleaned.casefold() in NONE_TOKENS:
             continue
 
-        # 한국 주식 가격은 정수 전용 — 소수점 미지원 의도적 생략
-        values.extend(float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*", cleaned))
+        values.extend(float(n.replace(",", "")) for n in PRICE_VALUE_PATTERN.findall(cleaned))
 
     if not values:
         return None, None

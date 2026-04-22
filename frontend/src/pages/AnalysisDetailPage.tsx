@@ -334,6 +334,7 @@ function AnalysisDetailPage() {
 
       <div className="flex flex-col gap-4">
         <PriceLevels
+          ticker={analysis.ticker}
           currentPrice={stockPrice}
           entryPrice={analysis.entry_price ?? parsed.data.entry_price}
           entryPriceMax={analysis.entry_price_max ?? parsed.data.entry_price_max}

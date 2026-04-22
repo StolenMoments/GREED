@@ -551,8 +551,95 @@ def test_list_all_analyses_filters_by_entry_gap(client: TestClient, db_session: 
     assert body["items"][0]["is_entry_near"] is True
 
 
+def test_list_all_analyses_filters_entry_gap_by_candidate_type(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = create_run(db_session, memo="entry candidate filter")
+    markdown = """
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 지지선 부근 | 1,659원 |
+| 돌파 진입 | 저항 돌파 | 1,998원 |
+"""
+    near_pullback = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="555555",
+            name="Near Pullback",
+            model="gpt-5.4",
+            markdown=markdown,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=1659,
+            entry_price_max=1998,
+        ),
+    )
+    near_breakout = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="666666",
+            name="Near Breakout",
+            model="gpt-5.4",
+            markdown=markdown,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=1659,
+            entry_price_max=1998,
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="777777",
+            name="Generic Entry",
+            model="gpt-5.4",
+            markdown="""
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 진입 조건 | 20주선 지지 확인 | 100원 |
+""",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=100,
+        ),
+    )
+    upsert_stock_price(db_session, ticker="555555", price_date=date.today(), close_price=1680)
+    upsert_stock_price(db_session, ticker="666666", price_date=date.today(), close_price=1960)
+    upsert_stock_price(db_session, ticker="777777", price_date=date.today(), close_price=101)
+
+    pullback_response = client.get(
+        "/api/analyses",
+        params={"entry_gap_lte": 2, "entry_candidate": "pullback"},
+    )
+    breakout_response = client.get(
+        "/api/analyses",
+        params={"entry_gap_lte": 2, "entry_candidate": "breakout"},
+    )
+
+    assert pullback_response.status_code == 200
+    assert [item["id"] for item in page_items(pullback_response)] == [near_pullback.id]
+    assert breakout_response.status_code == 200
+    assert [item["id"] for item in page_items(breakout_response)] == [near_breakout.id]
+
+
 def test_list_all_analyses_returns_422_for_invalid_judgment(client: TestClient) -> None:
     response = client.get("/api/analyses", params={"judgment": "잘못된값"})
+
+    assert response.status_code == 422
+
+
+def test_list_all_analyses_returns_422_for_invalid_entry_candidate(client: TestClient) -> None:
+    response = client.get("/api/analyses", params={"entry_candidate": "dip"})
 
     assert response.status_code == 422
 
