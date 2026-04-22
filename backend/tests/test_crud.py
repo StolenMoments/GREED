@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.crud import (
+    calc_entry_gap_pct,
     create_analysis,
     create_run,
     create_job,
@@ -234,6 +235,130 @@ def test_get_analyses_page_returns_slice_and_total(db_session: Session) -> None:
     assert [analysis.id for analysis in second_page.items] == [first.id]
     assert first_page.total == 3
     assert first_page.total_pages == 2
+
+
+def test_calc_entry_gap_pct_uses_nearest_entry_range_boundary() -> None:
+    assert calc_entry_gap_pct(current_price=105, entry_price=100, entry_price_max=110) == 0
+    assert calc_entry_gap_pct(current_price=98, entry_price=100, entry_price_max=110) == pytest.approx(2.0408, rel=1e-4)
+    assert calc_entry_gap_pct(current_price=112, entry_price=100, entry_price_max=110) == pytest.approx(1.7857, rel=1e-4)
+    assert calc_entry_gap_pct(current_price=None, entry_price=100, entry_price_max=None) is None
+
+
+def test_get_analyses_page_filters_and_sorts_by_entry_gap(db_session: Session) -> None:
+    run = create_run(db_session, memo="entry gap target")
+    inside_range = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="111111",
+            name="Inside Range",
+            model="claude",
+            markdown="inside markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=100,
+            entry_price_max=110,
+        ),
+    )
+    near_single = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="222222",
+            name="Near Single",
+            model="claude",
+            markdown="near markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=100,
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="333333",
+            name="Far Single",
+            model="claude",
+            markdown="far markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=100,
+        ),
+    )
+    upsert_stock_price(db_session, ticker="111111", price_date=date.today(), close_price=105)
+    upsert_stock_price(db_session, ticker="222222", price_date=date.today(), close_price=102)
+    upsert_stock_price(db_session, ticker="333333", price_date=date.today(), close_price=110)
+
+    page = get_analyses_page(db_session, entry_gap_lte=2, page=1, page_size=25)
+
+    assert [item.id for item in page.items] == [inside_range.id, near_single.id]
+    assert page.total == 2
+    assert page.items[0].entry_gap_pct == 0
+    assert page.items[0].is_entry_near is True
+
+
+def test_get_analyses_page_filters_each_entry_candidate_separately(db_session: Session) -> None:
+    run = create_run(db_session, memo="entry candidate target")
+    between_candidates = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="444444",
+            name="Between Candidates",
+            model="claude",
+            markdown="""
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 지지선 부근 | 1,659원 |
+| 돌파 진입 | 저항 돌파 | 1,998원 |
+""",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=1659,
+            entry_price_max=1998,
+        ),
+    )
+    near_pullback = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="555555",
+            name="Near Pullback",
+            model="claude",
+            markdown="""
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 지지선 부근 | 1,659원 |
+| 돌파 진입 | 저항 돌파 | 1,998원 |
+""",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=1659,
+            entry_price_max=1998,
+        ),
+    )
+    upsert_stock_price(db_session, ticker="444444", price_date=date.today(), close_price=1800)
+    upsert_stock_price(db_session, ticker="555555", price_date=date.today(), close_price=1680)
+
+    page = get_analyses_page(db_session, entry_gap_lte=2, page=1, page_size=25)
+
+    assert [item.id for item in page.items] == [near_pullback.id]
+    assert between_candidates.id not in [item.id for item in page.items]
+    assert [(candidate.label, candidate.gap_pct is not None) for candidate in page.items[0].entry_candidates] == [
+        ("눌림", True),
+        ("돌파", True),
+    ]
 
 
 def test_get_analysis_history_orders_by_newest_first(db_session: Session) -> None:

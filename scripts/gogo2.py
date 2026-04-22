@@ -33,12 +33,36 @@ def moving_averages(df):
     df['ma20']  = df['Close'].rolling(20).mean()
     df['ma60']  = df['Close'].rolling(60).mean()
     df['ma120'] = df['Close'].rolling(120).mean()
+    df['volume_ma20'] = df['Volume'].rolling(20).mean()
     return df
+
+def safe_ratio(numerator, denominator):
+    if pd.isna(numerator) or pd.isna(denominator) or denominator <= 0:
+        return 0.0
+    return float(numerator / denominator)
+
+def pct_gap(value, base):
+    if pd.isna(value) or pd.isna(base) or base == 0:
+        return 0.0
+    return float((value - base) / base * 100)
+
+def ma_alignment(row):
+    if row['ma20'] > row['ma60'] > row['ma120']:
+        return '정배열'
+    if row['ma20'] < row['ma60'] < row['ma120']:
+        return '역배열'
+    return '혼조'
+
+def nearest_support_gap_pct(close, supports):
+    valid_supports = [level for level in supports if pd.notna(level) and level > 0]
+    if not valid_supports or close <= 0:
+        return None
+    return min(abs(close - level) / level * 100 for level in valid_supports)
 
 # ────────────────────────────────────────
 # 3. 조건 체크
-#    ① 캔들 구름 돌파 (candle_lookback 이내)
-#    ② 캔들 돌파 이후: 이평선 구름 돌파 OR 골든크로스 (순서 제약 없음)
+#    AI 분석 후보를 넓게 모으는 스캐너:
+#    ① 구름 돌파형 ② 구름 돌파 임박형 ③ 돌파 후 눌림형 ④ 추세 확인형
 # ────────────────────────────────────────
 def check_conditions(df,
                      candle_cloud_lookback,
@@ -54,29 +78,36 @@ def check_conditions(df,
     df = df.copy()
     df = ichimoku(df)
     df = moving_averages(df)
-    df = df.dropna(subset=['span_a', 'span_b', 'ma20', 'ma60', 'ma120'])
+    df = df.dropna(subset=['span_a', 'span_b', 'ma20', 'ma60', 'ma120', 'volume_ma20'])
 
-    if len(df) < candle_cloud_lookback + 2:
+    scan_candle_lookback = max(candle_cloud_lookback, 8)
+    scanner_min_score = 5
+
+    if len(df) < scan_candle_lookback + 2:
         return False, {}
 
     today   = datetime.today().weekday()
     end_idx = -1 if today == 4 else -2
     last    = df.iloc[end_idx]
+    prev_last = df.iloc[end_idx - 1]
 
     current_cloud_top = max(last['span_a'], last['span_b'])
     current_cloud_bot = min(last['span_a'], last['span_b'])
-
-    # 1. 구름 대비 거리(이격도) 필터 & 상태 유지 확인
-    if last['Close'] > current_cloud_top * max_cloud_gap:
-        return False, {}
-    if last['Close'] < current_cloud_top:
-        return False, {}
+    current_close = last['Close']
+    close_vs_cloud_top_pct = pct_gap(current_close, current_cloud_top)
+    cloud_thickness_pct = pct_gap(current_cloud_top, current_cloud_bot) if current_close == 0 else (
+        (current_cloud_top - current_cloud_bot) / current_close * 100
+    )
+    current_ma_alignment = ma_alignment(last)
+    tenkan_above_kijun = last['tenkan'] > last['kijun']
+    ma20_rising = last['ma20'] > prev_last['ma20']
+    ma60_rising = last['ma60'] > prev_last['ma60']
 
     # ── Step 1: 캔들 구름 돌파 탐색
     candle_break_idx  = None
     candle_break_week = None
 
-    for i in range(candle_cloud_lookback - 1, -1, -1):
+    for i in range(scan_candle_lookback - 1, -1, -1):
         idx_cur  = end_idx - i
         idx_prev = idx_cur - 1
 
@@ -90,38 +121,17 @@ def check_conditions(df,
             candle_break_idx  = idx_cur
             candle_break_week = i
 
-    if candle_break_idx is None:
-        return False, {}
+    signal_idx = candle_break_idx if candle_break_idx is not None else end_idx
+    signal = df.iloc[signal_idx]
+    prev_4w_vol_avg = df.iloc[signal_idx - 4 : signal_idx]['Volume'].mean()
+    signal_vol_ratio_4w = safe_ratio(signal['Volume'], prev_4w_vol_avg)
+    signal_vol_ratio_20 = safe_ratio(signal['Volume'], signal['volume_ma20'])
+    breakout_vol_ratio = signal_vol_ratio_4w if candle_break_idx is not None else None
 
-    # 2. 캔들 돌파 N주전 상한 설정
-    if candle_break_week > candle_max_lookback:
-        return False, {}
-
-    # ==========================================
-    # 🐛 [버그 수정 완료] 거래량 검증 로직 
-    # candle_break_idx가 음수(예: -1)이더라도 슬라이싱 정상 작동
-    # ==========================================
-    breakout_vol_ratio = 0.0
-    
-    # 돌파 직전 4주간의 평균 거래량 (자기 자신 제외)
-    # 예: candle_break_idx가 -1이면, df.iloc[-5:-1] -> -5, -4, -3, -2 주차 선택
-    prev_4w_vol_avg = df.iloc[candle_break_idx - 4 : candle_break_idx]['Volume'].mean()
-    # 돌파 주간의 거래량
-    breakout_vol = df.iloc[candle_break_idx]['Volume']
-    
-    if prev_4w_vol_avg > 0:
-        breakout_vol_ratio = breakout_vol / prev_4w_vol_avg
-        
-        # 거래량이 지정된 배수(1.5배) 미만이면 가짜 돌파로 간주하여 제외
-        if breakout_vol_ratio < vol_multiplier:
-            return False, {}
-    else:
-        # 거래량이 아예 없는 비정상 종목 제외
-        return False, {}
-
-    # ── Step 2: MA 탐색 (기존 동일)
-    ma_search_start = max(candle_break_idx, end_idx - ma_cloud_lookback + 1)
-    gc_search_start = max(candle_break_idx, end_idx - gc_lookback + 1)
+    # ── Step 2: MA/GC 탐색
+    event_start = candle_break_idx if candle_break_idx is not None else end_idx
+    ma_search_start = max(event_start, end_idx - ma_cloud_lookback + 1)
+    gc_search_start = max(event_start, end_idx - gc_lookback + 1)
 
     ma20_break_week, ma60_break_week, ma120_break_week = None, None, None
 
@@ -157,17 +167,99 @@ def check_conditions(df,
 
     gc_hit = hit_gc_60_120 or hit_gc_20_60
 
-    hit = ma_broke_cloud or gc_hit
+    current_above_cloud = current_close >= current_cloud_top
+    over_max_gap = current_close > current_cloud_top * max_cloud_gap
+    recent_breakout = candle_break_idx is not None and candle_break_week <= scan_candle_lookback
+    breakout_type = recent_breakout and current_above_cloud and not over_max_gap
 
-    if not hit:
+    near_cloud_top = current_cloud_top * 0.95 <= current_close < current_cloud_top
+    structure_count = sum([
+        tenkan_above_kijun,
+        ma20_rising,
+        current_close > last['ma20'],
+        current_close > current_cloud_bot,
+        signal_vol_ratio_20 >= 1.0,
+    ])
+    pre_breakout_type = near_cloud_top and structure_count >= 2
+
+    support_gap = nearest_support_gap_pct(
+        current_close,
+        [current_cloud_top, last['ma20'], last['kijun']],
+    )
+    pullback_type = (
+        recent_breakout
+        and candle_break_week is not None
+        and candle_break_week >= 1
+        and support_gap is not None
+        and support_gap <= 5
+        and current_close >= current_cloud_bot
+    )
+
+    score = 0
+    if breakout_type:
+        score += 3
+        score += 2 if candle_break_week <= candle_max_lookback else 1
+    elif recent_breakout and current_above_cloud:
+        score += 2
+    if pre_breakout_type:
+        score += 3
+    if pullback_type:
+        score += 3
+
+    if signal_vol_ratio_4w >= vol_multiplier:
+        score += 2
+    elif signal_vol_ratio_4w >= 1.2:
+        score += 1
+    if signal_vol_ratio_20 >= 1.25:
+        score += 1
+    if tenkan_above_kijun:
+        score += 1
+    if current_close > last['kijun']:
+        score += 1
+    if ma20_rising:
+        score += 1
+    if ma60_rising:
+        score += 1
+    if last['ma20'] > last['ma60']:
+        score += 1
+    if current_ma_alignment == '정배열':
+        score += 1
+    if ma_broke_cloud:
+        score += 1
+    if gc_hit:
+        score += 1
+    if 0 <= close_vs_cloud_top_pct <= 12:
+        score += 1
+    if over_max_gap:
+        score -= 2
+
+    scan_type = None
+    if pullback_type:
+        scan_type = 'pullback'
+    elif breakout_type:
+        scan_type = 'breakout'
+    elif pre_breakout_type:
+        scan_type = 'pre_breakout'
+    elif score >= scanner_min_score:
+        scan_type = 'trend_confirm'
+
+    if scan_type is None:
         return False, {}
 
     detail = {
+        'scan_type':          scan_type,
+        'score':              int(max(score, 0)),
         '종가':               int(last['Close']),
         '구름상단':           int(current_cloud_top),
         '구름하단':           int(current_cloud_bot),
         '캔들구름돌파_N주전':  candle_break_week,
-        '돌파시거래량증가(배)': round(breakout_vol_ratio, 2), # 소수점 둘째자리까지 표기
+        '돌파시거래량증가(배)': round(breakout_vol_ratio, 2) if breakout_vol_ratio is not None else None,
+        '거래량4주비율':       round(signal_vol_ratio_4w, 2),
+        '거래량20주비율':      round(signal_vol_ratio_20, 2),
+        '이격도_구름상단_pct': round(close_vs_cloud_top_pct, 2),
+        '전환선_기준선':       '전환선>기준선' if tenkan_above_kijun else '전환선<=기준선',
+        'MA배열':             current_ma_alignment,
+        '구름두께_pct':        round(cloud_thickness_pct, 2),
         'MA20구름돌파_N주전':  ma20_break_week,
         'MA60구름돌파_N주전':  ma60_break_week,
         'MA120구름돌파_N주전': ma120_break_week,
@@ -177,7 +269,7 @@ def check_conditions(df,
         'MA60':               int(last['ma60']),
         'MA120':              int(last['ma120']),
     }
-    return hit, detail
+    return True, detail
 
 # ────────────────────────────────────────
 # 4. 일봉 → 주봉 변환
@@ -304,8 +396,9 @@ def process_ticker(ticker, name, market, start, end,
 # 8. 결과 CSV append
 # ────────────────────────────────────────
 RESULT_COLS = [
-    '시장', '종목코드', '종목명', '종가',
-    '캔들구름돌파_N주전', '돌파시거래량증가(배)',
+    '시장', '종목코드', '종목명', 'scan_type', 'score', '종가',
+    '캔들구름돌파_N주전', '돌파시거래량증가(배)', '거래량4주비율', '거래량20주비율',
+    '이격도_구름상단_pct', '전환선_기준선', 'MA배열', '구름두께_pct',
     'MA20구름돌파_N주전', 'MA60구름돌파_N주전', 'MA120구름돌파_N주전',
     'GC_60/120_N주전', 'GC_20/60_N주전',
     '구름상단', '구름하단',
@@ -469,7 +562,9 @@ def screen_all(markets=None,
 
     df_result = pd.DataFrame(all_results)
     cols      = [c for c in RESULT_COLS if c in df_result.columns]
-    df_result = df_result[cols].sort_values('캔들구름돌파_N주전', ascending=True)
+    sort_cols = [c for c in ['score', '캔들구름돌파_N주전'] if c in df_result.columns]
+    ascending = [False if c == 'score' else True for c in sort_cols]
+    df_result = df_result[cols].sort_values(sort_cols, ascending=ascending, na_position='last')
 
     print(f"\n{'='*60}")
     print(f"✅ 스크리닝 완료 | 조건 충족 종목 : {len(df_result)}개")

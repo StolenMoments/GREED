@@ -40,6 +40,13 @@ class ParseResult:
     success: bool
 
 
+@dataclass(slots=True)
+class EntryCandidate:
+    label: str
+    price: float
+    price_max: float | None
+
+
 def parse_markdown(markdown: str) -> ParseResult:
     data: dict[str, str | float | None] = {}
     failed: list[str] = []
@@ -78,6 +85,26 @@ def parse_markdown(markdown: str) -> ParseResult:
     )
 
 
+def parse_entry_candidates(markdown: str) -> list[EntryCandidate]:
+    candidates: list[EntryCandidate] = []
+    for raw_label, raw_value in re.findall(
+        r"^\|\s*([^|\n]*진입[^|\n]*)\|.*?\|\s*([^|\n]+)\|?\s*$",
+        markdown,
+        re.MULTILINE,
+    ):
+        price, price_max = _parse_price(raw_value)
+        if price is None:
+            continue
+        candidates.append(
+            EntryCandidate(
+                label=_normalize_entry_label(raw_label),
+                price=price,
+                price_max=price_max,
+            )
+        )
+    return candidates
+
+
 def _extract_judgment(markdown: str) -> str | None:
     match = JUDGMENT_BOLD_PATTERN.search(markdown)
     if match is not None:
@@ -92,6 +119,14 @@ def _extract_judgment(markdown: str) -> str | None:
 
 def _parse_price(raw_value: str) -> tuple[float | None, float | None]:
     return _parse_price_values([raw_value])
+
+
+def _normalize_entry_label(raw_label: str) -> str:
+    if "눌림" in raw_label:
+        return "눌림"
+    if "돌파" in raw_label:
+        return "돌파"
+    return "진입"
 
 
 def _parse_price_values(raw_values: list[str]) -> tuple[float | None, float | None]:

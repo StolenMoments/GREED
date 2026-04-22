@@ -45,6 +45,16 @@ class AnalysisCreate(BaseModel):
     stop_loss_max: float | None = None
 
 
+class EntryCandidateSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str
+    price: float
+    price_max: float | None = None
+    gap_pct: float | None = None
+    is_near: bool = False
+
+
 class AnalysisSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,6 +68,13 @@ class AnalysisSummary(BaseModel):
     cloud_position: str
     ma_alignment: str
     created_at: datetime
+    entry_price: float | None = None
+    entry_price_max: float | None = None
+    current_price: float | None = None
+    current_price_date: date | None = None
+    entry_gap_pct: float | None = None
+    is_entry_near: bool = False
+    entry_candidates: list[EntryCandidateSummary] = Field(default_factory=list)
 
 
 class AnalysisPage(BaseModel):
@@ -70,8 +87,6 @@ class AnalysisPage(BaseModel):
 
 class AnalysisRead(AnalysisSummary):
     markdown: str
-    entry_price: float | None
-    entry_price_max: float | None
     target_price: float | None
     target_price_max: float | None
     stop_loss: float | None

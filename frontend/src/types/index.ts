@@ -13,6 +13,14 @@ export interface Run {
   analysis_count: number;
 }
 
+export interface EntryCandidate {
+  label: string;
+  price: number;
+  price_max: number | null;
+  gap_pct: number | null;
+  is_near: boolean;
+}
+
 export interface AnalysisSummary {
   id: number;
   run_id: number;
@@ -24,12 +32,17 @@ export interface AnalysisSummary {
   cloud_position: CloudPosition;
   ma_alignment: MaAlignment;
   created_at: string;
+  entry_price: number | null;
+  entry_price_max: number | null;
+  current_price: number | null;
+  current_price_date: string | null;
+  entry_gap_pct: number | null;
+  is_entry_near: boolean;
+  entry_candidates: EntryCandidate[];
 }
 
 export interface Analysis extends AnalysisSummary {
   markdown: string;
-  entry_price: number | null;
-  entry_price_max: number | null;
   target_price: number | null;
   target_price_max: number | null;
   stop_loss: number | null;
@@ -70,6 +83,7 @@ export interface AnalysisFilters {
   judgment?: Judgment;
   run_id?: number;
   q?: string;
+  entry_gap_lte?: number;
 }
 
 export interface AnalysisPaginationParams {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.parser import parse_markdown
+from backend.parser import parse_entry_candidates, parse_markdown
 
 
 def test_parse_markdown_extracts_required_and_optional_fields() -> None:
@@ -151,6 +151,22 @@ def test_parse_markdown_captures_two_entry_scenarios() -> None:
     assert result.data["entry_price_max"] == 1998.0
     assert result.data["target_price"] == 2150.0
     assert result.data["stop_loss"] == 1626.0
+
+
+def test_parse_entry_candidates_keeps_pullback_and_breakout_separate() -> None:
+    markdown = """
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
+"""
+
+    candidates = parse_entry_candidates(markdown)
+
+    assert [(candidate.label, candidate.price, candidate.price_max) for candidate in candidates] == [
+        ("눌림", 1659.0, None),
+        ("돌파", 1998.0, None),
+    ]
 
 
 def test_parse_markdown_rejects_long_target_below_highest_entry() -> None:

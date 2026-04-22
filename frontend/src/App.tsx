@@ -41,7 +41,7 @@ function PlaceholderRoute({
 function App() {
   return (
     <main className="min-h-screen px-6 py-8 text-slate-50">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-8">
         <header className="flex items-center justify-between gap-6 border-b border-amber-200/10 pb-4">
           <p className="text-sm font-semibold uppercase tracking-[0.35em] text-amber-300">
             greed

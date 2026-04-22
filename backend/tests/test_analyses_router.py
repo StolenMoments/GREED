@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import date
 
 import pytest
 from fastapi import FastAPI
@@ -10,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.crud import create_analysis, create_run
+from backend.crud import create_analysis, create_run, upsert_stock_price
 from backend.database import Base, get_db
 from backend.routers.analyses import router
 from backend.schemas import AnalysisCreate
@@ -501,6 +502,53 @@ def test_list_all_analyses_filters_by_ticker_or_name(client: TestClient, db_sess
     assert [item["id"] for item in page_items(ticker_response)] == [samsung.id]
     assert name_response.status_code == 200
     assert [item["id"] for item in page_items(name_response)] == [samsung.id]
+
+
+def test_list_all_analyses_filters_by_entry_gap(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="entry gap filter")
+    near = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=75000,
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            entry_price=75000,
+        ),
+    )
+    upsert_stock_price(db_session, ticker="005930", price_date=date.today(), close_price=76000)
+    upsert_stock_price(db_session, ticker="000660", price_date=date.today(), close_price=83000)
+
+    response = client.get("/api/analyses", params={"entry_gap_lte": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == near.id
+    assert body["items"][0]["current_price"] == 76000
+    assert body["items"][0]["current_price_date"] == date.today().isoformat()
+    assert body["items"][0]["entry_gap_pct"] == pytest.approx(1.3157, rel=1e-4)
+    assert body["items"][0]["is_entry_near"] is True
 
 
 def test_list_all_analyses_returns_422_for_invalid_judgment(client: TestClient) -> None:

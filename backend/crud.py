@@ -7,6 +7,7 @@ from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.models import Analysis, AnalysisJob, Run, StockPrice
+from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
 from backend.timezone import seoul_now
 
@@ -14,6 +15,7 @@ from backend.timezone import seoul_now
 RUN_ORDER_BY = (desc(Run.created_at), desc(Run.id))
 ANALYSIS_ORDER_BY = (desc(Analysis.created_at), desc(Analysis.id))
 JOB_ORDER_BY = (desc(AnalysisJob.created_at), desc(AnalysisJob.id))
+ENTRY_NEAR_THRESHOLD_PCT = 2.0
 
 
 class RunRow(NamedTuple):
@@ -24,11 +26,39 @@ class RunRow(NamedTuple):
 
 
 class AnalysisPageRow(NamedTuple):
-    items: list[Analysis]
+    items: list["AnalysisSummaryRow"]
     page: int
     page_size: int
     total: int
     total_pages: int
+
+
+class AnalysisSummaryRow(NamedTuple):
+    id: int
+    run_id: int
+    ticker: str
+    name: str
+    model: str
+    judgment: str
+    trend: str
+    cloud_position: str
+    ma_alignment: str
+    created_at: datetime
+    entry_price: float | None
+    entry_price_max: float | None
+    current_price: float | None
+    current_price_date: date | None
+    entry_gap_pct: float | None
+    is_entry_near: bool
+    entry_candidates: list["EntryCandidateRow"]
+
+
+class EntryCandidateRow(NamedTuple):
+    label: str
+    price: float
+    price_max: float | None
+    gap_pct: float | None
+    is_near: bool
 
 
 def create_run(db: Session, memo: str | None = None) -> RunRow:
@@ -99,15 +129,30 @@ def get_analyses_page(
     judgment: str | None = None,
     run_id: int | None = None,
     q: str | None = None,
+    entry_gap_lte: float | None = None,
     page: int = 1,
     page_size: int = 25,
 ) -> AnalysisPageRow:
     stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q)
-    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     offset = (page - 1) * page_size
-    items = list(
-        db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY).offset(offset).limit(page_size)).all()
-    )
+
+    if entry_gap_lte is not None:
+        analyses = list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
+        rows = [
+            row
+            for row in _with_entry_gap(db, analyses)
+            if _has_near_entry(row, entry_gap_lte)
+        ]
+        rows.sort(key=lambda row: (row.entry_gap_pct or 0, -row.created_at.timestamp(), -row.id))
+        total = len(rows)
+        items = rows[offset : offset + page_size]
+    else:
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        analyses = list(
+            db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY).offset(offset).limit(page_size)).all()
+        )
+        items = _with_entry_gap(db, analyses)
+
     total_pages = (total + page_size - 1) // page_size if total else 0
     return AnalysisPageRow(
         items=items,
@@ -139,6 +184,130 @@ def _analysis_filter_stmt(
                 )
             )
     return stmt
+
+
+def _with_entry_gap(db: Session, analyses: list[Analysis]) -> list[AnalysisSummaryRow]:
+    if not analyses:
+        return []
+
+    tickers = {analysis.ticker for analysis in analyses}
+    prices = {
+        price.ticker: price
+        for price in db.scalars(select(StockPrice).where(StockPrice.ticker.in_(tickers))).all()
+    }
+
+    return [
+        _to_analysis_summary_row(analysis, prices.get(analysis.ticker))
+        for analysis in analyses
+    ]
+
+
+def _to_analysis_summary_row(
+    analysis: Analysis,
+    stock_price: StockPrice | None,
+) -> AnalysisSummaryRow:
+    current_price = stock_price.close_price if stock_price is not None else None
+    entry_candidates = _build_entry_candidates(analysis, current_price)
+    available_gaps = [
+        candidate.gap_pct
+        for candidate in entry_candidates
+        if candidate.gap_pct is not None
+    ]
+    entry_gap_pct = min(available_gaps) if available_gaps else calc_entry_gap_pct(
+        current_price=current_price,
+        entry_price=analysis.entry_price,
+        entry_price_max=analysis.entry_price_max,
+    )
+
+    return AnalysisSummaryRow(
+        id=analysis.id,
+        run_id=analysis.run_id,
+        ticker=analysis.ticker,
+        name=analysis.name,
+        model=analysis.model,
+        judgment=analysis.judgment,
+        trend=analysis.trend,
+        cloud_position=analysis.cloud_position,
+        ma_alignment=analysis.ma_alignment,
+        created_at=analysis.created_at,
+        entry_price=analysis.entry_price,
+        entry_price_max=analysis.entry_price_max,
+        current_price=current_price,
+        current_price_date=stock_price.price_date if stock_price is not None else None,
+        entry_gap_pct=entry_gap_pct,
+        is_entry_near=entry_gap_pct is not None and entry_gap_pct <= ENTRY_NEAR_THRESHOLD_PCT,
+        entry_candidates=entry_candidates,
+    )
+
+
+def _build_entry_candidates(
+    analysis: Analysis,
+    current_price: float | None,
+) -> list[EntryCandidateRow]:
+    parsed_candidates = [
+        (candidate.label, candidate.price, candidate.price_max)
+        for candidate in parse_entry_candidates(analysis.markdown)
+    ]
+
+    if not parsed_candidates and analysis.entry_price is not None:
+        parsed_candidates = [
+            ("진입", analysis.entry_price, analysis.entry_price_max),
+        ]
+
+    return [
+        _build_entry_candidate_row(
+            label=label,
+            price=price,
+            price_max=price_max,
+            current_price=current_price,
+        )
+        for label, price, price_max in parsed_candidates
+    ]
+
+
+def _build_entry_candidate_row(
+    label: str,
+    price: float,
+    price_max: float | None,
+    current_price: float | None,
+) -> EntryCandidateRow:
+    gap_pct = calc_entry_gap_pct(
+        current_price=current_price,
+        entry_price=price,
+        entry_price_max=price_max,
+    )
+    return EntryCandidateRow(
+        label=label,
+        price=price,
+        price_max=price_max,
+        gap_pct=gap_pct,
+        is_near=gap_pct is not None and gap_pct <= ENTRY_NEAR_THRESHOLD_PCT,
+    )
+
+
+def _has_near_entry(row: AnalysisSummaryRow, threshold: float) -> bool:
+    return any(
+        candidate.gap_pct is not None and candidate.gap_pct <= threshold
+        for candidate in row.entry_candidates
+    ) or (row.entry_gap_pct is not None and row.entry_gap_pct <= threshold)
+
+
+def calc_entry_gap_pct(
+    current_price: float | None,
+    entry_price: float | None,
+    entry_price_max: float | None,
+) -> float | None:
+    if current_price is None or current_price <= 0 or entry_price is None:
+        return None
+
+    entry_low = min(entry_price, entry_price_max) if entry_price_max is not None else entry_price
+    entry_high = max(entry_price, entry_price_max) if entry_price_max is not None else entry_price
+
+    if entry_low <= current_price <= entry_high:
+        return 0.0
+
+    nearest_entry = entry_low if current_price < entry_low else entry_high
+    return abs(nearest_entry - current_price) / current_price * 100
 
 
 def get_analysis(db: Session, analysis_id: int) -> Analysis | None:

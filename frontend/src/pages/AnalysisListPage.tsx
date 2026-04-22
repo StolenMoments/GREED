@@ -5,6 +5,7 @@ import { useAllAnalyses } from '../hooks/useAnalyses';
 import type { AnalysisFilters, Judgment } from '../types';
 
 const DEFAULT_PAGE_SIZE = 25;
+const ENTRY_GAP_FILTER_PCT = 2;
 
 const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '전체' },
@@ -45,6 +46,15 @@ function parsePageSize(value: string | null) {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 100
     ? parsed
     : DEFAULT_PAGE_SIZE;
+}
+
+function parseEntryGapLte(value: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function getVisiblePages(page: number, totalPages: number) {
@@ -187,6 +197,8 @@ function AnalysisListPage() {
   const activeQuery = (searchParams.get('q') ?? '').trim();
   const activePage = parsePage(searchParams.get('page'));
   const activePageSize = parsePageSize(searchParams.get('page_size'));
+  const activeEntryGapLte = parseEntryGapLte(searchParams.get('entry_gap_lte'));
+  const isEntryGapFilterActive = activeEntryGapLte === ENTRY_GAP_FILTER_PCT;
   const [queryInput, setQueryInput] = useState(activeQuery);
   const [runIdInput, setRunIdInput] = useState(
     activeRunId ? String(activeRunId) : '',
@@ -196,8 +208,9 @@ function AnalysisListPage() {
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
+      ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
     }),
-    [activeJudgment, activeQuery, activeRunId],
+    [activeEntryGapLte, activeJudgment, activeQuery, activeRunId],
   );
   const {
     data: analysisPage,
@@ -210,7 +223,9 @@ function AnalysisListPage() {
     page_size: activePageSize,
   });
   const analyses = analysisPage?.items ?? [];
-  const hasFilters = Boolean(activeJudgment || activeRunId || activeQuery);
+  const hasFilters = Boolean(
+    activeJudgment || activeRunId || activeQuery || activeEntryGapLte !== undefined,
+  );
   const showInitialLoading = isLoading && !analysisPage;
 
   useEffect(() => {
@@ -234,13 +249,14 @@ function AnalysisListPage() {
           ...(activeJudgment ? { judgment: activeJudgment } : {}),
           ...(activeRunId ? { run_id: activeRunId } : {}),
           ...(nextQuery ? { q: nextQuery } : {}),
+          ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
         },
         true,
       );
     }, 300);
 
     return () => window.clearTimeout(timeoutId);
-  }, [activeJudgment, activeQuery, activeRunId, queryInput]);
+  }, [activeEntryGapLte, activeJudgment, activeQuery, activeRunId, queryInput]);
 
   useEffect(() => {
     if (
@@ -271,6 +287,10 @@ function AnalysisListPage() {
       params.set('q', next.q);
     }
 
+    if (next.entry_gap_lte !== undefined) {
+      params.set('entry_gap_lte', String(next.entry_gap_lte));
+    }
+
     params.set('page', String(nextPage));
     params.set('page_size', String(activePageSize));
 
@@ -282,6 +302,7 @@ function AnalysisListPage() {
       ...(judgment ? { judgment } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
+      ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
     });
   }
 
@@ -297,6 +318,16 @@ function AnalysisListPage() {
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
       ...(nextRunId ? { run_id: nextRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
+      ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+    });
+  }
+
+  function handleEntryGapToggle() {
+    updateFilters({
+      ...(activeJudgment ? { judgment: activeJudgment } : {}),
+      ...(activeRunId ? { run_id: activeRunId } : {}),
+      ...(activeQuery ? { q: activeQuery } : {}),
+      ...(!isEntryGapFilterActive ? { entry_gap_lte: ENTRY_GAP_FILTER_PCT } : {}),
     });
   }
 
@@ -387,6 +418,19 @@ function AnalysisListPage() {
               />
             </label>
             <button
+              aria-pressed={isEntryGapFilterActive}
+              className={[
+                'h-10 rounded-md border px-4 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
+                isEntryGapFilterActive
+                  ? 'border-amber-300 bg-amber-300 text-slate-950'
+                  : 'border-amber-200/20 text-amber-100 hover:bg-amber-100/10',
+              ].join(' ')}
+              onClick={handleEntryGapToggle}
+              type="button"
+            >
+              진입 2% 이내
+            </button>
+            <button
               className="h-10 rounded-md border border-amber-200/20 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
               type="submit"
             >
@@ -425,7 +469,7 @@ function AnalysisListPage() {
           </div>
         </div>
       ) : showInitialLoading ? (
-        <AnalysisTableLoading />
+        <AnalysisTableLoading showEntryGap />
       ) : analyses.length === 0 ? (
         <EmptyState
           hasFilters={hasFilters}
@@ -442,6 +486,7 @@ function AnalysisListPage() {
           <AnalysisTable
             analyses={analyses}
             onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
+            showEntryGap
             showRunId
           />
           <PaginationControls
