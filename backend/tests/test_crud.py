@@ -13,6 +13,7 @@ from backend.crud import (
     create_job,
     get_analyses,
     get_analyses_by_run,
+    get_analyses_page,
     get_analysis,
     get_analysis_history,
     get_job,
@@ -179,6 +180,60 @@ def test_get_analyses_filters_by_ticker_or_name(db_session: Session) -> None:
     assert [analysis.id for analysis in ticker_matches] == [samsung.id]
     assert [analysis.id for analysis in name_matches] == [samsung.id]
     assert [analysis.id for analysis in blank_query_matches] == [hynix.id, samsung.id]
+
+
+def test_get_analyses_page_returns_slice_and_total(db_session: Session) -> None:
+    run = create_run(db_session, memo="page target")
+    first = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="claude",
+            markdown="first markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    second = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="claude",
+            markdown="second markdown",
+            judgment="보유",
+            trend="횡보",
+            cloud_position="구름 속",
+            ma_alignment="혼조",
+        ),
+    )
+    third = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="035420",
+            name="NAVER",
+            model="claude",
+            markdown="third markdown",
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    first_page = get_analyses_page(db_session, page=1, page_size=2)
+    second_page = get_analyses_page(db_session, page=2, page_size=2)
+
+    assert [analysis.id for analysis in first_page.items] == [third.id, second.id]
+    assert [analysis.id for analysis in second_page.items] == [first.id]
+    assert first_page.total == 3
+    assert first_page.total_pages == 2
 
 
 def test_get_analysis_history_orders_by_newest_first(db_session: Session) -> None:

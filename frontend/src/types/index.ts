@@ -36,6 +36,14 @@ export interface Analysis extends AnalysisSummary {
   stop_loss_max: number | null;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface CreateRunPayload {
   memo?: string | null;
 }
@@ -62,6 +70,11 @@ export interface AnalysisFilters {
   judgment?: Judgment;
   run_id?: number;
   q?: string;
+}
+
+export interface AnalysisPaginationParams {
+  page: number;
+  page_size: number;
 }
 
 export type JobStatus = 'pending' | 'done' | 'failed';

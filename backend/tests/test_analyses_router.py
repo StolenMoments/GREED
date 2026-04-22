@@ -5,6 +5,7 @@ from collections.abc import Generator
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -73,6 +74,10 @@ def db_session(client: TestClient) -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+def page_items(response: Response) -> list[dict[str, object]]:
+    return response.json()["items"]
 
 
 def test_create_analysis_returns_201_with_parsed_fields(client: TestClient, db_session: Session) -> None:
@@ -267,7 +272,68 @@ def test_list_all_analyses_returns_newest_first(client: TestClient, db_session: 
     response = client.get("/api/analyses")
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == [newer.id, older.id]
+    body = response.json()
+    assert body["page"] == 1
+    assert body["page_size"] == 25
+    assert body["total"] == 2
+    assert body["total_pages"] == 1
+    assert [item["id"] for item in body["items"]] == [newer.id, older.id]
+
+
+def test_list_all_analyses_paginates_with_metadata(client: TestClient, db_session: Session) -> None:
+    run = create_run(db_session, memo="global pagination")
+    first = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="홀드",
+            trend="횡보",
+            cloud_position="구름 안",
+            ma_alignment="혼조",
+        ),
+    )
+    second = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="000660",
+            name="SK Hynix",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    third = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="035420",
+            name="NAVER",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    first_page = client.get("/api/analyses", params={"page": 1, "page_size": 2})
+    second_page = client.get("/api/analyses", params={"page": 2, "page_size": 2})
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 3
+    assert first_page.json()["total_pages"] == 2
+    assert [item["id"] for item in page_items(first_page)] == [third.id, second.id]
+    assert second_page.status_code == 200
+    assert [item["id"] for item in page_items(second_page)] == [first.id]
 
 
 def test_list_all_analyses_filters_by_judgment(client: TestClient, db_session: Session) -> None:
@@ -305,8 +371,9 @@ def test_list_all_analyses_filters_by_judgment(client: TestClient, db_session: S
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["judgment"] == "매수"
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["judgment"] == "매수"
 
 
 def test_list_all_analyses_filters_by_run_id(client: TestClient, db_session: Session) -> None:
@@ -345,7 +412,8 @@ def test_list_all_analyses_filters_by_run_id(client: TestClient, db_session: Ses
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["id"] for item in body] == [selected.id]
+    assert body["total"] == 1
+    assert [item["id"] for item in body["items"]] == [selected.id]
 
 
 def test_list_all_analyses_filters_by_ticker_or_name(client: TestClient, db_session: Session) -> None:
@@ -383,15 +451,23 @@ def test_list_all_analyses_filters_by_ticker_or_name(client: TestClient, db_sess
     name_response = client.get("/api/analyses", params={"q": "삼성"})
 
     assert ticker_response.status_code == 200
-    assert [item["id"] for item in ticker_response.json()] == [samsung.id]
+    assert [item["id"] for item in page_items(ticker_response)] == [samsung.id]
     assert name_response.status_code == 200
-    assert [item["id"] for item in name_response.json()] == [samsung.id]
+    assert [item["id"] for item in page_items(name_response)] == [samsung.id]
 
 
 def test_list_all_analyses_returns_422_for_invalid_judgment(client: TestClient) -> None:
     response = client.get("/api/analyses", params={"judgment": "잘못된값"})
 
     assert response.status_code == 422
+
+
+def test_list_all_analyses_returns_422_for_invalid_pagination(client: TestClient) -> None:
+    invalid_page = client.get("/api/analyses", params={"page": 0})
+    invalid_page_size = client.get("/api/analyses", params={"page_size": 101})
+
+    assert invalid_page.status_code == 422
+    assert invalid_page_size.status_code == 422
 
 
 def test_list_all_analyses_filters_by_judgment_and_run_id(client: TestClient, db_session: Session) -> None:
@@ -444,9 +520,10 @@ def test_list_all_analyses_filters_by_judgment_and_run_id(client: TestClient, db
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["judgment"] == "매수"
-    assert body[0]["ticker"] == "000660"
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["judgment"] == "매수"
+    assert body["items"][0]["ticker"] == "000660"
 
     response = client.get(
         "/api/analyses",
@@ -455,8 +532,9 @@ def test_list_all_analyses_filters_by_judgment_and_run_id(client: TestClient, db
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["ticker"] == "000660"
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["ticker"] == "000660"
 
 
 def test_list_analyses_returns_422_for_invalid_judgment(client: TestClient, db_session: Session) -> None:

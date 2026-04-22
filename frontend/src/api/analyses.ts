@@ -2,8 +2,10 @@ import { apiClient } from './client';
 import type {
   Analysis,
   AnalysisFilters,
+  AnalysisPaginationParams,
   AnalysisSummary,
   CreateAnalysisPayload,
+  PaginatedResponse,
 } from '../types';
 
 export async function fetchAnalyses(
@@ -21,10 +23,14 @@ export async function fetchAnalyses(
 
 export async function fetchAllAnalyses(
   filters: AnalysisFilters = {},
-): Promise<AnalysisSummary[]> {
-  const response = await apiClient.get<AnalysisSummary[]>('/analyses', {
-    params: filters,
-  });
+  pagination: AnalysisPaginationParams = { page: 1, page_size: 25 },
+): Promise<PaginatedResponse<AnalysisSummary>> {
+  const response = await apiClient.get<PaginatedResponse<AnalysisSummary>>(
+    '/analyses',
+    {
+      params: { ...filters, ...pagination },
+    },
+  );
   return response.data;
 }
 

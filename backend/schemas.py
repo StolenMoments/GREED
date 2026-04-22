@@ -60,6 +60,14 @@ class AnalysisSummary(BaseModel):
     created_at: datetime
 
 
+class AnalysisPage(BaseModel):
+    items: list[AnalysisSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
 class AnalysisRead(AnalysisSummary):
     markdown: str
     entry_price: float | None

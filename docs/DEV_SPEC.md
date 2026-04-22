@@ -193,10 +193,12 @@ Base URL: `http://localhost:8000/api`
 | Method | Path | 설명 |
 | --- | --- | --- |
 | `POST` | `/analyses` | 분석 저장. 서버에서 마크다운 재파싱 |
-| `GET` | `/analyses` | 전체 분석 목록. `judgment`, `run_id` 필터 지원 |
+| `GET` | `/analyses` | 전체 분석 목록. `judgment`, `run_id`, `q` 필터와 `page`, `page_size` 페이지네이션 지원 |
 | `GET` | `/runs/{run_id}/analyses` | 특정 Run의 분석 목록. `judgment` 필터 지원 |
 | `GET` | `/analyses/{analysis_id}` | 분석 상세 조회 |
 | `GET` | `/analyses/{analysis_id}/history` | 동일 ticker 분석 이력 최신순 조회 |
+
+`GET /analyses` 응답은 `{ items, page, page_size, total, total_pages }` 형태이며 기본 `page_size`는 25, 최대값은 100이다.
 
 `POST /analyses` 요청은 스키마상 파싱 필드를 포함하지만, 서버는 `markdown`을 다시 파싱해 저장값을 덮어쓴다.
 
@@ -331,7 +333,7 @@ python scripts/pick.py 005930 --years 5 --output ./pick_output
 
 - `RunListPage`: 실행 목록, 새 실행 생성, 실행 상세 이동
 - `StockListPage`: 실행별 분석 목록, 판정 필터, 수동 입력 모달
-- `AnalysisListPage`: 전체 분석 목록, 판정 필터, Run ID 필터
+- `AnalysisListPage`: 전체 분석 목록, 판정 필터, Run ID 필터, 번호형 페이지네이션
 - `AnalysisDetailPage`: 마크다운 렌더링, 핵심 지표, 가격 레벨, 동일 종목 이력, 티커 복사
 
 ### 8-3. 주요 컴포넌트

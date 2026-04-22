@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from backend.crud import create_analysis, get_analyses, get_analyses_by_run, get_analysis, get_analysis_history, get_run
+from backend.crud import (
+    create_analysis,
+    get_analyses_by_run,
+    get_analyses_page,
+    get_analysis,
+    get_analysis_history,
+    get_run,
+)
 from backend.database import get_db
 from backend.parser import parse_markdown
-from backend.schemas import AnalysisCreate, AnalysisRead, AnalysisSummary, JudgmentEnum
+from backend.schemas import AnalysisCreate, AnalysisPage, AnalysisRead, AnalysisSummary, JudgmentEnum
 
 
 router = APIRouter(tags=["analyses"])
@@ -32,14 +39,25 @@ def create_analysis_endpoint(
     return create_analysis(db, analysis_payload)
 
 
-@router.get("/api/analyses", response_model=list[AnalysisSummary])
+@router.get("/api/analyses", response_model=AnalysisPage)
 def list_analyses_endpoint(
     judgment: JudgmentEnum | None = None,
     run_id: int | None = None,
     q: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
-) -> list[AnalysisSummary]:
-    return get_analyses(db, judgment=judgment.value if judgment else None, run_id=run_id, q=q)
+) -> AnalysisPage:
+    return AnalysisPage(
+        **get_analyses_page(
+            db,
+            judgment=judgment.value if judgment else None,
+            run_id=run_id,
+            q=q,
+            page=page,
+            page_size=page_size,
+        )._asdict()
+    )
 
 
 @router.get("/api/runs/{run_id}/analyses", response_model=list[AnalysisSummary])

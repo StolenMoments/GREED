@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   createAnalysis,
   fetchAllAnalyses,
@@ -7,15 +12,21 @@ import {
   fetchHistory,
 } from '../api/analyses';
 import { runKeys } from './useRuns';
-import type { AnalysisFilters, CreateAnalysisPayload } from '../types';
+import type {
+  AnalysisFilters,
+  AnalysisPaginationParams,
+  CreateAnalysisPayload,
+} from '../types';
 
 export const analysisKeys = {
   all: ['analyses'] as const,
   lists: () => [...analysisKeys.all, 'list'] as const,
   list: (runId: number, filters: AnalysisFilters = {}) =>
     [...analysisKeys.lists(), 'run', runId, filters] as const,
-  globalList: (filters: AnalysisFilters = {}) =>
-    [...analysisKeys.lists(), 'all', filters] as const,
+  globalList: (
+    filters: AnalysisFilters = {},
+    pagination: AnalysisPaginationParams = { page: 1, page_size: 25 },
+  ) => [...analysisKeys.lists(), 'all', filters, pagination] as const,
   details: () => [...analysisKeys.all, 'detail'] as const,
   detail: (analysisId: number) =>
     [...analysisKeys.details(), analysisId] as const,
@@ -34,10 +45,14 @@ export function useAnalyses(
   });
 }
 
-export function useAllAnalyses(filters: AnalysisFilters = {}) {
+export function useAllAnalyses(
+  filters: AnalysisFilters = {},
+  pagination: AnalysisPaginationParams = { page: 1, page_size: 25 },
+) {
   return useQuery({
-    queryKey: analysisKeys.globalList(filters),
-    queryFn: () => fetchAllAnalyses(filters),
+    queryKey: analysisKeys.globalList(filters, pagination),
+    queryFn: () => fetchAllAnalyses(filters, pagination),
+    placeholderData: keepPreviousData,
   });
 }
 

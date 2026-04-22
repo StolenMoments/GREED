@@ -23,6 +23,14 @@ class RunRow(NamedTuple):
     analysis_count: int
 
 
+class AnalysisPageRow(NamedTuple):
+    items: list[Analysis]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
 def create_run(db: Session, memo: str | None = None) -> RunRow:
     run = Run(memo=memo)
     db.add(run)
@@ -82,6 +90,39 @@ def get_analyses(
     run_id: int | None = None,
     q: str | None = None,
 ) -> list[Analysis]:
+    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q)
+    return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
+
+
+def get_analyses_page(
+    db: Session,
+    judgment: str | None = None,
+    run_id: int | None = None,
+    q: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> AnalysisPageRow:
+    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    offset = (page - 1) * page_size
+    items = list(
+        db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY).offset(offset).limit(page_size)).all()
+    )
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    return AnalysisPageRow(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=total_pages,
+    )
+
+
+def _analysis_filter_stmt(
+    judgment: str | None = None,
+    run_id: int | None = None,
+    q: str | None = None,
+) -> Select[tuple[Analysis]]:
     stmt = select(Analysis)
     if judgment is not None:
         stmt = stmt.where(Analysis.judgment == judgment)
@@ -97,7 +138,7 @@ def get_analyses(
                     Analysis.name.ilike(pattern, escape="\\"),
                 )
             )
-    return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
+    return stmt
 
 
 def get_analysis(db: Session, analysis_id: int) -> Analysis | None:

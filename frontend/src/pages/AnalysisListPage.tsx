@@ -4,12 +4,23 @@ import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable
 import { useAllAnalyses } from '../hooks/useAnalyses';
 import type { AnalysisFilters, Judgment } from '../types';
 
+const DEFAULT_PAGE_SIZE = 25;
+
 const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '전체' },
   { label: '매수', value: '매수' },
   { label: '홀드', value: '홀드' },
   { label: '매도', value: '매도' },
 ];
+
+interface PaginationControlsProps {
+  disabled: boolean;
+  onPageChange: (page: number) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
 
 function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
@@ -22,6 +33,25 @@ function parseRunId(value: string | null) {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parsePage(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function parsePageSize(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 100
+    ? parsed
+    : DEFAULT_PAGE_SIZE;
+}
+
+function getVisiblePages(page: number, totalPages: number) {
+  const end = Math.min(totalPages, Math.max(page + 2, 5));
+  const start = Math.max(1, Math.min(page - 2, end - 4));
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }
 
 function EmptyState({
@@ -55,6 +85,97 @@ function EmptyState({
   );
 }
 
+function PaginationControls({
+  disabled,
+  onPageChange,
+  page,
+  pageSize,
+  total,
+  totalPages,
+}: PaginationControlsProps) {
+  const firstItem = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastItem = Math.min(page * pageSize, total);
+  const pages = getVisiblePages(page, totalPages);
+  const isFirstPage = page <= 1;
+  const isLastPage = totalPages === 0 || page >= totalPages;
+  const buttonBase =
+    'h-9 rounded-md border px-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-700 disabled:hover:bg-transparent';
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-amber-100/10 pt-4">
+      <p className="text-sm font-medium text-slate-400">
+        <span className="text-slate-200">
+          {firstItem.toLocaleString('ko-KR')}-{lastItem.toLocaleString('ko-KR')}
+        </span>{' '}
+        / 총 {total.toLocaleString('ko-KR')}개
+      </p>
+
+      {totalPages > 1 ? (
+        <nav
+          aria-label="전체 분석 목록 페이지"
+          className="flex flex-wrap items-center gap-1.5"
+        >
+          <button
+            className={`${buttonBase} border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-slate-50`}
+            disabled={disabled || isFirstPage}
+            onClick={() => onPageChange(1)}
+            type="button"
+          >
+            처음
+          </button>
+          <button
+            className={`${buttonBase} border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-slate-50`}
+            disabled={disabled || isFirstPage}
+            onClick={() => onPageChange(page - 1)}
+            type="button"
+          >
+            이전
+          </button>
+
+          {pages.map((pageNumber) => {
+            const isActive = pageNumber === page;
+
+            return (
+              <button
+                aria-current={isActive ? 'page' : undefined}
+                className={[
+                  buttonBase,
+                  isActive
+                    ? 'border-amber-300 bg-amber-300 text-slate-950'
+                    : 'border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-slate-50',
+                ].join(' ')}
+                disabled={disabled || isActive}
+                key={pageNumber}
+                onClick={() => onPageChange(pageNumber)}
+                type="button"
+              >
+                {pageNumber}
+              </button>
+            );
+          })}
+
+          <button
+            className={`${buttonBase} border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-slate-50`}
+            disabled={disabled || isLastPage}
+            onClick={() => onPageChange(page + 1)}
+            type="button"
+          >
+            다음
+          </button>
+          <button
+            className={`${buttonBase} border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-slate-50`}
+            disabled={disabled || isLastPage}
+            onClick={() => onPageChange(totalPages)}
+            type="button"
+          >
+            끝
+          </button>
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
 function AnalysisListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,6 +185,8 @@ function AnalysisListPage() {
     : undefined;
   const activeRunId = parseRunId(searchParams.get('run_id'));
   const activeQuery = (searchParams.get('q') ?? '').trim();
+  const activePage = parsePage(searchParams.get('page'));
+  const activePageSize = parsePageSize(searchParams.get('page_size'));
   const [queryInput, setQueryInput] = useState(activeQuery);
   const [runIdInput, setRunIdInput] = useState(
     activeRunId ? String(activeRunId) : '',
@@ -77,12 +200,18 @@ function AnalysisListPage() {
     [activeJudgment, activeQuery, activeRunId],
   );
   const {
-    data: analyses = [],
+    data: analysisPage,
     isError,
+    isFetching,
     isLoading,
     refetch,
-  } = useAllAnalyses(filters);
+  } = useAllAnalyses(filters, {
+    page: activePage,
+    page_size: activePageSize,
+  });
+  const analyses = analysisPage?.items ?? [];
   const hasFilters = Boolean(activeJudgment || activeRunId || activeQuery);
+  const showInitialLoading = isLoading && !analysisPage;
 
   useEffect(() => {
     setRunIdInput(activeRunId ? String(activeRunId) : '');
@@ -113,7 +242,21 @@ function AnalysisListPage() {
     return () => window.clearTimeout(timeoutId);
   }, [activeJudgment, activeQuery, activeRunId, queryInput]);
 
-  function updateFilters(next: AnalysisFilters, replace = false) {
+  useEffect(() => {
+    if (
+      analysisPage &&
+      analysisPage.total_pages > 0 &&
+      activePage > analysisPage.total_pages
+    ) {
+      updateFilters(filters, true, analysisPage.total_pages);
+    }
+  }, [activePage, analysisPage, filters]);
+
+  function updateFilters(
+    next: AnalysisFilters,
+    replace = false,
+    nextPage = 1,
+  ) {
     const params = new URLSearchParams();
 
     if (next.judgment) {
@@ -127,6 +270,9 @@ function AnalysisListPage() {
     if (next.q) {
       params.set('q', next.q);
     }
+
+    params.set('page', String(nextPage));
+    params.set('page_size', String(activePageSize));
 
     setSearchParams(params, replace ? { replace: true } : undefined);
   }
@@ -157,7 +303,14 @@ function AnalysisListPage() {
   function handleClearFilters() {
     setQueryInput('');
     setRunIdInput('');
-    setSearchParams({});
+    setSearchParams({
+      page: '1',
+      page_size: String(DEFAULT_PAGE_SIZE),
+    });
+  }
+
+  function handlePageChange(nextPage: number) {
+    updateFilters(filters, false, nextPage);
   }
 
   return (
@@ -271,7 +424,7 @@ function AnalysisListPage() {
             </button>
           </div>
         </div>
-      ) : isLoading ? (
+      ) : showInitialLoading ? (
         <AnalysisTableLoading />
       ) : analyses.length === 0 ? (
         <EmptyState
@@ -280,11 +433,26 @@ function AnalysisListPage() {
           onClear={handleClearFilters}
         />
       ) : (
-        <AnalysisTable
-          analyses={analyses}
-          onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
-          showRunId
-        />
+        <div
+          className={[
+            'flex flex-col gap-4 transition-opacity',
+            isFetching ? 'opacity-70' : 'opacity-100',
+          ].join(' ')}
+        >
+          <AnalysisTable
+            analyses={analyses}
+            onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
+            showRunId
+          />
+          <PaginationControls
+            disabled={isFetching}
+            onPageChange={handlePageChange}
+            page={analysisPage?.page ?? activePage}
+            pageSize={analysisPage?.page_size ?? activePageSize}
+            total={analysisPage?.total ?? 0}
+            totalPages={analysisPage?.total_pages ?? 0}
+          />
+        </div>
       )}
 
       <Link
