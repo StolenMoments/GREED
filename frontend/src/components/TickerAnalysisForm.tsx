@@ -231,7 +231,7 @@ function TickerAnalysisForm({
 
               <p className="mt-2 text-sm leading-6 text-slate-300">
                 {job?.status === 'pending'
-                  ? '주봉 데이터 생성과 분석 저장을 진행 중입니다.'
+                  ? '모델 분석 결과 파일을 기다리는 중입니다.'
                   : job?.status === 'done'
                     ? '분석이 저장되었습니다. 목록이 곧 최신 상태로 갱신됩니다.'
                     : '분석 잡이 완료되지 못했습니다.'}

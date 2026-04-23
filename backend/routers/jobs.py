@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Lock
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -19,9 +22,11 @@ from backend.crud import (
     update_job_failed,
 )
 from backend.database import SessionLocal, get_db
+from backend.models import AnalysisJob
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
 from backend.tickers import market_for_ticker, normalize_ticker
+from backend.timezone import seoul_now
 
 
 KR_SYSTEM_PROMPT = """당신은 한국 주식시장 전문 기술적 분석가입니다.
@@ -136,8 +141,18 @@ US_SYSTEM_PROMPT = KR_SYSTEM_PROMPT.replace(
     "가격은 가능하면 실제 숫자와 달러 단위로 쓰고",
 )
 
-CLAUDE_TIMEOUT_SECONDS = 300
+ANALYSIS_RESULT_TIMEOUT_SECONDS = 30 * 60
 PICK_OUTPUT_DIR = Path("pick_output")
+ANALYSIS_FILENAME = "analysis.md"
+PROMPT_FILENAME = "prompt.md"
+STDOUT_LOG_FILENAME = "stdout.log"
+STDERR_LOG_FILENAME = "stderr.log"
+PID_FILENAME = "model.pid"
+EXIT_CODE_FILENAME = "exit_code.txt"
+MODEL_START_GRACE_SECONDS = 15
+LOG_TAIL_CHARS = 1200
+_FINALIZE_LOCKS: dict[int, Lock] = {}
+_FINALIZE_LOCKS_GUARD = Lock()
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -161,7 +176,7 @@ def trigger_analysis_endpoint(
 def list_jobs_endpoint(run_id: int | None = None, db: Session = Depends(get_db)) -> list[JobRead]:
     if run_id is not None and get_run(db, run_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-    return get_jobs(db, run_id=run_id)
+    return [_finalize_pending_job_if_ready(db, job) for job in get_jobs(db, run_id=run_id)]
 
 
 @router.get("/{job_id}", response_model=JobRead)
@@ -169,7 +184,7 @@ def get_job_endpoint(job_id: int, db: Session = Depends(get_db)) -> JobRead:
     job = get_job(db, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return job
+    return _finalize_pending_job_if_ready(db, job)
 
 
 def run_analysis_pipeline(job_id: int) -> None:
@@ -180,7 +195,7 @@ def run_analysis_pipeline(job_id: int) -> None:
             return
 
         ticker = normalize_ticker(job.ticker)
-        job_output_dir = PICK_OUTPUT_DIR / "jobs" / str(job.id)
+        job_output_dir = _job_output_dir(job.id)
         try:
             stock_name = _resolve_stock_name(ticker)
             _run_pick(ticker, stock_name, job_output_dir)
@@ -192,62 +207,154 @@ def run_analysis_pipeline(job_id: int) -> None:
         if csv_path is None:
             update_job_failed(db, job, "pick: CSV 파일 생성 안 됨")
             return
-        stock_name = _stock_name_from_csv_filename(csv_path, ticker) or stock_name
 
+        selected_model = job.model or "claude"
+        system_prompt = _system_prompt_for_ticker(ticker)
+        runner = _runner_for_model(selected_model)
+        analysis_path = _analysis_path(job.id)
+        prompt_path = job_output_dir / PROMPT_FILENAME
+        stdout_path = job_output_dir / STDOUT_LOG_FILENAME
+        stderr_path = job_output_dir / STDERR_LOG_FILENAME
+        pid_path = job_output_dir / PID_FILENAME
+        exit_code_path = job_output_dir / EXIT_CODE_FILENAME
         try:
             csv_text = csv_path.read_text(encoding="utf-8-sig")
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
-        selected_model = job.model or "claude"
-        system_prompt = _system_prompt_for_ticker(ticker)
-        if selected_model == "codex":
-            runner, analysis_model = _run_codex, "codex-cli"
-        elif selected_model == "gemini":
-            runner, analysis_model = _run_gemini, "gemini-cli"
-        else:
-            runner, analysis_model = _run_claude, "claude-code"
 
         try:
-            raw = _call_runner(runner, csv_text, system_prompt)
-        except subprocess.TimeoutExpired:
-            update_job_failed(db, job, f"{selected_model}: 180s 타임아웃 초과")
-            return
-        except RuntimeError as exc:
-            update_job_failed(db, job, f"{selected_model}: {str(exc)[:300]}")
-            return
-        except Exception as exc:
-            update_job_failed(db, job, f"{selected_model}: {exc}")
-            return
-
-        if not raw:
-            update_job_failed(db, job, f"{selected_model}: 빈 응답 반환")
-            return
-
-        parse_result = parse_markdown(raw)
-        if not parse_result.success:
-            failed_str = ", ".join(parse_result.failed)
-            update_job_failed(db, job, f"parser: [{failed_str}] 필드 누락. 원본 앞 300자: {raw[:300]}", raw_markdown=raw)
-            return
-
-        try:
-            analysis = create_analysis(
-                db,
-                AnalysisCreate(
-                    run_id=job.run_id,
-                    ticker=ticker,
-                    name=stock_name or ticker,
-                    model=analysis_model,
-                    markdown=raw,
-                    **parse_result.data,
-                ),
+            _start_runner(
+                runner,
+                csv_text,
+                system_prompt,
+                analysis_path,
+                prompt_path,
+                stdout_path,
+                stderr_path,
+                pid_path,
+                exit_code_path,
             )
-            update_job_done(db, job, analysis.id, raw_markdown=raw)
         except Exception as exc:
-            db.rollback()
-            update_job_failed(db, job, f"db: {exc}")
+            update_job_failed(db, job, f"model_start: {selected_model}: {str(exc)[:300]}")
     finally:
         db.close()
+
+
+def _finalize_pending_job_if_ready(db: Session, job: AnalysisJob) -> AnalysisJob:
+    if job.status != "pending":
+        return job
+
+    with _job_finalize_lock(job.id):
+        try:
+            db.refresh(job)
+        except Exception:
+            pass
+        if job.status != "pending":
+            return job
+        return _finalize_pending_job_unlocked(db, job)
+
+
+def _job_finalize_lock(job_id: int) -> Lock:
+    with _FINALIZE_LOCKS_GUARD:
+        lock = _FINALIZE_LOCKS.get(job_id)
+        if lock is None:
+            lock = Lock()
+            _FINALIZE_LOCKS[job_id] = lock
+        return lock
+
+
+def _finalize_pending_job_unlocked(db: Session, job: AnalysisJob) -> AnalysisJob:
+    analysis_path = _analysis_path(job.id)
+    if analysis_path.exists() and analysis_path.stat().st_size > 0:
+        _finalize_analysis_file(db, job, analysis_path)
+        return job
+
+    exit_code_path = _exit_code_path(job.id)
+    if exit_code_path.exists():
+        _fail_exited_model_without_analysis(db, job, exit_code_path)
+        return job
+
+    if _model_start_tracking_failed(job):
+        update_job_failed(
+            db,
+            job,
+            _model_failure_message(job, "model_start", "pid file was not created"),
+        )
+        return job
+
+    pid = _read_pid(_pid_path(job.id))
+    if pid is not None and not _is_process_running(pid) and _model_start_grace_elapsed(job.created_at):
+        update_job_failed(
+            db,
+            job,
+            _model_failure_message(job, "model_exit", "monitor process stopped before writing exit code"),
+        )
+        return job
+
+    if _is_result_timeout(job.created_at):
+        update_job_failed(
+            db,
+            job,
+            _model_failure_message(job, "timeout", f"{ANALYSIS_FILENAME} 생성 시간 초과"),
+        )
+    return job
+
+
+def _fail_exited_model_without_analysis(db: Session, job: AnalysisJob, exit_code_path: Path) -> None:
+    exit_code = _read_text_tail(exit_code_path, 80) or "unknown"
+    update_job_failed(
+        db,
+        job,
+        _model_failure_message(
+            job,
+            "model_exit",
+            f"exit_code={exit_code}; {ANALYSIS_FILENAME} was not created",
+        ),
+    )
+
+
+def _finalize_analysis_file(db: Session, job: AnalysisJob, analysis_path: Path) -> None:
+    try:
+        raw = analysis_path.read_text(encoding="utf-8-sig")
+    except Exception as exc:
+        update_job_failed(db, job, f"parser: {ANALYSIS_FILENAME} 읽기 실패: {exc}")
+        return
+
+    if not raw.strip():
+        return
+
+    parse_result = parse_markdown(raw)
+    if not parse_result.success:
+        failed_str = ", ".join(parse_result.failed)
+        update_job_failed(
+            db,
+            job,
+            f"parser: [{failed_str}] 필드 누락. 원본 앞 300자: {raw[:300]}",
+            raw_markdown=raw,
+        )
+        return
+
+    ticker = normalize_ticker(job.ticker)
+    csv_path = _latest_csv_path(ticker, _job_output_dir(job.id))
+    stock_name = _stock_name_from_csv_filename(csv_path, ticker) if csv_path is not None else ""
+
+    try:
+        analysis = create_analysis(
+            db,
+            AnalysisCreate(
+                run_id=job.run_id,
+                ticker=ticker,
+                name=stock_name or ticker,
+                model=_analysis_model_for_model(job.model),
+                markdown=raw,
+                **parse_result.data,
+            ),
+        )
+        update_job_done(db, job, analysis.id, raw_markdown=raw)
+    except Exception as exc:
+        db.rollback()
+        update_job_failed(db, job, f"db: {exc}", raw_markdown=raw)
 
 
 def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
@@ -276,15 +383,153 @@ def _system_prompt_for_ticker(ticker: str) -> str:
     return US_SYSTEM_PROMPT if market_for_ticker(ticker) == "US" else KR_SYSTEM_PROMPT
 
 
-def _call_runner(
-    runner: Callable[..., str],
+def _job_output_dir(job_id: int) -> Path:
+    return PICK_OUTPUT_DIR / "jobs" / str(job_id)
+
+
+def _analysis_path(job_id: int) -> Path:
+    return _job_output_dir(job_id) / ANALYSIS_FILENAME
+
+
+def _pid_path(job_id: int) -> Path:
+    return _job_output_dir(job_id) / PID_FILENAME
+
+
+def _exit_code_path(job_id: int) -> Path:
+    return _job_output_dir(job_id) / EXIT_CODE_FILENAME
+
+
+def _is_result_timeout(created_at: datetime) -> bool:
+    now = seoul_now()
+    if created_at.tzinfo is None:
+        return now.replace(tzinfo=None) - created_at > timedelta(seconds=ANALYSIS_RESULT_TIMEOUT_SECONDS)
+    return now - created_at > timedelta(seconds=ANALYSIS_RESULT_TIMEOUT_SECONDS)
+
+
+def _model_start_grace_elapsed(created_at: datetime) -> bool:
+    now = seoul_now()
+    if created_at.tzinfo is None:
+        return now.replace(tzinfo=None) - created_at > timedelta(seconds=MODEL_START_GRACE_SECONDS)
+    return now - created_at > timedelta(seconds=MODEL_START_GRACE_SECONDS)
+
+
+def _model_start_tracking_failed(job: AnalysisJob) -> bool:
+    prompt_path = _job_output_dir(job.id) / PROMPT_FILENAME
+    return prompt_path.exists() and not _pid_path(job.id).exists() and _model_start_grace_elapsed(job.created_at)
+
+
+def _read_pid(path: Path) -> int | None:
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _is_process_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        return _is_windows_process_running(pid)
+
+    try:
+        import os
+
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _is_windows_process_running(pid: int) -> bool:
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        process = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not process:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(process, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(process)
+    except Exception:
+        return True
+
+
+def _runner_for_model(model: str) -> Callable[..., subprocess.Popen]:
+    if model == "codex":
+        return _run_codex
+    if model == "gemini":
+        return _run_gemini
+    return _run_claude
+
+
+def _analysis_model_for_model(model: str | None) -> str:
+    if model == "codex":
+        return "codex-cli"
+    if model == "gemini":
+        return "gemini-cli"
+    return "claude-code"
+
+
+def _model_failure_message(job: AnalysisJob, prefix: str, reason: str) -> str:
+    log_parts = []
+    stdout_tail = _read_text_tail(_job_output_dir(job.id) / STDOUT_LOG_FILENAME)
+    stderr_tail = _read_text_tail(_job_output_dir(job.id) / STDERR_LOG_FILENAME)
+    if stdout_tail:
+        log_parts.append(f"stdout: {stdout_tail}")
+    if stderr_tail:
+        log_parts.append(f"stderr: {stderr_tail}")
+
+    message = f"{prefix}: {job.model}: {reason}"
+    if log_parts:
+        message = f"{message}; " + "; ".join(log_parts)
+    return message
+
+
+def _read_text_tail(path: Path, limit: int = LOG_TAIL_CHARS) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return text.strip()[-limit:]
+
+
+def _start_runner(
+    runner: Callable[..., subprocess.Popen],
     csv_text: str,
     system_prompt: str,
-) -> str:
+    analysis_path: Path,
+    prompt_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    pid_path: Path,
+    exit_code_path: Path,
+) -> subprocess.Popen:
     try:
         code = runner.__code__
         accepts_varargs = bool(code.co_flags & 0x04)
-        if code.co_argcount >= 2 or accepts_varargs:
+        if code.co_argcount >= 8 or accepts_varargs:
+            return runner(
+                csv_text,
+                system_prompt,
+                analysis_path,
+                prompt_path,
+                stdout_path,
+                stderr_path,
+                pid_path,
+                exit_code_path,
+            )
+        if code.co_argcount >= 6:
+            return runner(csv_text, system_prompt, analysis_path, prompt_path, stdout_path, stderr_path)
+        if code.co_argcount >= 3:
+            return runner(csv_text, system_prompt, analysis_path)
+        if code.co_argcount >= 2:
             return runner(csv_text, system_prompt)
     except AttributeError:
         pass
@@ -316,7 +561,7 @@ def _trim_csv(csv_text: str, max_data_rows: int) -> str:
 
 def _claude_cmd() -> list[str]:
     if sys.platform != "win32":
-        return ["claude", "-p"]
+        return ["claude", "--dangerously-skip-permissions", "-p"]
     # claude.cmd (batch wrapper) doesn't propagate claude.exe exit codes,
     # so batch artifacts ("Active code page", "Terminate batch job") leak into stdout.
     # Call claude.exe directly when available.
@@ -326,68 +571,175 @@ def _claude_cmd() -> list[str]:
     ]
     for exe in candidates:
         if exe.exists():
-            return [str(exe), "-p"]
-    return ["claude.cmd", "-p"]
+            return [str(exe), "--dangerously-skip-permissions", "-p"]
+    return ["claude.cmd", "--dangerously-skip-permissions", "-p"]
 
 
-def _run_claude(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
-    prompt = f"{system_prompt}\n\n{csv_text}"
-    result = subprocess.run(
-        _claude_cmd(),
-        capture_output=True,
-        input=prompt,
-        text=True,
-        timeout=CLAUDE_TIMEOUT_SECONDS,
+def _build_file_output_prompt(system_prompt: str, csv_text: str, analysis_path: Path) -> str:
+    return f"""{system_prompt}
+
+추가 지시:
+- 최종 분석 마크다운은 stdout에 출력하지 말고 지정된 파일에만 저장하세요.
+- 저장 경로: {analysis_path.resolve()}
+- UTF-8 텍스트 파일로 저장하세요.
+- 파일 내용은 위 출력 형식의 마크다운만 포함해야 하며, 코드블록/설명/요약 문장을 추가하지 마세요.
+
+CSV:
+{csv_text}"""
+
+
+def _spawn_model_process(
+    cmd: list[str],
+    prompt: str,
+    prompt_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    pid_path: Path,
+    exit_code_path: Path,
+) -> subprocess.Popen:
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    if exit_code_path.exists():
+        exit_code_path.unlink()
+
+    payload = json.dumps(
+        {
+            "cmd": cmd,
+            "prompt_path": str(prompt_path.resolve()),
+            "stdout_path": str(stdout_path.resolve()),
+            "stderr_path": str(stderr_path.resolve()),
+            "exit_code_path": str(exit_code_path.resolve()),
+        },
+        ensure_ascii=True,
     )
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout)[:300])
-    return result.stdout.strip()
+    wrapper_cmd = [sys.executable, "-c", _MODEL_PROCESS_WRAPPER, payload]
+
+    popen_kwargs: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "text": True,
+    }
+    if sys.platform == "win32":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+            subprocess,
+            "DETACHED_PROCESS",
+            0,
+        )
+        if creationflags:
+            popen_kwargs["creationflags"] = creationflags
+    else:
+        popen_kwargs["start_new_session"] = True
+
+    process = subprocess.Popen(wrapper_cmd, **popen_kwargs)
+    pid_path.write_text(str(process.pid), encoding="utf-8")
+    return process
 
 
-def _parse_codex_output(output: str) -> str:
-    # Strip Windows chcp artifact ("Active code page: NNN") that leaks into stdout
-    lines = output.splitlines()
-    filtered = [ln for ln in lines if not re.match(r'^Active code page:\s*\d+$', ln.strip())]
-    candidate = "\n".join(filtered).strip()
-    # If output wrapped in conversation format (user/codex/tokens sections), extract response only
-    conv_match = re.search(r'\ncodex\n(.+?)(?:\ntokens used\b|$)', candidate, re.DOTALL)
-    if conv_match:
-        return conv_match.group(1).strip()
-    return candidate
+_MODEL_PROCESS_WRAPPER = r"""
+import json
+import subprocess
+import sys
+import traceback
+
+payload = json.loads(sys.argv[1])
+returncode = 127
+
+try:
+    with (
+        open(payload["prompt_path"], "r", encoding="utf-8") as stdin_file,
+        open(payload["stdout_path"], "w", encoding="utf-8") as stdout_file,
+        open(payload["stderr_path"], "w", encoding="utf-8") as stderr_file,
+    ):
+        popen_kwargs = {"text": True}
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        process = subprocess.Popen(
+            payload["cmd"],
+            stdin=stdin_file,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            **popen_kwargs,
+        )
+        returncode = process.wait()
+except Exception as exc:
+    try:
+        with open(payload["stderr_path"], "a", encoding="utf-8") as stderr_file:
+            stderr_file.write("\n[model_start_error] " + str(exc) + "\n")
+            stderr_file.write(traceback.format_exc(limit=5))
+    except Exception:
+        pass
+finally:
+    try:
+        with open(payload["exit_code_path"], "w", encoding="utf-8") as exit_file:
+            exit_file.write(str(returncode))
+    except Exception:
+        pass
+"""
 
 
-def _run_codex(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
-    prompt = f"{system_prompt}\n\n{_trim_csv(csv_text, 200)}"
-    cmd = ["codex.cmd", "exec", "-"] if sys.platform == "win32" else ["codex", "exec", "-"]
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        input=prompt,
-        text=True,
-        timeout=CLAUDE_TIMEOUT_SECONDS,
-    )
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout)[:300])
-    return _parse_codex_output(result.stdout)
+def _run_claude(
+    csv_text: str,
+    system_prompt: str = SYSTEM_PROMPT,
+    analysis_path: Path | None = None,
+    prompt_path: Path | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    pid_path: Path | None = None,
+    exit_code_path: Path | None = None,
+) -> subprocess.Popen:
+    analysis_path = analysis_path or PICK_OUTPUT_DIR / ANALYSIS_FILENAME
+    prompt_path = prompt_path or PICK_OUTPUT_DIR / PROMPT_FILENAME
+    stdout_path = stdout_path or PICK_OUTPUT_DIR / STDOUT_LOG_FILENAME
+    stderr_path = stderr_path or PICK_OUTPUT_DIR / STDERR_LOG_FILENAME
+    pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
+    exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
+    prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
+    return _spawn_model_process(_claude_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 
-def _run_gemini(csv_text: str, system_prompt: str = SYSTEM_PROMPT) -> str:
-    prompt = f"{system_prompt}\n\n{csv_text}"
+def _run_codex(
+    csv_text: str,
+    system_prompt: str = SYSTEM_PROMPT,
+    analysis_path: Path | None = None,
+    prompt_path: Path | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    pid_path: Path | None = None,
+    exit_code_path: Path | None = None,
+) -> subprocess.Popen:
+    analysis_path = analysis_path or PICK_OUTPUT_DIR / ANALYSIS_FILENAME
+    prompt_path = prompt_path or PICK_OUTPUT_DIR / PROMPT_FILENAME
+    stdout_path = stdout_path or PICK_OUTPUT_DIR / STDOUT_LOG_FILENAME
+    stderr_path = stderr_path or PICK_OUTPUT_DIR / STDERR_LOG_FILENAME
+    pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
+    exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
+    prompt = _build_file_output_prompt(system_prompt, _trim_csv(csv_text, 200), analysis_path)
+    cmd = ["codex.cmd", "exec", "--yolo", "-"] if sys.platform == "win32" else ["codex", "exec", "--yolo", "-"]
+    return _spawn_model_process(cmd, prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+
+
+def _run_gemini(
+    csv_text: str,
+    system_prompt: str = SYSTEM_PROMPT,
+    analysis_path: Path | None = None,
+    prompt_path: Path | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    pid_path: Path | None = None,
+    exit_code_path: Path | None = None,
+) -> subprocess.Popen:
+    analysis_path = analysis_path or PICK_OUTPUT_DIR / ANALYSIS_FILENAME
+    prompt_path = prompt_path or PICK_OUTPUT_DIR / PROMPT_FILENAME
+    stdout_path = stdout_path or PICK_OUTPUT_DIR / STDOUT_LOG_FILENAME
+    stderr_path = stderr_path or PICK_OUTPUT_DIR / STDERR_LOG_FILENAME
+    pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
+    exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
+    prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
     # Pass prompt via stdin; -p "" triggers non-interactive (headless) mode
     cmd = (
-        ["gemini.cmd", "-p", "", "--output-format", "text"]
+        ["gemini.cmd", "--yolo", "-p", "", "--output-format", "text"]
         if sys.platform == "win32"
-        else ["gemini", "-p", "", "--output-format", "text"]
+        else ["gemini", "--yolo", "-p", "", "--output-format", "text"]
     )
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        input=prompt,
-        text=True,
-        timeout=CLAUDE_TIMEOUT_SECONDS,
-    )
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout)[:300])
-    lines = result.stdout.splitlines()
-    filtered = [ln for ln in lines if not re.match(r'^Active code page:\s*\d+$', ln.strip())]
-    return "\n".join(filtered).strip()
+    return _spawn_model_process(cmd, prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)

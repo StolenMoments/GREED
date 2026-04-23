@@ -135,8 +135,10 @@ greed/
 | `id` | INTEGER PK AUTOINCREMENT | 잡 ID |
 | `ticker` | TEXT | 분석할 종목 코드 |
 | `run_id` | INTEGER FK | 분석 결과가 저장될 실행 |
+| `model` | TEXT | 실행할 모델 CLI 선택값 |
 | `status` | TEXT | `pending`, `done`, `failed` |
 | `error_message` | TEXT NULLABLE | 실패 단계와 사유 |
+| `raw_markdown` | TEXT NULLABLE | 파싱 성공/실패 시 읽은 원본 분석 마크다운 |
 | `analysis_id` | INTEGER FK NULLABLE | 성공 시 생성된 분석 ID |
 | `created_at` | DATETIME | 생성 시각 |
 
@@ -239,7 +241,8 @@ Base URL: `http://localhost:8000/api`
 
 | Method | Path | 설명 |
 | --- | --- | --- |
-| `POST` | `/jobs/trigger-analysis` | 티커 분석 잡 생성 및 백그라운드 실행 |
+| `POST` | `/jobs/trigger-analysis` | 티커 분석 잡 생성 및 모델 프로세스 시작 |
+| `GET` | `/jobs?run_id=...` | 실행별 잡 목록 조회 |
 | `GET` | `/jobs/{job_id}` | 잡 상태 조회 |
 
 `POST /jobs/trigger-analysis`
@@ -251,7 +254,7 @@ Base URL: `http://localhost:8000/api`
 }
 ```
 
-성공 응답은 `202 Accepted`이며 `status`는 최초 `pending`이다. 백그라운드 작업은 job별 `pick_output/jobs/{job_id}/` 디렉터리에 주봉 CSV를 생성하고, Claude CLI에는 긴 CSV 프롬프트를 stdin으로 전달한다.
+성공 응답은 `202 Accepted`이며 `status`는 최초 `pending`이다. 백그라운드 작업은 job별 `pick_output/jobs/{job_id}/` 디렉터리에 주봉 CSV와 모델 프롬프트를 생성한 뒤, 작은 감시 프로세스를 detached로 시작한다. 감시 프로세스는 선택한 모델 CLI에 `prompt.md`를 stdin으로 전달하고, 모델 CLI는 같은 디렉터리의 `analysis.md`에 최종 분석 마크다운을 저장한다. 권한 승인 프롬프트로 파일 저장이 막히지 않도록 Gemini/Codex에는 `--yolo`, Claude에는 `--dangerously-skip-permissions` 옵션을 함께 전달한다. `stdout.log`, `stderr.log`, `model.pid`, `exit_code.txt`는 디버깅과 조기 실패 판정에 사용한다.
 
 ```json
 {
@@ -265,15 +268,17 @@ Base URL: `http://localhost:8000/api`
 }
 ```
 
-프론트엔드는 `GET /jobs/{job_id}`를 1~2초 간격으로 폴링한다. 성공 시 `status=done`과 `analysis_id`가 채워지고, 실패 시 `status=failed`와 `error_message`가 채워진다.
+프론트엔드는 `GET /jobs/{job_id}`를 1~2초 간격으로 폴링한다. pending job 조회 시 백엔드는 job별 lock을 잡고 최신 job 상태를 다시 읽은 뒤 `pick_output/jobs/{job_id}/analysis.md`를 확인한다. 파일이 존재하고 비어 있지 않으면 마크다운을 파싱해 `analyses`에 한 번만 저장한 뒤 `status=done`과 `analysis_id`를 채운다. 모델 CLI가 `analysis.md` 없이 종료되어 `exit_code.txt`가 생기면 즉시 `model_exit` 실패로 전환하고 stdout/stderr 로그 꼬리를 `error_message`에 포함한다. 파싱 또는 저장 실패 시 `status=failed`와 `error_message`를 채우고 원본 마크다운은 `raw_markdown`에 저장한다. `analysis.md`가 생성되지 않은 상태로 기본 30분을 넘기면 `timeout` 실패로 만료한다.
 
 실패 메시지 접두사:
 
 | 단계 | 형식 |
 | --- | --- |
 | `pick` | `pick: {예외 메시지}` 또는 `pick: CSV 파일 생성 안 됨` |
-| `claude` | `claude: 180s 타임아웃 초과`, `claude: 빈 응답 반환`, `claude: {예외 메시지}` |
+| `model_start` | `model_start: {model}: {예외 메시지}` |
+| `model_exit` | `model_exit: {model}: exit_code={code}; analysis.md was not created; ...` |
 | `parser` | `parser: [필드명, ...] 필드 누락. 원본 앞 300자: ...` |
+| `timeout` | `timeout: {model}: analysis.md 생성 시간 초과` |
 | `db` | `db: {예외 메시지}` |
 
 ## 6. CLI
