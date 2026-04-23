@@ -17,6 +17,9 @@ interface PriceLevelsProps {
   currentPrice?: StockPrice;
   entryPrice?: number | null;
   entryPriceMax?: number | null;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
+  refreshError?: boolean;
   targetPrice?: number | null;
   targetPriceMax?: number | null;
   stopLoss?: number | null;
@@ -28,6 +31,9 @@ function PriceLevels({
   currentPrice,
   entryPrice,
   entryPriceMax,
+  isRefreshing = false,
+  onRefresh,
+  refreshError = false,
   targetPrice,
   targetPriceMax,
   stopLoss,
@@ -38,13 +44,25 @@ function PriceLevels({
 
   return (
     <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-6">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-slate-100">가격 레벨</h3>
-        {currentPrice && (
-          <span className="text-xs font-medium text-slate-500">
-            {currentPrice.price_date.slice(5).replace('-', '/')}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {currentPrice && (
+            <span className="text-xs font-medium text-slate-500">
+              {currentPrice.price_date.slice(5).replace('-', '/')}
+            </span>
+          )}
+          {onRefresh ? (
+            <button
+              className="rounded-md border border-amber-200/20 px-2.5 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600 disabled:hover:bg-transparent"
+              disabled={isRefreshing}
+              onClick={onRefresh}
+              type="button"
+            >
+              {isRefreshing ? '갱신 중' : '갱신'}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-5">
@@ -55,6 +73,12 @@ function PriceLevels({
           현재가
         </p>
       </div>
+
+      {refreshError ? (
+        <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-950/20 px-3 py-2 text-xs font-medium text-rose-100">
+          현재가를 갱신하지 못했습니다.
+        </p>
+      ) : null}
 
       <div className="mt-6 space-y-4 border-t border-slate-800/70 pt-5">
         <PriceRow label="목표가" price={targetPrice} priceMax={targetPriceMax} current={current} ticker={priceTicker} tone="target" />

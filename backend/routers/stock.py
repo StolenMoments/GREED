@@ -21,6 +21,16 @@ def get_stock_price(ticker: str, db: Session = Depends(get_db)) -> StockPriceRea
     if cached is not None and cached.price_date >= date.today():
         return cached  # type: ignore[return-value]
 
+    return _fetch_and_store_stock_price(db, ticker)
+
+
+@router.post("/{ticker}/price/refresh", response_model=StockPriceRead)
+def refresh_stock_price(ticker: str, db: Session = Depends(get_db)) -> StockPriceRead:
+    ticker = normalize_ticker(ticker)
+    return _fetch_and_store_stock_price(db, ticker)
+
+
+def _fetch_and_store_stock_price(db: Session, ticker: str) -> StockPriceRead:
     result = fetch_latest_close(ticker)
     if result is None:
         raise HTTPException(status_code=404, detail="가격 데이터를 가져올 수 없습니다.")

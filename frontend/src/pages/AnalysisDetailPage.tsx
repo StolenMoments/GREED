@@ -4,7 +4,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import PriceLevels from '../components/PriceLevels';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
-import { useStockPrice } from '../hooks/useStockPrice';
+import { useRefreshStockPrice, useStockPrice } from '../hooks/useStockPrice';
 import { formatDate } from '../utils/formatDate';
 import { parseMarkdown } from '../utils/parseMarkdown';
 import type { AnalysisSummary } from '../types';
@@ -246,6 +246,7 @@ function AnalysisDetailPage() {
     isLoading: isHistoryLoading,
   } = useHistory(analysisId);
   const { data: stockPrice } = useStockPrice(analysis?.ticker);
+  const refreshStockPrice = useRefreshStockPrice(analysis?.ticker);
   const parsed = useMemo(
     () => (analysis ? parseMarkdown(analysis.markdown) : undefined),
     [analysis],
@@ -338,6 +339,9 @@ function AnalysisDetailPage() {
           currentPrice={stockPrice}
           entryPrice={analysis.entry_price ?? parsed.data.entry_price}
           entryPriceMax={analysis.entry_price_max ?? parsed.data.entry_price_max}
+          isRefreshing={refreshStockPrice.isPending}
+          onRefresh={() => refreshStockPrice.mutate()}
+          refreshError={refreshStockPrice.isError}
           targetPrice={analysis.target_price ?? parsed.data.target_price}
           targetPriceMax={analysis.target_price_max ?? parsed.data.target_price_max}
           stopLoss={analysis.stop_loss ?? parsed.data.stop_loss}
