@@ -456,7 +456,7 @@ function AnalysisListPage() {
                 className="h-10 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
                 id="analysis-query-filter"
                 onChange={(event) => setQueryInput(event.target.value)}
-                placeholder="종목명 또는 티커"
+                placeholder="종목명, 초성 또는 티커"
                 type="search"
                 value={queryInput}
               />

@@ -6,6 +6,8 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
+from backend.korean_search import extract_korean_initials
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_PATH = PROJECT_ROOT / "greed.db"
@@ -40,6 +42,22 @@ def _migrate() -> None:
         for col in ("entry_price_max", "target_price_max", "stop_loss_max"):
             if col not in analyses_cols:
                 conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col} REAL"))
+        if "name_initials" not in analyses_cols:
+            conn.execute(text("ALTER TABLE analyses ADD COLUMN name_initials TEXT NOT NULL DEFAULT ''"))
+        rows = conn.execute(
+            text("SELECT id, name FROM analyses WHERE name_initials IS NULL OR name_initials = ''")
+        ).mappings()
+        for row in rows:
+            conn.execute(
+                text("UPDATE analyses SET name_initials = :name_initials WHERE id = :id"),
+                {
+                    "id": row["id"],
+                    "name_initials": extract_korean_initials(row["name"] or ""),
+                },
+            )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_analyses_name_initials ON analyses(name_initials)")
+        )
         conn.commit()
 
 

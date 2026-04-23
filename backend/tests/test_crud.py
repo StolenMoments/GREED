@@ -25,6 +25,7 @@ from backend.crud import (
     upsert_stock_price,
 )
 from backend.database import Base
+from backend.korean_search import extract_korean_initials, is_korean_initial_query
 from backend.schemas import AnalysisCreate
 from backend.timezone import seoul_now
 
@@ -181,6 +182,57 @@ def test_get_analyses_filters_by_ticker_or_name(db_session: Session) -> None:
     assert [analysis.id for analysis in ticker_matches] == [samsung.id]
     assert [analysis.id for analysis in name_matches] == [samsung.id]
     assert [analysis.id for analysis in blank_query_matches] == [hynix.id, samsung.id]
+
+
+def test_extract_korean_initials() -> None:
+    assert extract_korean_initials("피제이메탈") == "ㅍㅈㅇㅁㅌ"
+    assert extract_korean_initials("삼성전자") == "ㅅㅅㅈㅈ"
+    assert extract_korean_initials("SK Hynix 005930") == ""
+    assert is_korean_initial_query("ㅈㅇㅁ")
+    assert not is_korean_initial_query("ㅈㅇㅁ메")
+
+
+def test_get_analyses_filters_by_korean_initials(db_session: Session) -> None:
+    run = create_run(db_session, memo="initial query filter")
+
+    pjmetal = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="128660",
+            name="피제이메탈",
+            model="claude",
+            markdown="pjmetal markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="claude",
+            markdown="samsung markdown",
+            judgment="보유",
+            trend="횡보",
+            cloud_position="구름 속",
+            ma_alignment="혼조",
+        ),
+    )
+
+    prefix_matches = get_analyses(db_session, q="ㅍㅈㅇ")
+    middle_matches = get_analyses(db_session, q="ㅈㅇㅁ")
+    suffix_matches = get_analyses(db_session, q="ㅇㅁㅌ")
+    non_contiguous_matches = get_analyses(db_session, q="ㅍㅇㅌ")
+
+    assert [analysis.id for analysis in prefix_matches] == [pjmetal.id]
+    assert [analysis.id for analysis in middle_matches] == [pjmetal.id]
+    assert [analysis.id for analysis in suffix_matches] == [pjmetal.id]
+    assert non_contiguous_matches == []
 
 
 def test_get_analyses_page_returns_slice_and_total(db_session: Session) -> None:

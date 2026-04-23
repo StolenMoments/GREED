@@ -33,12 +33,14 @@ class Analysis(Base):
         Index("ix_analyses_run_id", "run_id"),
         Index("ix_analyses_ticker", "ticker"),
         Index("ix_analyses_judgment", "judgment"),
+        Index("ix_analyses_name_initials", "name_initials"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
     ticker: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    name_initials: Mapped[str] = mapped_column(String, default="", nullable=False)
     model: Mapped[str] = mapped_column(String, nullable=False)
     markdown: Mapped[str] = mapped_column(Text, nullable=False)
     judgment: Mapped[str] = mapped_column(String, nullable=False)

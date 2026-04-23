@@ -6,6 +6,7 @@ from typing import Literal, NamedTuple
 from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
+from backend.korean_search import extract_korean_initials, is_korean_initial_query
 from backend.models import Analysis, AnalysisJob, Run, StockPrice
 from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
@@ -93,6 +94,7 @@ def create_analysis(db: Session, obj: AnalysisCreate) -> Analysis:
         run_id=obj.run_id,
         ticker=obj.ticker,
         name=obj.name,
+        name_initials=extract_korean_initials(obj.name),
         model=obj.model,
         markdown=obj.markdown,
         judgment=obj.judgment,
@@ -190,12 +192,13 @@ def _analysis_filter_stmt(
         query = q.strip()
         if query:
             pattern = f"%{_escape_like(query)}%"
-            stmt = stmt.where(
-                or_(
-                    Analysis.ticker.ilike(pattern, escape="\\"),
-                    Analysis.name.ilike(pattern, escape="\\"),
-                )
-            )
+            filters = [
+                Analysis.ticker.ilike(pattern, escape="\\"),
+                Analysis.name.ilike(pattern, escape="\\"),
+            ]
+            if is_korean_initial_query(query):
+                filters.append(Analysis.name_initials.ilike(pattern, escape="\\"))
+            stmt = stmt.where(or_(*filters))
     return stmt
 
 
