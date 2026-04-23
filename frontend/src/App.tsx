@@ -43,9 +43,13 @@ function App() {
     <main className="min-h-screen px-6 py-8 text-slate-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-8">
         <header className="flex items-center justify-between gap-6 border-b border-amber-200/10 pb-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.35em] text-amber-300">
+          <NavLink
+            aria-label="전체 분석 목록으로 이동"
+            className="text-3xl font-semibold uppercase tracking-[0.35em] text-amber-300 transition hover:text-amber-200"
+            to="/analyses"
+          >
             greed
-          </p>
+          </NavLink>
 
           <nav className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-950/70 p-1">
             {navItems.map((item) => (
