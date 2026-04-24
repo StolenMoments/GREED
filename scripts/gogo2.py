@@ -68,10 +68,11 @@ def check_conditions(df,
                      candle_cloud_lookback,
                      ma_cloud_lookback,
                      gc_lookback,
-                     max_cloud_gap=1.25,     
-                     candle_max_lookback=3,  
-                     vol_multiplier=1.5):    
-    
+                     max_cloud_gap=1.25,
+                     candle_max_lookback=3,
+                     vol_multiplier=1.5,
+                     recent_volume_weeks=4):
+
     if len(df) < 150:
         return False, {}
 
@@ -90,6 +91,14 @@ def check_conditions(df,
     end_idx = -1 if today == 4 else -2
     last    = df.iloc[end_idx]
     prev_last = df.iloc[end_idx - 1]
+
+    if recent_volume_weeks > 0:
+        recent_start = end_idx - recent_volume_weeks + 1
+        if len(df) + recent_start < 0:
+            return False, {}
+        recent_slice = df.iloc[recent_start:end_idx + 1] if end_idx != -1 else df.iloc[recent_start:]
+        if (recent_slice['Volume'] <= 0).any():
+            return False, {}
 
     current_cloud_top = max(last['span_a'], last['span_b'])
     current_cloud_bot = min(last['span_a'], last['span_b'])
@@ -362,7 +371,8 @@ def clear_progress():
 # 7. 단일 종목 처리 (스레드 작업 단위)
 # ────────────────────────────────────────
 def process_ticker(ticker, name, market, start, end,
-                   candle_cloud_lookback, ma_cloud_lookback, gc_lookback):
+                   candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
+                   recent_volume_weeks=4):
     try:
         df = fdr.DataReader(ticker, start, end)
 
@@ -379,6 +389,7 @@ def process_ticker(ticker, name, market, start, end,
             candle_cloud_lookback = candle_cloud_lookback,
             ma_cloud_lookback     = ma_cloud_lookback,
             gc_lookback           = gc_lookback,
+            recent_volume_weeks   = recent_volume_weeks,
         )
 
         if hit:
@@ -426,7 +437,8 @@ def screen_market(market, start, end,
                   candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
                   processed_tickers, all_results,
                   batch_size=50, max_workers=8,
-                  file_lock=None, print_lock=None):
+                  file_lock=None, print_lock=None,
+                  recent_volume_weeks=4):
     try:
         tickers, names = get_ticker_list(market)
     except Exception as e:
@@ -457,6 +469,7 @@ def screen_market(market, start, end,
                     ticker, names.get(ticker, ''), market,
                     start, end,
                     candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
+                    recent_volume_weeks,
                 )
                 futures_map[future] = ticker
 
@@ -518,7 +531,8 @@ def screen_all(markets=None,
                weeks_back=160,
                batch_size=50,
                max_workers=8,
-               force_restart=False):
+               force_restart=False,
+               recent_volume_weeks=4):
     if markets is None:
         markets = ['KOSPI', 'KOSDAQ']
 
@@ -550,10 +564,11 @@ def screen_all(markets=None,
             candle, ma, gc,
             processed_tickers,
             all_results,
-            batch_size  = batch_size,
-            max_workers = max_workers,
-            file_lock   = file_lock,
-            print_lock  = print_lock,
+            batch_size          = batch_size,
+            max_workers         = max_workers,
+            file_lock           = file_lock,
+            print_lock          = print_lock,
+            recent_volume_weeks = recent_volume_weeks,
         )
 
     if not all_results:
@@ -605,6 +620,8 @@ def parse_args():
                         help='데이터 조회 기간 (주, 기본: 160)')
     parser.add_argument('--restart', action='store_true',
                         help='당일 진행 상태 무시하고 처음부터 재실행')
+    parser.add_argument('--recent-vol-weeks', type=int, default=4,
+                        help='최근 N 주 모두 volume>0 이어야 통과 (거래정지 필터, 기본 4, 0=비활성)')
     return parser.parse_args()
 
 # ────────────────────────────────────────
@@ -614,14 +631,15 @@ if __name__ == "__main__":
     args = parse_args()
 
     result_df = screen_all(
-        markets         = ['KOSPI', 'KOSDAQ'],
-        candle_override = args.candle,
-        ma_override     = args.ma,
-        gc_override     = args.gc,
-        weeks_back      = args.weeks,
-        batch_size      = args.batch,
-        max_workers     = args.workers,
-        force_restart   = args.restart,
+        markets             = ['KOSPI', 'KOSDAQ'],
+        candle_override     = args.candle,
+        ma_override         = args.ma,
+        gc_override         = args.gc,
+        weeks_back          = args.weeks,
+        batch_size          = args.batch,
+        max_workers         = args.workers,
+        force_restart       = args.restart,
+        recent_volume_weeks = args.recent_vol_weeks,
     )
 
     # ==========================================
