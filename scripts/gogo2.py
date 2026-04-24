@@ -82,7 +82,7 @@ def check_conditions(df,
     df = df.dropna(subset=['span_a', 'span_b', 'ma20', 'ma60', 'ma120', 'volume_ma20'])
 
     scan_candle_lookback = max(candle_cloud_lookback, 8)
-    scanner_min_score = 5
+    scanner_min_score = 7
 
     if len(df) < scan_candle_lookback + 2:
         return False, {}
@@ -111,6 +111,13 @@ def check_conditions(df,
     tenkan_above_kijun = last['tenkan'] > last['kijun']
     ma20_rising = last['ma20'] > prev_last['ma20']
     ma60_rising = last['ma60'] > prev_last['ma60']
+
+    # ── 하드 필터: 단기 추세 회복 필수
+    # 역배열 판정에서 ma60/ma120 관계는 제외 — 턴어라운드 초입 허용
+    if last['ma20'] < last['ma60']:
+        return False, {}
+    if current_close < last['ma60']:
+        return False, {}
 
     # ── Step 1: 캔들 구름 돌파 탐색
     candle_break_idx  = None
@@ -189,7 +196,7 @@ def check_conditions(df,
         current_close > current_cloud_bot,
         signal_vol_ratio_20 >= 1.0,
     ])
-    pre_breakout_type = near_cloud_top and structure_count >= 2
+    pre_breakout_type = near_cloud_top and structure_count >= 3 and tenkan_above_kijun
 
     support_gap = nearest_support_gap_pct(
         current_close,
