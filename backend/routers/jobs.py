@@ -560,8 +560,9 @@ def _trim_csv(csv_text: str, max_data_rows: int) -> str:
 
 
 def _claude_cmd() -> list[str]:
+    model_flag = ["--model", "claude-opus-4-7"]
     if sys.platform != "win32":
-        return ["claude", "--dangerously-skip-permissions", "-p"]
+        return ["claude", "--dangerously-skip-permissions", *model_flag, "-p"]
     # claude.cmd (batch wrapper) doesn't propagate claude.exe exit codes,
     # so batch artifacts ("Active code page", "Terminate batch job") leak into stdout.
     # Call claude.exe directly when available.
@@ -571,8 +572,8 @@ def _claude_cmd() -> list[str]:
     ]
     for exe in candidates:
         if exe.exists():
-            return [str(exe), "--dangerously-skip-permissions", "-p"]
-    return ["claude.cmd", "--dangerously-skip-permissions", "-p"]
+            return [str(exe), "--dangerously-skip-permissions", *model_flag, "-p"]
+    return ["claude.cmd", "--dangerously-skip-permissions", *model_flag, "-p"]
 
 
 def _build_file_output_prompt(system_prompt: str, csv_text: str, analysis_path: Path) -> str:
