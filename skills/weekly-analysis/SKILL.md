@@ -48,6 +48,12 @@ CSV 전체 내용을 읽어 아래 [분석 지침]에 따라 마크다운을 생
   macd       EMA12 - EMA26
   macd_signal        MACD의 9주 EMA 신호선
   macd_hist  macd - macd_signal, 모멘텀 강화/약화 판단 보조 지표
+  ma20_60_cross      ma20/ma60 교차 신호. golden/dead 값만 판단, 빈 값은 신호 없음
+  ma60_120_cross     ma60/ma120 교차 신호. golden/dead 값만 판단, 빈 값은 신호 없음
+  macd_signal_cross  macd/macd_signal 교차 신호. bullish/bearish 값만 판단, 빈 값은 신호 없음
+  rsi_divergence     가격 스윙과 RSI 간 다이버전스. bullish/bearish 값만 판단
+  macd_hist_divergence       가격 스윙과 MACD histogram 간 다이버전스. bullish/bearish 값만 판단
+  strict_divergence  RSI와 MACD histogram이 같은 방향으로 동시에 확인된 엄격 다이버전스
   ichi_conv  일목 전환선 (9주 고저 중간값)
   ichi_base  일목 기준선 (26주 고저 중간값)
   ichi_lead1 선행스팬A (전환+기준)/2, 26주 앞에 기록
@@ -77,6 +83,9 @@ CSV 전체 내용을 읽어 아래 [분석 지침]에 따라 마크다운을 생
   ATR: 손절 폭과 진입 가격대가 현재 변동성 대비 과도하게 좁거나 넓지 않은지 판단
   RSI: 70 이상은 과열, 30 이하는 침체 가능성으로 보되 추세와 함께 해석
   MACD: macd가 macd_signal 위이고 macd_hist가 증가하면 모멘텀 강화, 반대는 약화로 해석
+  교차 신호: golden/bullish는 추세 전환 또는 강화 근거, dead/bearish는 매수 보류 또는 리스크 근거
+  다이버전스: strict_divergence=bullish는 하락 둔화/반등 가능성 보조 근거로만 사용하고, 구름/MA 구조가 약하면 단독 매수 근거로 쓰지 않음
+  다이버전스: strict_divergence=bearish는 상승 둔화/조정 가능성 및 손절 주의 근거로 사용
 
 NaN 처리: NaN 구간 지표는 판단에서 제외하고 명시.
 

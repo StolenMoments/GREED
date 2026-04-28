@@ -25,6 +25,15 @@ NEW_INDICATOR_COLS = [
     "macd_hist",
 ]
 
+SIGNAL_COLS = [
+    "ma20_60_cross",
+    "ma60_120_cross",
+    "macd_signal_cross",
+    "rsi_divergence",
+    "macd_hist_divergence",
+    "strict_divergence",
+]
+
 
 def make_weekly(rows: int = 90) -> pd.DataFrame:
     index = pd.date_range("2024-01-01", periods=rows, freq="W-MON")
@@ -47,6 +56,7 @@ def add_all_indicators(module, df: pd.DataFrame) -> pd.DataFrame:
     df = module.add_liquidity_indicators(df)
     df = module.add_volatility_indicators(df)
     df = module.add_momentum_indicators(df)
+    df = module.add_signal_indicators(df)
     df = module.add_ichimoku(df)
     df = module.add_ichimoku_derived_indicators(df)
     return df
@@ -75,9 +85,9 @@ def test_pick_csv_output_includes_new_indicators_and_empty_future_values(tmp_pat
     saved_future_rows = saved[saved["open"].isna()]
 
     assert len(future_rows) == 26
-    assert future_rows[NEW_INDICATOR_COLS].isna().all().all()
-    assert saved_future_rows[NEW_INDICATOR_COLS].isna().all().all()
-    for column in NEW_INDICATOR_COLS:
+    assert future_rows[NEW_INDICATOR_COLS + SIGNAL_COLS].isna().all().all()
+    assert saved_future_rows[NEW_INDICATOR_COLS + SIGNAL_COLS].isna().all().all()
+    for column in NEW_INDICATOR_COLS + SIGNAL_COLS:
         assert column in saved.columns
 
 
@@ -88,3 +98,79 @@ def test_pick_us_adds_same_indicator_columns() -> None:
     for column in NEW_INDICATOR_COLS:
         assert column in df.columns
         assert pd.notna(last[column])
+
+    for column in SIGNAL_COLS:
+        assert column in df.columns
+
+
+def make_signal_frame(rows: int = 60) -> pd.DataFrame:
+    index = pd.date_range("2024-01-01", periods=rows, freq="W-MON")
+    return pd.DataFrame(
+        {
+            "low": [100.0] * rows,
+            "high": [110.0] * rows,
+            "ma20": [100.0] * rows,
+            "ma60": [100.0] * rows,
+            "ma120": [100.0] * rows,
+            "macd": [0.0] * rows,
+            "macd_signal": [0.0] * rows,
+            "rsi14": [50.0] * rows,
+            "macd_hist": [0.0] * rows,
+        },
+        index=index,
+    )
+
+
+def test_signal_indicators_mark_cross_events() -> None:
+    df = make_signal_frame()
+    df.loc[df.index[10], ["ma20", "ma60"]] = [99.0, 100.0]
+    df.loc[df.index[11], ["ma20", "ma60"]] = [101.0, 100.0]
+    df.loc[df.index[20], ["ma60", "ma120"]] = [101.0, 100.0]
+    df.loc[df.index[21], ["ma60", "ma120"]] = [99.0, 100.0]
+    df.loc[df.index[30], ["macd", "macd_signal"]] = [-1.0, 0.0]
+    df.loc[df.index[31], ["macd", "macd_signal"]] = [1.0, 0.0]
+    df.loc[df.index[40], ["macd", "macd_signal"]] = [1.0, 0.0]
+    df.loc[df.index[41], ["macd", "macd_signal"]] = [-1.0, 0.0]
+
+    df = pick.add_signal_indicators(df)
+
+    assert df.loc[df.index[11], "ma20_60_cross"] == "golden"
+    assert df.loc[df.index[21], "ma60_120_cross"] == "dead"
+    assert df.loc[df.index[31], "macd_signal_cross"] == "bullish"
+    assert df.loc[df.index[41], "macd_signal_cross"] == "bearish"
+
+
+def test_signal_indicators_mark_strict_bullish_divergence() -> None:
+    df = make_signal_frame()
+    df.loc[df.index[10], ["low", "rsi14", "macd_hist"]] = [90.0, 30.0, -2.0]
+    df.loc[df.index[20], ["low", "rsi14", "macd_hist"]] = [80.0, 35.0, -1.0]
+
+    df = pick.add_signal_indicators(df)
+
+    assert df.loc[df.index[20], "rsi_divergence"] == "bullish"
+    assert df.loc[df.index[20], "macd_hist_divergence"] == "bullish"
+    assert df.loc[df.index[20], "strict_divergence"] == "bullish"
+
+
+def test_signal_indicators_require_both_momentum_divergences_for_strict_signal() -> None:
+    df = make_signal_frame()
+    df.loc[df.index[10], ["low", "rsi14", "macd_hist"]] = [90.0, 30.0, -2.0]
+    df.loc[df.index[20], ["low", "rsi14", "macd_hist"]] = [80.0, 35.0, -3.0]
+
+    df = pick.add_signal_indicators(df)
+
+    assert df.loc[df.index[20], "rsi_divergence"] == "bullish"
+    assert pd.isna(df.loc[df.index[20], "macd_hist_divergence"])
+    assert pd.isna(df.loc[df.index[20], "strict_divergence"])
+
+
+def test_signal_indicators_mark_strict_bearish_divergence_for_us_module() -> None:
+    df = make_signal_frame()
+    df.loc[df.index[10], ["high", "rsi14", "macd_hist"]] = [120.0, 70.0, 2.0]
+    df.loc[df.index[20], ["high", "rsi14", "macd_hist"]] = [130.0, 65.0, 1.0]
+
+    df = pick_us.add_signal_indicators(df)
+
+    assert df.loc[df.index[20], "rsi_divergence"] == "bearish"
+    assert df.loc[df.index[20], "macd_hist_divergence"] == "bearish"
+    assert df.loc[df.index[20], "strict_divergence"] == "bearish"

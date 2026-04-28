@@ -2,7 +2,7 @@
 US weekly stock picker.
 
 Fetches daily data for a US ticker and writes weekly OHLCV data with
-MA20/60/120, ATR14, RSI14, MACD, and Ichimoku indicators to CSV.
+MA20/60/120, ATR14, RSI14, MACD, cross/divergence signals, and Ichimoku indicators to CSV.
 
 Usage:
     python scripts/pick_us.py AAPL
@@ -78,6 +78,93 @@ def add_momentum_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["macd_signal"] = df["macd"].ewm(span=9, adjust=False, min_periods=9).mean().round(2)
     df["macd_hist"] = (df["macd"] - df["macd_signal"]).round(2)
     return df
+
+
+def add_signal_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    df["ma20_60_cross"] = _cross_signal(df["ma20"], df["ma60"], "golden", "dead")
+    df["ma60_120_cross"] = _cross_signal(df["ma60"], df["ma120"], "golden", "dead")
+    df["macd_signal_cross"] = _cross_signal(df["macd"], df["macd_signal"], "bullish", "bearish")
+    df["rsi_divergence"] = pd.NA
+    df["macd_hist_divergence"] = pd.NA
+    df["strict_divergence"] = pd.NA
+    _add_divergence_signals(df)
+    return df
+
+
+def _cross_signal(short: pd.Series, long: pd.Series, up_label: str, down_label: str) -> pd.Series:
+    signal = pd.Series(pd.NA, index=short.index, dtype="object")
+    prev_short = short.shift(1)
+    prev_long = long.shift(1)
+    valid = short.notna() & long.notna() & prev_short.notna() & prev_long.notna()
+
+    signal.loc[valid & (prev_short <= prev_long) & (short > long)] = up_label
+    signal.loc[valid & (prev_short >= prev_long) & (short < long)] = down_label
+    return signal
+
+
+def _add_divergence_signals(df: pd.DataFrame, lookback: int = 52, wing: int = 2) -> None:
+    low_swings = _swing_points(df["low"], "low", wing)
+    high_swings = _swing_points(df["high"], "high", wing)
+
+    _mark_divergence(df, low_swings, "bullish", lookback)
+    _mark_divergence(df, high_swings, "bearish", lookback)
+
+
+def _swing_points(values: pd.Series, kind: str, wing: int) -> list[int]:
+    points: list[int] = []
+    for pos in range(wing, len(values) - wing):
+        value = values.iloc[pos]
+        if pd.isna(value):
+            continue
+
+        window = values.iloc[pos - wing : pos + wing + 1]
+        if window.isna().any():
+            continue
+
+        others = window.drop(window.index[wing])
+        if kind == "low" and value < others.min():
+            points.append(pos)
+        elif kind == "high" and value > others.max():
+            points.append(pos)
+    return points
+
+
+def _mark_divergence(df: pd.DataFrame, swing_points: list[int], direction: str, lookback: int) -> None:
+    price_col = "low" if direction == "bullish" else "high"
+    for current in swing_points:
+        previous_candidates = [pos for pos in swing_points if 0 < current - pos <= lookback]
+        if not previous_candidates:
+            continue
+
+        previous = previous_candidates[-1]
+        price_current = df[price_col].iloc[current]
+        price_previous = df[price_col].iloc[previous]
+        rsi_current = df["rsi14"].iloc[current]
+        rsi_previous = df["rsi14"].iloc[previous]
+        hist_current = df["macd_hist"].iloc[current]
+        hist_previous = df["macd_hist"].iloc[previous]
+
+        values = [price_current, price_previous, rsi_current, rsi_previous, hist_current, hist_previous]
+        if any(pd.isna(value) for value in values):
+            continue
+
+        if direction == "bullish":
+            price_condition = price_current < price_previous
+            rsi_condition = rsi_current > rsi_previous
+            hist_condition = hist_current > hist_previous
+        else:
+            price_condition = price_current > price_previous
+            rsi_condition = rsi_current < rsi_previous
+            hist_condition = hist_current < hist_previous
+
+        if not price_condition:
+            continue
+        if rsi_condition:
+            df.iloc[current, df.columns.get_loc("rsi_divergence")] = direction
+        if hist_condition:
+            df.iloc[current, df.columns.get_loc("macd_hist_divergence")] = direction
+        if rsi_condition and hist_condition:
+            df.iloc[current, df.columns.get_loc("strict_divergence")] = direction
 
 
 def add_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
@@ -249,6 +336,8 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
         "trading_value", "volume_ma20", "volume_ratio_20",
         "ma20", "ma60", "ma120",
         "atr14", "atr14_pct", "rsi14", "macd", "macd_signal", "macd_hist",
+        "ma20_60_cross", "ma60_120_cross", "macd_signal_cross",
+        "rsi_divergence", "macd_hist_divergence", "strict_divergence",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
         "cloud_top", "cloud_bottom", "cloud_thickness",
         "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
@@ -332,6 +421,7 @@ def run_pick_us(
     df = add_liquidity_indicators(df)
     df = add_volatility_indicators(df)
     df = add_momentum_indicators(df)
+    df = add_signal_indicators(df)
     df = add_ichimoku(df)
     df = add_ichimoku_derived_indicators(df)
 
