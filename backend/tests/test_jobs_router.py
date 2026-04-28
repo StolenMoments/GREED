@@ -186,6 +186,59 @@ def test_list_jobs_returns_run_jobs_newest_first(client: TestClient, test_db: se
     assert other_run_job_id not in [job["id"] for job in body]
 
 
+def test_list_jobs_filters_by_status(client: TestClient, test_db: sessionmaker[Session]) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="status filter")
+        pending_job = crud.create_job(db, ticker="005930", run_id=run.id)
+        failed_job = crud.create_job(db, ticker="000660", run_id=run.id)
+        done_job = crud.create_job(db, ticker="035420", run_id=run.id)
+        failed_job.status = "failed"
+        done_job.status = "done"
+        db.commit()
+        pending_job_id = pending_job.id
+        failed_job_id = failed_job.id
+        done_job_id = done_job.id
+
+    response = client.get("/api/jobs?status=pending&status=failed")
+
+    assert response.status_code == 200
+    job_ids = [job["id"] for job in response.json()]
+    assert job_ids == [failed_job_id, pending_job_id]
+    assert done_job_id not in job_ids
+
+
+def test_list_jobs_filters_by_run_and_status(client: TestClient, test_db: sessionmaker[Session]) -> None:
+    with test_db() as db:
+        first_run = crud.create_run(db, memo="first")
+        second_run = crud.create_run(db, memo="second")
+        first_failed_job = crud.create_job(db, ticker="005930", run_id=first_run.id)
+        first_done_job = crud.create_job(db, ticker="000660", run_id=first_run.id)
+        second_failed_job = crud.create_job(db, ticker="035420", run_id=second_run.id)
+        first_failed_job.status = "failed"
+        first_done_job.status = "done"
+        second_failed_job.status = "failed"
+        db.commit()
+        first_run_id = first_run.id
+        first_failed_job_id = first_failed_job.id
+        first_done_job_id = first_done_job.id
+        second_failed_job_id = second_failed_job.id
+
+    response = client.get(f"/api/jobs?run_id={first_run_id}&status=failed")
+
+    assert response.status_code == 200
+    job_ids = [job["id"] for job in response.json()]
+    assert job_ids == [first_failed_job_id]
+    assert first_done_job_id not in job_ids
+    assert second_failed_job_id not in job_ids
+
+
+def test_list_jobs_rejects_invalid_status(client: TestClient) -> None:
+    response = client.get("/api/jobs?status=running")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid job status: running"}
+
+
 def test_list_jobs_returns_404_when_run_missing(client: TestClient) -> None:
     response = client.get("/api/jobs?run_id=99999")
 
@@ -393,6 +446,58 @@ def test_list_jobs_finalizes_pending_analysis_file(
         assert analysis is not None
         assert analysis.name == "나이스정보통신"
         assert analysis.model == "codex-cli"
+
+
+def test_list_jobs_pending_filter_excludes_job_finalized_to_done(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pending filter after finalize")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+        job_id = job.id
+
+    output_dir = tmp_path / "jobs" / str(job_id)
+    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(VALID_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+
+    response = client.get("/api/jobs?status=pending")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job_id)
+        assert saved_job is not None
+        assert saved_job.status == "done"
+
+
+def test_list_jobs_done_filter_includes_job_finalized_from_pending(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="done filter after finalize")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+        job_id = job.id
+
+    output_dir = tmp_path / "jobs" / str(job_id)
+    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(VALID_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+
+    response = client.get("/api/jobs?status=done")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [job["id"] for job in body] == [job_id]
+    assert body[0]["status"] == "done"
+    assert body[0]["analysis_id"] is not None
 
 
 def test_stock_name_from_csv_filename_allows_names_with_underscores() -> None:
@@ -642,7 +747,10 @@ def test_run_claude_writes_prompt_file_and_starts_popen(
     assert "005930" in prompt
     assert str(analysis_path.resolve()) in prompt
     payload = json.loads(captured["args"][3])
-    assert payload["cmd"][1:3] == ["--dangerously-skip-permissions", "-p"]
+    assert "--dangerously-skip-permissions" in payload["cmd"]
+    assert "--model" in payload["cmd"]
+    assert "claude-opus-4-7" in payload["cmd"]
+    assert "-p" in payload["cmd"]
     assert payload["prompt_path"] == str(prompt_path.resolve())
     assert payload["stdout_path"] == str(stdout_path.resolve())
     assert payload["stderr_path"] == str(stderr_path.resolve())

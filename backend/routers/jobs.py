@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from backend.crud import (
@@ -155,6 +155,7 @@ _FINALIZE_LOCKS: dict[int, Lock] = {}
 _FINALIZE_LOCKS_GUARD = Lock()
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+VALID_JOB_STATUSES = {"pending", "done", "failed"}
 
 
 @router.post("/trigger-analysis", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
@@ -173,10 +174,29 @@ def trigger_analysis_endpoint(
 
 
 @router.get("", response_model=list[JobRead])
-def list_jobs_endpoint(run_id: int | None = None, db: Session = Depends(get_db)) -> list[JobRead]:
+def list_jobs_endpoint(
+    run_id: int | None = None,
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+) -> list[JobRead]:
     if run_id is not None and get_run(db, run_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
-    return [_finalize_pending_job_if_ready(db, job) for job in get_jobs(db, run_id=run_id)]
+    if status_filter:
+        invalid_statuses = sorted(set(status_filter) - VALID_JOB_STATUSES)
+        if invalid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid job status: {', '.join(invalid_statuses)}",
+            )
+    finalized_jobs = [
+        _finalize_pending_job_if_ready(db, job)
+        for job in get_jobs(db, run_id=run_id)
+    ]
+    if not status_filter:
+        return finalized_jobs
+
+    allowed_statuses = set(status_filter)
+    return [job for job in finalized_jobs if job.status in allowed_statuses]
 
 
 @router.get("/{job_id}", response_model=JobRead)

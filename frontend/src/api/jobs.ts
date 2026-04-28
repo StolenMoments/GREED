@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Job, JobTriggerRequest } from '../types';
+import type { Job, JobStatus, JobTriggerRequest } from '../types';
 
 export async function triggerAnalysis(
   payload: JobTriggerRequest,
@@ -13,9 +13,18 @@ export async function fetchJob(jobId: number): Promise<Job> {
   return response.data;
 }
 
-export async function fetchJobs(runId?: number): Promise<Job[]> {
+export async function fetchJobs(
+  runId?: number,
+  statuses?: JobStatus[],
+): Promise<Job[]> {
+  const params = new URLSearchParams();
+  if (runId !== undefined) {
+    params.set('run_id', String(runId));
+  }
+  statuses?.forEach((status) => params.append('status', status));
+
   const response = await apiClient.get<Job[]>('/jobs', {
-    params: runId === undefined ? undefined : { run_id: runId },
+    params,
   });
   return response.data;
 }

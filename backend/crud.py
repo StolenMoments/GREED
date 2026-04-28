@@ -380,10 +380,16 @@ def get_job(db: Session, job_id: int) -> AnalysisJob | None:
     return db.get(AnalysisJob, job_id)
 
 
-def get_jobs(db: Session, run_id: int | None = None) -> list[AnalysisJob]:
+def get_jobs(
+    db: Session,
+    run_id: int | None = None,
+    statuses: list[str] | None = None,
+) -> list[AnalysisJob]:
     stmt = select(AnalysisJob)
     if run_id is not None:
         stmt = stmt.where(AnalysisJob.run_id == run_id)
+    if statuses:
+        stmt = stmt.where(AnalysisJob.status.in_(statuses))
     return list(db.scalars(stmt.order_by(*JOB_ORDER_BY)).all())
 
 
