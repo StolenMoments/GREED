@@ -2,6 +2,7 @@ import type { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { usePendingJobs } from '../contexts/PendingJobsContext';
 import { useJobPolling, useRunJobs, useTriggerAnalysis } from '../hooks/useJobs';
 import type { AnalysisModel } from '../types';
 
@@ -38,6 +39,7 @@ function TickerAnalysisForm({
   const jobQuery = useJobPolling(trackedJobId);
   const notifiedAnalysisIdRef = useRef<number | null>(null);
 
+  const { addPendingJob } = usePendingJobs();
   const trimmedTicker = ticker.trim();
   const job = jobQuery.data ?? latestRunJob;
   const isPending = triggerAnalysis.isPending || job?.status === 'pending';
@@ -100,6 +102,7 @@ function TickerAnalysisForm({
       });
       setDismissedJobId(null);
       setJobId(createdJob.id);
+      addPendingJob(createdJob.id);
       notifiedAnalysisIdRef.current = null;
     } catch (error) {
       setJobId(null);
@@ -125,6 +128,7 @@ function TickerAnalysisForm({
       });
       setDismissedJobId(null);
       setJobId(createdJob.id);
+      addPendingJob(createdJob.id);
       notifiedAnalysisIdRef.current = null;
     } catch (error) {
       setJobId(null);
