@@ -1,7 +1,7 @@
 """
 weekly_stock.py
 종목코드를 입력받아 5년치 주봉 데이터를 CSV로 추출합니다.
-포함 지표: MA20/60/120, 일목균형표 (전환/기준/선행A,B/후행)
+포함 지표: MA20/60/120, ATR14, RSI14, MACD, 일목균형표 (전환/기준/선행A,B/후행)
 
 사용법:
     python pick.py 005930
@@ -33,6 +33,44 @@ def add_liquidity_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["trading_value"] = df["trading_value"].round(0)
     df["volume_ma20"] = df["volume"].rolling(20).mean().round(0)
     df["volume_ratio_20"] = (df["volume"] / df["volume_ma20"].where(df["volume_ma20"] != 0)).round(2)
+    return df
+
+
+def add_volatility_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    prev_close = df["close"].shift(1)
+    true_range = pd.concat(
+        [
+            df["high"] - df["low"],
+            (df["high"] - prev_close).abs(),
+            (df["low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    df["atr14"] = true_range.rolling(14).mean().round(0)
+    df["atr14_pct"] = (df["atr14"] / df["close"].where(df["close"] != 0) * 100).round(2)
+    return df
+
+
+def add_momentum_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    close = df["close"]
+    delta = close.diff()
+    gains = delta.clip(lower=0)
+    losses = -delta.clip(upper=0)
+
+    avg_gain = gains.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    avg_loss = losses.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    relative_strength = avg_gain / avg_loss.where(avg_loss != 0)
+    rsi = 100 - (100 / (1 + relative_strength))
+    rsi = rsi.mask((avg_loss == 0) & (avg_gain > 0), 100)
+    rsi = rsi.mask((avg_loss == 0) & (avg_gain == 0), 50)
+    df["rsi14"] = rsi.round(2)
+
+    ema12 = close.ewm(span=12, adjust=False, min_periods=12).mean()
+    ema26 = close.ewm(span=26, adjust=False, min_periods=26).mean()
+    df["macd"] = (ema12 - ema26).round(2)
+    df["macd_signal"] = df["macd"].ewm(span=9, adjust=False, min_periods=9).mean().round(2)
+    df["macd_hist"] = (df["macd"] - df["macd_signal"]).round(2)
     return df
 
 
@@ -210,6 +248,7 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
         "open", "high", "low", "close", "volume",
         "trading_value", "volume_ma20", "volume_ratio_20",
         "ma20", "ma60", "ma120",
+        "atr14", "atr14_pct", "rsi14", "macd", "macd_signal", "macd_hist",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
         "cloud_top", "cloud_bottom", "cloud_thickness",
         "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
@@ -219,11 +258,12 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
         "open", "high", "low", "close", "volume",
         "trading_value", "volume_ma20",
         "ma20", "ma60", "ma120",
+        "atr14",
         "ichi_conv", "ichi_base", "ichi_lead1", "ichi_lead2", "ichi_lag",
         "cloud_top", "cloud_bottom", "cloud_thickness",
     ]
     ratio_cols = [
-        "volume_ratio_20",
+        "volume_ratio_20", "atr14_pct", "rsi14", "macd", "macd_signal", "macd_hist",
         "cloud_thickness_pct", "close_vs_cloud_top_pct", "conv_base_gap_pct",
     ]
     for col in integer_cols:
@@ -258,6 +298,9 @@ def print_summary(df: pd.DataFrame, ticker: str, stock_name: str, filepath: Path
     print(f"    MA20    : {last['ma20']:,.0f}" if pd.notna(last["ma20"])  else "    MA20    : -")
     print(f"    MA60    : {last['ma60']:,.0f}" if pd.notna(last["ma60"])  else "    MA60    : -")
     print(f"    MA120   : {last['ma120']:,.0f}" if pd.notna(last["ma120"]) else "    MA120   : -")
+    print(f"    ATR14   : {last['atr14']:,.0f}" if pd.notna(last["atr14"]) else "    ATR14   : -")
+    print(f"    RSI14   : {last['rsi14']:,.2f}" if pd.notna(last["rsi14"]) else "    RSI14   : -")
+    print(f"    MACD    : {last['macd']:,.2f}" if pd.notna(last["macd"]) else "    MACD    : -")
     print(f"    전환선  : {last['ichi_conv']:,.0f}" if pd.notna(last["ichi_conv"]) else "    전환선  : -")
     print(f"    기준선  : {last['ichi_base']:,.0f}" if pd.notna(last["ichi_base"]) else "    기준선  : -")
     print()
@@ -279,6 +322,8 @@ def run_pick(ticker: str, years: int = 5, output_dir: str = "./output", no_futur
     df = fetch_weekly(ticker, years)
     df = add_moving_averages(df)
     df = add_liquidity_indicators(df)
+    df = add_volatility_indicators(df)
+    df = add_momentum_indicators(df)
     df = add_ichimoku(df)
     df = add_ichimoku_derived_indicators(df)
 
