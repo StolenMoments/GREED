@@ -2,12 +2,20 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 interface MarkdownRendererProps {
+  bodySize?: 'sm' | 'base';
   markdown: string;
 }
 
-function MarkdownRenderer({ markdown }: MarkdownRendererProps) {
+const bodySizeClasses = {
+  sm: 'text-sm leading-6',
+  base: 'text-base leading-7',
+};
+
+function MarkdownRenderer({ bodySize = 'sm', markdown }: MarkdownRendererProps) {
   return (
-    <div className="max-w-none text-sm leading-6 text-slate-300">
+    <div
+      className={`max-w-none ${bodySizeClasses[bodySize]} text-slate-300`}
+    >
       <ReactMarkdown
         components={{
           h1: ({ children }) => (

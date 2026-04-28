@@ -331,7 +331,7 @@ function AnalysisDetailPage() {
         </div>
 
         <div className="px-6 py-6">
-          <MarkdownRenderer markdown={analysis.markdown} />
+          <MarkdownRenderer bodySize="base" markdown={analysis.markdown} />
         </div>
       </article>
 
