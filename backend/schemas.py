@@ -126,3 +126,12 @@ class StockPriceRead(BaseModel):
     price_date: date
     close_price: float
     fetched_at: datetime
+
+
+class StockSummaryRead(BaseModel):
+    ticker: str
+    name: str
+    buy_count: int
+    hold_count: int
+    sell_count: int
+    latest_at: datetime

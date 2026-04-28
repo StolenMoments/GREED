@@ -121,3 +121,12 @@ export interface StockPrice {
   close_price: number;
   fetched_at: string;
 }
+
+export interface StockSummary {
+  ticker: string;
+  name: string;
+  buy_count: number;
+  hold_count: number;
+  sell_count: number;
+  latest_at: string;
+}
