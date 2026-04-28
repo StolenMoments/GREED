@@ -46,7 +46,8 @@ function QuickAnalysisLauncher({
   const notifiedAnalysisIdRef = useRef<number | null>(null);
   const { addPendingJob } = usePendingJobs();
   const job = jobQuery.data;
-  const isPending = triggerAnalysis.isPending || job?.status === 'pending';
+  const isJobPending = job?.status === 'pending';
+  const isPending = triggerAnalysis.isPending || isJobPending;
   const hasFailure = job?.status === 'failed' || serverError || jobQuery.isError;
   const shouldShowStatus =
     Boolean(job) || Boolean(serverError) || jobQuery.isError || triggerAnalysis.isPending;
@@ -142,7 +143,7 @@ function QuickAnalysisLauncher({
       <div
         className={[
           'mt-4',
-          isPending ? 'pointer-events-none opacity-60' : '',
+          triggerAnalysis.isPending ? 'pointer-events-none opacity-60' : '',
         ].join(' ')}
       >
         <span className="mb-2 block text-xs font-semibold text-slate-300">
@@ -174,11 +175,11 @@ function QuickAnalysisLauncher({
 
       <button
         className="mt-4 min-h-11 w-full rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transform-none"
-        disabled={isPending}
+        disabled={triggerAnalysis.isPending}
         onClick={() => void startAnalysis()}
         type="button"
       >
-        {isPending ? '분석 중' : '분석 시작'}
+        {triggerAnalysis.isPending ? '요청 중' : '분석 시작'}
       </button>
 
       {shouldShowStatus ? (

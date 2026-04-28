@@ -37,8 +37,9 @@ function TickerAnalysisForm({
   const { addPendingJob } = usePendingJobs();
   const trimmedTicker = ticker.trim();
   const job = jobQuery.data ?? latestRunJob;
-  const isPending = triggerAnalysis.isPending || job?.status === 'pending';
-  const isSubmitDisabled = isPending;
+  const isJobPending = job?.status === 'pending';
+  const isPending = triggerAnalysis.isPending || isJobPending;
+  const isSubmitDisabled = triggerAnalysis.isPending;
 
   const statusTone = useMemo(() => {
     if (job?.status === 'done') {
@@ -150,7 +151,7 @@ function TickerAnalysisForm({
           className="flex w-full flex-col gap-3 sm:max-w-md"
           onSubmit={(event) => void handleSubmit(event)}
         >
-          <div className={isPending ? 'pointer-events-none opacity-60' : ''}>
+          <div className={triggerAnalysis.isPending ? 'pointer-events-none opacity-60' : ''}>
             <span className="mb-2 block text-sm font-semibold text-slate-200">분석 엔진</span>
             <div className="grid grid-cols-3 gap-2">
               {MODEL_OPTIONS.map((opt) => (
@@ -183,7 +184,7 @@ function TickerAnalysisForm({
                     ? 'border-rose-300/60'
                     : 'border-slate-700',
                 ].join(' ')}
-                disabled={isPending}
+                disabled={triggerAnalysis.isPending}
                 onChange={(event) => setTicker(event.target.value.toUpperCase())}
                 placeholder="005930 / AAPL"
                 value={ticker}
@@ -193,7 +194,7 @@ function TickerAnalysisForm({
                 disabled={isSubmitDisabled}
                 type="submit"
               >
-                {isPending ? '분석 중' : '분석 시작'}
+                {triggerAnalysis.isPending ? '요청 중' : '분석 시작'}
               </button>
             </div>
           </label>
