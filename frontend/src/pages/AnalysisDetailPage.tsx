@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import PriceLevels from '../components/PriceLevels';
+import QuickAnalysisLauncher from '../components/QuickAnalysisLauncher';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
 import { useAnalysis, useHistory } from '../hooks/useAnalyses';
 import { useRefreshStockPrice, useStockPrice } from '../hooks/useStockPrice';
@@ -244,6 +245,7 @@ function AnalysisDetailPage() {
     data: history = [],
     isError: isHistoryError,
     isLoading: isHistoryLoading,
+    refetch: refetchHistory,
   } = useHistory(analysisId);
   const { data: stockPrice } = useStockPrice(analysis?.ticker);
   const refreshStockPrice = useRefreshStockPrice(analysis?.ticker);
@@ -334,6 +336,12 @@ function AnalysisDetailPage() {
       </article>
 
       <div className="flex flex-col gap-4">
+        <QuickAnalysisLauncher
+          defaultModel={analysis.model}
+          onAnalysisCreated={() => void refetchHistory()}
+          runId={analysis.run_id}
+          ticker={analysis.ticker}
+        />
         <PriceLevels
           ticker={analysis.ticker}
           currentPrice={stockPrice}

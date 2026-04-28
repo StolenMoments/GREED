@@ -2,6 +2,7 @@ import type { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { MODEL_OPTIONS } from '../constants/analysisModels';
 import { usePendingJobs } from '../contexts/PendingJobsContext';
 import { useJobPolling, useRunJobs, useTriggerAnalysis } from '../hooks/useJobs';
 import type { AnalysisModel } from '../types';
@@ -10,12 +11,6 @@ interface TickerAnalysisFormProps {
   runId: number;
   onAnalysisCreated?: () => void;
 }
-
-const MODEL_OPTIONS = [
-  { id: 'claude' as AnalysisModel, label: 'Claude', provider: 'Anthropic' },
-  { id: 'codex'  as AnalysisModel, label: 'Codex',  provider: 'OpenAI'    },
-  { id: 'gemini' as AnalysisModel, label: 'Gemini', provider: 'Google'    },
-] as const;
 
 function getAxiosMessage(error: unknown) {
   const axiosError = error as AxiosError<{ detail?: string }>;
