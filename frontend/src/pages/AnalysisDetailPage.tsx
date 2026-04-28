@@ -336,12 +336,6 @@ function AnalysisDetailPage() {
       </article>
 
       <div className="flex flex-col gap-4">
-        <QuickAnalysisLauncher
-          defaultModel={analysis.model}
-          onAnalysisCreated={() => void refetchHistory()}
-          runId={analysis.run_id}
-          ticker={analysis.ticker}
-        />
         <PriceLevels
           ticker={analysis.ticker}
           currentPrice={stockPrice}
@@ -354,6 +348,12 @@ function AnalysisDetailPage() {
           targetPriceMax={analysis.target_price_max ?? parsed.data.target_price_max}
           stopLoss={analysis.stop_loss ?? parsed.data.stop_loss}
           stopLossMax={analysis.stop_loss_max ?? parsed.data.stop_loss_max}
+        />
+        <QuickAnalysisLauncher
+          defaultModel={analysis.model}
+          onAnalysisCreated={() => void refetchHistory()}
+          runId={analysis.run_id}
+          ticker={analysis.ticker}
         />
         <HistoryList
           activeId={analysis.id}
