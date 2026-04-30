@@ -131,6 +131,7 @@ class StockPriceRead(BaseModel):
 class StockSummaryRead(BaseModel):
     ticker: str
     name: str
+    name_initials: str
     buy_count: int
     hold_count: int
     sell_count: int

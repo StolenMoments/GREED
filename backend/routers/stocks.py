@@ -17,12 +17,13 @@ def stock_summary(db: Session = Depends(get_db)) -> list[StockSummaryRead]:
         db.query(
             Analysis.ticker,
             Analysis.name,
+            Analysis.name_initials,
             func.sum(case((Analysis.judgment == "매수", 1), else_=0)).label("buy_count"),
             func.sum(case((Analysis.judgment == "홀드", 1), else_=0)).label("hold_count"),
             func.sum(case((Analysis.judgment == "매도", 1), else_=0)).label("sell_count"),
             func.max(Analysis.created_at).label("latest_at"),
         )
-        .group_by(Analysis.ticker, Analysis.name)
+        .group_by(Analysis.ticker, Analysis.name, Analysis.name_initials)
         .order_by(Analysis.name)
         .all()
     )
@@ -30,6 +31,7 @@ def stock_summary(db: Session = Depends(get_db)) -> list[StockSummaryRead]:
         StockSummaryRead(
             ticker=row.ticker,
             name=row.name,
+            name_initials=row.name_initials,
             buy_count=row.buy_count,
             hold_count=row.hold_count,
             sell_count=row.sell_count,

@@ -749,7 +749,7 @@ def test_run_claude_writes_prompt_file_and_starts_popen(
     payload = json.loads(captured["args"][3])
     assert "--dangerously-skip-permissions" in payload["cmd"]
     assert "--model" in payload["cmd"]
-    assert "claude-opus-4-7" in payload["cmd"]
+    assert "sonnet" in payload["cmd"]
     assert "-p" in payload["cmd"]
     assert payload["prompt_path"] == str(prompt_path.resolve())
     assert payload["stdout_path"] == str(stdout_path.resolve())

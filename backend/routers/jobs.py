@@ -607,7 +607,7 @@ def _trim_csv(csv_text: str, max_data_rows: int) -> str:
 
 
 def _claude_cmd() -> list[str]:
-    model_flag = ["--model", "claude-opus-4-7"]
+    model_flag = ["--model", "sonnet"]
     if sys.platform != "win32":
         return ["claude", "--dangerously-skip-permissions", *model_flag, "-p"]
     # claude.cmd (batch wrapper) doesn't propagate claude.exe exit codes,

@@ -125,6 +125,7 @@ export interface StockPrice {
 export interface StockSummary {
   ticker: string;
   name: string;
+  name_initials: string;
   buy_count: number;
   hold_count: number;
   sell_count: number;

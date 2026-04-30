@@ -4,6 +4,7 @@ import { useStockSummary } from '../hooks/useStocks';
 import type { StockSummary } from '../types';
 
 const PAGE_SIZE = 25;
+const KOREAN_INITIALS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 
 type SortKey = 'name' | 'buy_count' | 'hold_count' | 'sell_count' | 'latest_at';
 
@@ -32,6 +33,10 @@ function formatShortDate(value: string) {
     .format(d)
     .replace(/\.\s*/g, '.')
     .replace(/\.$/, '');
+}
+
+function isKoreanInitialQuery(value: string) {
+  return Boolean(value) && [...value].every((char) => KOREAN_INITIALS.includes(char));
 }
 
 const COL = 'grid-cols-[1fr_4.5rem_4.5rem_4.5rem_8rem]';
@@ -328,10 +333,12 @@ function StockSummaryPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return stocks;
+    const shouldSearchInitials = isKoreanInitialQuery(q);
     return stocks.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        s.ticker.toLowerCase().includes(q),
+        s.ticker.toLowerCase().includes(q) ||
+        (shouldSearchInitials && s.name_initials.includes(q)),
     );
   }, [stocks, query]);
 
@@ -372,7 +379,7 @@ function StockSummaryPage() {
           <input
             className="h-10 rounded-md border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-medium text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-amber-300/50 focus:ring-2 focus:ring-amber-300/20"
             onChange={(e) => setQueryInput(e.target.value)}
-            placeholder="종목명 또는 티커"
+            placeholder="종목명, 초성 또는 티커"
             type="search"
             value={queryInput}
           />

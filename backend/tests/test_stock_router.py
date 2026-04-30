@@ -12,7 +12,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.routers import stock
+from backend.routers import stock, stocks
+from backend.schemas import AnalysisCreate
 
 
 @pytest.fixture()
@@ -27,6 +28,7 @@ def client() -> Generator[TestClient, None, None]:
 
     app = FastAPI()
     app.include_router(stock.router)
+    app.include_router(stocks.router)
 
     def override_get_db() -> Generator[Session, None, None]:
         session = TestingSessionLocal()
@@ -98,3 +100,50 @@ def test_refresh_stock_price_returns_404_when_fetch_fails(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "가격 데이터를 가져올 수 없습니다."
+
+
+def test_stock_summary_returns_name_initials(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = crud.create_run(db_session, memo="stock summary initials")
+    crud.create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="claude",
+            markdown="samsung markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    crud.create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="128660",
+            name="피제이메탈",
+            model="claude",
+            markdown="pjmetal markdown",
+            judgment="홀드",
+            trend="횡보",
+            cloud_position="구름 안",
+            ma_alignment="혼조",
+        ),
+    )
+
+    response = client.get("/api/stocks/summary")
+
+    assert response.status_code == 200
+    initials_by_ticker = {
+        item["ticker"]: item["name_initials"]
+        for item in response.json()
+    }
+    assert initials_by_ticker == {
+        "005930": "ㅅㅅㅈㅈ",
+        "128660": "ㅍㅈㅇㅁㅌ",
+    }
