@@ -135,3 +135,8 @@ class StockSummaryRead(BaseModel):
     hold_count: int
     sell_count: int
     latest_at: datetime
+
+
+class TickerSearchResult(BaseModel):
+    code: str
+    name: str

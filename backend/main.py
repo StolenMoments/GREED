@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import init_db
-from backend.routers import analyses_router, jobs_router, runs_router, stock_router, stocks_router
+from backend.routers import analyses_router, jobs_router, runs_router, stock_router, stocks_router, tickers_router
 
 
 @asynccontextmanager
@@ -32,3 +32,4 @@ app.include_router(analyses_router)
 app.include_router(stock_router)
 app.include_router(stocks_router)
 app.include_router(jobs_router)
+app.include_router(tickers_router)

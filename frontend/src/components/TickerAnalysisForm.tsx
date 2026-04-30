@@ -1,11 +1,17 @@
 import type { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { searchTickers } from '../api/tickers';
+import type { TickerSearchResult } from '../api/tickers';
 import { MODEL_OPTIONS } from '../constants/analysisModels';
 import { usePendingJobs } from '../contexts/PendingJobsContext';
 import { useJobPolling, useRunJobs, useTriggerAnalysis } from '../hooks/useJobs';
 import type { AnalysisModel } from '../types';
+
+function isKorean(text: string): boolean {
+  return /[가-힣ㄱ-ㅎ]/.test(text);
+}
 
 interface TickerAnalysisFormProps {
   runId: number;
@@ -27,6 +33,11 @@ function TickerAnalysisForm({
   const [dismissedJobId, setDismissedJobId] = useState<number | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [suggestions, setSuggestions] = useState<TickerSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const triggerAnalysis = useTriggerAnalysis();
   const runJobsQuery = useRunJobs(runId);
   const latestRunJob = runJobsQuery.data?.find((runJob) => runJob.id !== dismissedJobId);
@@ -69,6 +80,16 @@ function TickerAnalysisForm({
   }, [job?.status, jobQuery.isError, serverError]);
 
   useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     if (job?.status !== 'done' || !job.analysis_id) {
       return;
     }
@@ -80,6 +101,49 @@ function TickerAnalysisForm({
     notifiedAnalysisIdRef.current = job.analysis_id;
     onAnalysisCreated?.();
   }, [job?.analysis_id, job?.status, onAnalysisCreated]);
+
+  function handleTickerChange(value: string) {
+    const next = isKorean(value) ? value : value.toUpperCase();
+    setTicker(next);
+    setActiveSuggestion(-1);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (isKorean(value) && value.trim().length >= 2) {
+      debounceRef.current = setTimeout(() => {
+        searchTickers(value.trim())
+          .then((r) => {
+            setSuggestions(r);
+            setShowSuggestions(r.length > 0);
+          })
+          .catch(() => setSuggestions([]));
+      }, 200);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }
+
+  function selectSuggestion(result: TickerSearchResult) {
+    setTicker(result.code);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggestions) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSuggestion((prev) => Math.min(prev + 1, suggestions.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSuggestion((prev) => Math.max(prev - 1, -1));
+    } else if (event.key === 'Enter' && activeSuggestion >= 0) {
+      event.preventDefault();
+      selectSuggestion(suggestions[activeSuggestion]);
+    } else if (event.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -143,7 +207,7 @@ function TickerAnalysisForm({
             티커 분석 실행
           </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            국내 종목코드 또는 미국 티커를 입력하면 이 실행에 연결된 분석 잡을 만들고 완료될 때까지 상태를 확인합니다.
+            국내 종목코드·종목명 또는 미국 티커를 입력하면 이 실행에 연결된 분석 잡을 만들고 완료될 때까지 상태를 확인합니다.
           </p>
         </div>
 
@@ -176,19 +240,51 @@ function TickerAnalysisForm({
           <label className="block">
             <span className="text-sm font-semibold text-slate-200">Ticker</span>
             <div className="mt-2 flex gap-2">
-              <input
-                aria-invalid={showValidation && !trimmedTicker}
-                className={[
-                  'min-h-11 min-w-0 flex-1 rounded-md border bg-slate-950 px-3 py-2 text-sm font-semibold uppercase text-slate-100 transition focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-60',
-                  showValidation && !trimmedTicker
-                    ? 'border-rose-300/60'
-                    : 'border-slate-700',
-                ].join(' ')}
-                disabled={triggerAnalysis.isPending}
-                onChange={(event) => setTicker(event.target.value.toUpperCase())}
-                placeholder="005930 / AAPL"
-                value={ticker}
-              />
+              <div ref={containerRef} className="relative min-w-0 flex-1">
+                <input
+                  aria-autocomplete="list"
+                  aria-expanded={showSuggestions}
+                  aria-invalid={showValidation && !trimmedTicker}
+                  className={[
+                    'min-h-11 w-full rounded-md border bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-100 transition focus:outline-none focus:ring-2 focus:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-60',
+                    isKorean(ticker) ? '' : 'uppercase',
+                    showValidation && !trimmedTicker
+                      ? 'border-rose-300/60'
+                      : 'border-slate-700',
+                  ].join(' ')}
+                  disabled={triggerAnalysis.isPending}
+                  onChange={(event) => handleTickerChange(event.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="005930 · AAPL · 삼성전자"
+                  value={ticker}
+                />
+                {showSuggestions && suggestions.length > 0 && (
+                  <ul
+                    role="listbox"
+                    className="animate-dropdown-in absolute z-50 mt-1.5 w-full overflow-hidden rounded-lg border border-[oklch(0.26_0.015_80)] bg-[oklch(0.12_0.012_80)] py-1 shadow-2xl shadow-black/50"
+                  >
+                    {suggestions.map((s, i) => (
+                      <li key={s.code} role="option" aria-selected={i === activeSuggestion}>
+                        <button
+                          type="button"
+                          onMouseDown={() => selectSuggestion(s)}
+                          className={[
+                            'flex w-full items-center justify-between gap-4 px-3 py-2.5 text-sm transition-colors duration-75',
+                            i === activeSuggestion
+                              ? 'bg-[oklch(0.82_0.16_80_/_0.13)] text-[oklch(0.92_0.03_80)]'
+                              : 'text-[oklch(0.78_0.015_80)] hover:bg-[oklch(0.82_0.16_80_/_0.08)] hover:text-[oklch(0.88_0.02_80)]',
+                          ].join(' ')}
+                        >
+                          <span className="truncate font-medium">{s.name}</span>
+                          <span className="shrink-0 tabular-nums text-xs tracking-wider text-[oklch(0.48_0.025_80)]">
+                            {s.code}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <button
                 className="min-h-11 shrink-0 rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transform-none"
                 disabled={isSubmitDisabled}

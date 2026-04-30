@@ -91,3 +91,16 @@ class StockPrice(Base):
     price_date: Mapped[date] = mapped_column(Date, nullable=False)
     close_price: Mapped[float] = mapped_column(Float, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class KrxStock(Base):
+    __tablename__ = "krx_stocks"
+    __table_args__ = (
+        Index("ix_krx_stocks_name", "name"),
+        Index("ix_krx_stocks_name_initials", "name_initials"),
+    )
+
+    code: Mapped[str] = mapped_column(String(6), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    name_initials: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=seoul_now, nullable=False)

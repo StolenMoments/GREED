@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Literal, NamedTuple
 
 from sqlalchemy import Select, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.korean_search import extract_korean_initials, is_korean_initial_query
-from backend.models import Analysis, AnalysisJob, Run, StockPrice
+from backend.models import Analysis, AnalysisJob, KrxStock, Run, StockPrice
 from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
 from backend.timezone import seoul_now
@@ -443,3 +443,50 @@ def _run_with_count_stmt() -> Select[tuple[Run, int]]:
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_KRX_TTL_HOURS = 24
+
+
+def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
+    _ensure_krx_listing(db)
+    pattern = _escape_like(q)
+    if is_korean_initial_query(q):
+        return db.query(KrxStock).filter(
+            KrxStock.name_initials.ilike(f"{pattern}%", escape="\\")
+        ).limit(10).all()
+    return db.query(KrxStock).filter(
+        KrxStock.name.ilike(f"%{pattern}%", escape="\\")
+    ).limit(10).all()
+
+
+def _ensure_krx_listing(db: Session) -> None:
+    latest = db.query(func.max(KrxStock.updated_at)).scalar()
+    if latest is None or _is_krx_expired(latest):
+        _refresh_krx_listing(db)
+
+
+def _is_krx_expired(updated_at: datetime) -> bool:
+    now = seoul_now()
+    if updated_at.tzinfo is None:
+        return now.replace(tzinfo=None) - updated_at > timedelta(hours=_KRX_TTL_HOURS)
+    return now - updated_at > timedelta(hours=_KRX_TTL_HOURS)
+
+
+def _refresh_krx_listing(db: Session) -> None:
+    import FinanceDataReader as fdr
+    df = fdr.StockListing("KRX")
+    code_col = next(c for c in df.columns if c in ("Code", "Symbol", "종목코드"))
+    name_col = next(c for c in df.columns if c in ("Name", "종목명"))
+    df[code_col] = df[code_col].astype(str).str.zfill(6)
+    now = seoul_now()
+    for _, row in df.iterrows():
+        code = str(row[code_col])
+        name = str(row[name_col]).strip()
+        db.merge(KrxStock(
+            code=code,
+            name=name,
+            name_initials=extract_korean_initials(name),
+            updated_at=now,
+        ))
+    db.commit()

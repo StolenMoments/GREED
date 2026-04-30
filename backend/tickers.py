@@ -5,6 +5,10 @@ def is_korean_ticker(ticker: str) -> bool:
     return ticker.strip().isdigit()
 
 
+def is_korean_text(text: str) -> bool:
+    return any('가' <= c <= '힣' or 'ㄱ' <= c <= 'ㅎ' for c in text)
+
+
 def normalize_ticker(ticker: str) -> str:
     normalized = ticker.strip().upper()
     if normalized.isdigit():

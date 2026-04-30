@@ -25,7 +25,7 @@ from backend.database import SessionLocal, get_db
 from backend.models import AnalysisJob
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
-from backend.tickers import market_for_ticker, normalize_ticker
+from backend.tickers import market_for_ticker, normalize_ticker, is_korean_text
 from backend.timezone import seoul_now
 
 
@@ -188,6 +188,13 @@ def trigger_analysis_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
 
     ticker = normalize_ticker(payload.ticker)
+    if is_korean_text(payload.ticker):
+        from backend.crud import search_krx_stocks
+        matches = search_krx_stocks(db, payload.ticker.strip())
+        if matches:
+            ticker = matches[0].code
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"종목명을 찾을 수 없습니다: {payload.ticker}")
     job = create_job(db, ticker=ticker, run_id=payload.run_id, model=payload.model)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job
