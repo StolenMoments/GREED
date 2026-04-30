@@ -16,6 +16,7 @@ def test_app_registers_expected_routes() -> None:
     assert "/api/analyses/{analysis_id}/history" in paths
     assert "/api/stock/{ticker}/price" in paths
     assert "/api/stock/{ticker}/price/refresh" in paths
+    assert "/api/tickers/{code}" in paths
     assert "/api/jobs/trigger-analysis" in paths
     assert "/api/jobs/{job_id}" in paths
 

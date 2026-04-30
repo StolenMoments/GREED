@@ -2,7 +2,7 @@ import type { AxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { searchTickers } from '../api/tickers';
+import { getTicker, searchTickers } from '../api/tickers';
 import type { TickerSearchResult } from '../api/tickers';
 import { MODEL_OPTIONS } from '../constants/analysisModels';
 import { usePendingJobs } from '../contexts/PendingJobsContext';
@@ -12,6 +12,16 @@ import type { AnalysisModel } from '../types';
 function isKorean(text: string): boolean {
   return /[가-힣ㄱ-ㅎ]/.test(text);
 }
+
+function isSixDigitTicker(text: string): boolean {
+  return /^\d{6}$/.test(text.trim());
+}
+
+type TickerLookupState =
+  | { status: 'idle' }
+  | { status: 'loading'; code: string }
+  | { status: 'found'; code: string; name: string }
+  | { status: 'not-found'; code: string };
 
 interface TickerAnalysisFormProps {
   runId: number;
@@ -36,8 +46,11 @@ function TickerAnalysisForm({
   const [suggestions, setSuggestions] = useState<TickerSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [tickerLookup, setTickerLookup] = useState<TickerLookupState>({ status: 'idle' });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lookupDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const latestInputRef = useRef('');
   const triggerAnalysis = useTriggerAnalysis();
   const runJobsQuery = useRunJobs(runId);
   const latestRunJob = runJobsQuery.data?.find((runJob) => runJob.id !== dismissedJobId);
@@ -90,6 +103,13 @@ function TickerAnalysisForm({
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (lookupDebounceRef.current) clearTimeout(lookupDebounceRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (job?.status !== 'done' || !job.analysis_id) {
       return;
     }
@@ -104,10 +124,15 @@ function TickerAnalysisForm({
 
   function handleTickerChange(value: string) {
     const next = isKorean(value) ? value : value.toUpperCase();
+    const nextTrimmed = next.trim();
+    latestInputRef.current = nextTrimmed;
     setTicker(next);
     setActiveSuggestion(-1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (lookupDebounceRef.current) clearTimeout(lookupDebounceRef.current);
+
     if (isKorean(value) && value.trim().length >= 2) {
+      setTickerLookup({ status: 'idle' });
       debounceRef.current = setTimeout(() => {
         searchTickers(value.trim())
           .then((r) => {
@@ -120,10 +145,31 @@ function TickerAnalysisForm({
       setSuggestions([]);
       setShowSuggestions(false);
     }
+
+    if (isSixDigitTicker(nextTrimmed)) {
+      setTickerLookup({ status: 'loading', code: nextTrimmed });
+      lookupDebounceRef.current = setTimeout(() => {
+        getTicker(nextTrimmed)
+          .then((result) => {
+            if (latestInputRef.current === result.code) {
+              setTickerLookup({ status: 'found', code: result.code, name: result.name });
+            }
+          })
+          .catch(() => {
+            if (latestInputRef.current === nextTrimmed) {
+              setTickerLookup({ status: 'not-found', code: nextTrimmed });
+            }
+          });
+      }, 200);
+    } else if (!isKorean(value)) {
+      setTickerLookup({ status: 'idle' });
+    }
   }
 
   function selectSuggestion(result: TickerSearchResult) {
     setTicker(result.code);
+    latestInputRef.current = result.code;
+    setTickerLookup({ status: 'found', code: result.code, name: result.name });
     setSuggestions([]);
     setShowSuggestions(false);
     setActiveSuggestion(-1);
@@ -284,6 +330,24 @@ function TickerAnalysisForm({
                     ))}
                   </ul>
                 )}
+                <div className="mt-2 min-h-5" aria-live="polite">
+                  {tickerLookup.status === 'loading' ? (
+                    <span className="text-xs font-medium text-[oklch(0.72_0.06_80)]">
+                      종목 확인 중
+                    </span>
+                  ) : tickerLookup.status === 'found' ? (
+                    <span className="inline-flex max-w-full items-center gap-2 rounded-md border border-[oklch(0.82_0.16_80_/_0.22)] bg-[oklch(0.82_0.16_80_/_0.08)] px-2.5 py-1 text-xs font-semibold text-[oklch(0.88_0.05_80)]">
+                      <span className="truncate">{tickerLookup.name}</span>
+                      <span className="shrink-0 tabular-nums text-[oklch(0.62_0.04_80)]">
+                        {tickerLookup.code}
+                      </span>
+                    </span>
+                  ) : tickerLookup.status === 'not-found' ? (
+                    <span className="text-xs font-medium text-slate-500">
+                      종목명을 찾지 못했습니다
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <button
                 className="min-h-11 shrink-0 rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 motion-reduce:transform-none"

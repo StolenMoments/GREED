@@ -460,6 +460,11 @@ def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
     ).limit(10).all()
 
 
+def get_krx_stock_by_code(db: Session, code: str) -> KrxStock | None:
+    _ensure_krx_listing(db)
+    return db.get(KrxStock, code)
+
+
 def _ensure_krx_listing(db: Session) -> None:
     latest = db.query(func.max(KrxStock.updated_at)).scalar()
     if latest is None or _is_krx_expired(latest):
