@@ -24,7 +24,7 @@ def stock_summary(db: Session = Depends(get_db)) -> list[StockSummaryRead]:
             func.max(Analysis.created_at).label("latest_at"),
         )
         .group_by(Analysis.ticker, Analysis.name, Analysis.name_initials)
-        .order_by(Analysis.name)
+        .order_by(func.max(Analysis.created_at).desc(), Analysis.name)
         .all()
     )
     return [

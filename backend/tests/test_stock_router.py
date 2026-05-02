@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -147,3 +147,46 @@ def test_stock_summary_returns_name_initials(
         "005930": "ㅅㅅㅈㅈ",
         "128660": "ㅍㅈㅇㅁㅌ",
     }
+
+
+def test_stock_summary_orders_by_latest_analysis_desc(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = crud.create_run(db_session, memo="stock summary order")
+    older = crud.create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="claude",
+            markdown="older markdown",
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    newer = crud.create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="128660",
+            name="피제이메탈",
+            model="claude",
+            markdown="newer markdown",
+            judgment="홀드",
+            trend="횡보",
+            cloud_position="구름 안",
+            ma_alignment="혼조",
+        ),
+    )
+    older.created_at = datetime(2026, 1, 1, 9, 0, 0)
+    newer.created_at = datetime(2026, 1, 2, 9, 0, 0)
+    db_session.commit()
+
+    response = client.get("/api/stocks/summary")
+
+    assert response.status_code == 200
+    assert [item["ticker"] for item in response.json()] == ["128660", "005930"]

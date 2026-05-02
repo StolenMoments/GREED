@@ -307,8 +307,8 @@ function StockSummaryPage() {
   const [queryInput, setQueryInput] = useState('');
   const [query, setQuery]           = useState('');
   const [page, setPage]             = useState(1);
-  const [sortKey, setSortKey]       = useState<SortKey>('name');
-  const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('asc');
+  const [sortKey, setSortKey]       = useState<SortKey>('latest_at');
+  const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const next = queryInput.trim();
