@@ -16,6 +16,7 @@ from backend.crud import (
     create_analysis,
     create_job,
     get_job,
+    get_krx_stock_by_exact_name,
     get_jobs,
     get_run,
     update_job_done,
@@ -195,6 +196,10 @@ def trigger_analysis_endpoint(
             ticker = matches[0].code
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"종목명을 찾을 수 없습니다: {payload.ticker}")
+    elif not ticker.isdigit():
+        exact_match = get_krx_stock_by_exact_name(db, payload.ticker.strip())
+        if exact_match is not None:
+            ticker = exact_match.code
     job = create_job(db, ticker=ticker, run_id=payload.run_id, model=payload.model)
     background_tasks.add_task(run_analysis_pipeline, job.id)
     return job

@@ -3,6 +3,7 @@ import { apiClient } from './client';
 export interface TickerSearchResult {
   code: string;
   name: string;
+  market: 'KR' | 'US';
 }
 
 export async function searchTickers(q: string): Promise<TickerSearchResult[]> {

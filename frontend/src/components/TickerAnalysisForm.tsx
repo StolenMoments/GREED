@@ -17,6 +17,14 @@ function isSixDigitTicker(text: string): boolean {
   return /^\d{6}$/.test(text.trim());
 }
 
+function isSingleLetterTicker(text: string): boolean {
+  return /^[A-Z]$/.test(text.trim());
+}
+
+function isLikelyUsTicker(text: string): boolean {
+  return /^[A-Z][A-Z.-]*$/.test(text.trim());
+}
+
 type TickerLookupState =
   | { status: 'idle' }
   | { status: 'loading'; code: string }
@@ -44,6 +52,7 @@ function TickerAnalysisForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [suggestions, setSuggestions] = useState<TickerSearchResult[]>([]);
+  const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [tickerLookup, setTickerLookup] = useState<TickerLookupState>({ status: 'idle' });
@@ -63,7 +72,29 @@ function TickerAnalysisForm({
   const job = jobQuery.data ?? latestRunJob;
   const isJobPending = job?.status === 'pending';
   const isPending = triggerAnalysis.isPending || isJobPending;
-  const isSubmitDisabled = triggerAnalysis.isPending;
+  const hasConfirmedTicker =
+    tickerLookup.status === 'found' && tickerLookup.code === trimmedTicker;
+  const minimumSearchLength = isKorean(trimmedTicker) ? 2 : 1;
+  const canSearchTicker = trimmedTicker.length >= minimumSearchLength;
+  const hasNoTickerMatch =
+    canSearchTicker &&
+    !isSearchingSuggestions &&
+    suggestions.length === 0 &&
+    !hasConfirmedTicker &&
+    tickerLookup.status !== 'loading';
+  const hasUnselectedSuggestion = suggestions.length > 0 && !hasConfirmedTicker;
+  const needsKoreanNameSelection = isKorean(ticker) && !hasConfirmedTicker;
+  const needsLongerTickerInput = isSingleLetterTicker(trimmedTicker) && !hasConfirmedTicker;
+  const isSubmitDisabled =
+    triggerAnalysis.isPending ||
+    !trimmedTicker ||
+    needsLongerTickerInput ||
+    tickerLookup.status === 'loading' ||
+    tickerLookup.status === 'not-found' ||
+    isSearchingSuggestions ||
+    hasUnselectedSuggestion ||
+    needsKoreanNameSelection ||
+    !hasConfirmedTicker;
 
   const statusTone = useMemo(() => {
     if (job?.status === 'done') {
@@ -130,16 +161,33 @@ function TickerAnalysisForm({
     setActiveSuggestion(-1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (lookupDebounceRef.current) clearTimeout(lookupDebounceRef.current);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setIsSearchingSuggestions(false);
 
-    if (value.trim().length >= 2) {
+    const minimumSearchLength = isKorean(nextTrimmed) ? 2 : 1;
+    if (nextTrimmed.length >= minimumSearchLength) {
       setTickerLookup({ status: 'idle' });
+      setIsSearchingSuggestions(true);
       debounceRef.current = setTimeout(() => {
-        searchTickers(value.trim())
+        const query = nextTrimmed;
+        searchTickers(query)
           .then((r) => {
+            if (latestInputRef.current !== query) return;
             setSuggestions(r);
             setShowSuggestions(r.length > 0);
           })
-          .catch(() => setSuggestions([]));
+          .catch(() => {
+            if (latestInputRef.current === query) {
+              setSuggestions([]);
+              setShowSuggestions(false);
+            }
+          })
+          .finally(() => {
+            if (latestInputRef.current === query) {
+              setIsSearchingSuggestions(false);
+            }
+          });
       }, 200);
     } else {
       setSuggestions([]);
@@ -158,6 +206,21 @@ function TickerAnalysisForm({
           .catch(() => {
             if (latestInputRef.current === nextTrimmed) {
               setTickerLookup({ status: 'not-found', code: nextTrimmed });
+            }
+          });
+      }, 200);
+    } else if (!isKorean(value) && isLikelyUsTicker(nextTrimmed)) {
+      setTickerLookup({ status: 'loading', code: nextTrimmed });
+      lookupDebounceRef.current = setTimeout(() => {
+        getTicker(nextTrimmed)
+          .then((result) => {
+            if (latestInputRef.current === result.code) {
+              setTickerLookup({ status: 'found', code: result.code, name: result.name });
+            }
+          })
+          .catch(() => {
+            if (latestInputRef.current === nextTrimmed) {
+              setTickerLookup({ status: 'idle' });
             }
           });
       }, 200);
@@ -183,9 +246,9 @@ function TickerAnalysisForm({
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       setActiveSuggestion((prev) => Math.max(prev - 1, -1));
-    } else if (event.key === 'Enter' && activeSuggestion >= 0) {
+    } else if (event.key === 'Enter' && suggestions.length > 0) {
       event.preventDefault();
-      selectSuggestion(suggestions[activeSuggestion]);
+      selectSuggestion(suggestions[Math.max(activeSuggestion, 0)]);
     } else if (event.key === 'Escape') {
       setShowSuggestions(false);
     }
@@ -196,7 +259,7 @@ function TickerAnalysisForm({
     setShowValidation(true);
     setServerError(null);
 
-    if (!trimmedTicker) {
+    if (isSubmitDisabled) {
       return;
     }
 
@@ -322,8 +385,13 @@ function TickerAnalysisForm({
                           ].join(' ')}
                         >
                           <span className="truncate font-medium">{s.name}</span>
-                          <span className="shrink-0 tabular-nums text-xs tracking-wider text-[oklch(0.48_0.025_80)]">
-                            {s.code}
+                          <span className="flex shrink-0 items-center gap-2">
+                            <span className="rounded border border-[oklch(0.35_0.018_80)] px-1.5 py-0.5 text-[0.65rem] font-semibold text-[oklch(0.58_0.028_80)]">
+                              {s.market}
+                            </span>
+                            <span className="tabular-nums text-xs tracking-wider text-[oklch(0.48_0.025_80)]">
+                              {s.code}
+                            </span>
                           </span>
                         </button>
                       </li>
@@ -345,6 +413,10 @@ function TickerAnalysisForm({
                   ) : tickerLookup.status === 'not-found' ? (
                     <span className="text-xs font-medium text-slate-500">
                       종목명을 찾지 못했습니다
+                    </span>
+                  ) : hasNoTickerMatch ? (
+                    <span className="text-xs font-medium text-slate-500">
+                      조회되는 종목이 없습니다
                     </span>
                   ) : null}
                 </div>

@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
+from backend.models import KrxStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -145,6 +146,26 @@ def test_trigger_analysis_keeps_us_ticker(
     assert response.status_code == 202
     body = response.json()
     assert body["ticker"] == "AAPL"
+    assert called_job_ids == [body["id"]]
+
+
+def test_trigger_analysis_resolves_exact_krx_name(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(jobs, "run_analysis_pipeline", lambda job_id: called_job_ids.append(job_id))
+    with test_db() as db:
+        run = crud.create_run(db, memo="krx name trigger")
+        db.add(KrxStock(code="003550", name="LG", name_initials="", updated_at=seoul_now()))
+        db.commit()
+
+    response = client.post("/api/jobs/trigger-analysis", json={"ticker": "LG", "run_id": run.id})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["ticker"] == "003550"
     assert called_job_ids == [body["id"]]
 
 

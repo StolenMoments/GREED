@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Literal, NamedTuple
 
-from sqlalchemy import Select, desc, func, or_, select
+from sqlalchemy import Select, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.korean_search import extract_korean_initials, is_korean_initial_query
-from backend.models import Analysis, AnalysisJob, KrxStock, Run, StockPrice
+from backend.models import Analysis, AnalysisJob, KrxStock, Run, StockPrice, UsStock
 from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
+from backend.tickers import fetch_us_listing, normalize_ticker
 from backend.timezone import seoul_now
 
 
@@ -446,6 +447,7 @@ def _escape_like(value: str) -> str:
 
 
 _KRX_TTL_HOURS = 24
+_US_TTL_HOURS = 24
 
 
 def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
@@ -454,19 +456,64 @@ def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
     if q.isdigit():
         return db.query(KrxStock).filter(
             KrxStock.code.ilike(f"{pattern}%", escape="\\")
-        ).limit(10).all()
+        ).order_by(KrxStock.code).limit(10).all()
     if is_korean_initial_query(q):
         return db.query(KrxStock).filter(
             KrxStock.name_initials.ilike(f"{pattern}%", escape="\\")
+        ).order_by(
+            case((KrxStock.name_initials.ilike(pattern, escape="\\"), 0), else_=1),
+            KrxStock.name,
+            KrxStock.code,
         ).limit(10).all()
+
+    exact_rank = case((KrxStock.name.ilike(pattern, escape="\\"), 0), else_=1)
+    prefix_rank = case((KrxStock.name.ilike(f"{pattern}%", escape="\\"), 0), else_=1)
     return db.query(KrxStock).filter(
         KrxStock.name.ilike(f"%{pattern}%", escape="\\")
-    ).limit(10).all()
+    ).order_by(exact_rank, prefix_rank, KrxStock.name, KrxStock.code).limit(10).all()
+
+
+def get_krx_stock_by_exact_name(db: Session, name: str) -> KrxStock | None:
+    return db.query(KrxStock).filter(KrxStock.name.ilike(_escape_like(name), escape="\\")).first()
 
 
 def get_krx_stock_by_code(db: Session, code: str) -> KrxStock | None:
     _ensure_krx_listing(db)
     return db.get(KrxStock, code)
+
+
+def search_us_stocks(db: Session, q: str) -> list[UsStock]:
+    _ensure_us_listing(db)
+    query = q.strip()
+    if not query:
+        return []
+
+    pattern = _escape_like(query)
+    exact_code_rank = case((UsStock.code.ilike(pattern, escape="\\"), 0), else_=1)
+    prefix_code_rank = case((UsStock.code.ilike(f"{pattern}%", escape="\\"), 0), else_=1)
+    exact_name_rank = case((UsStock.name.ilike(pattern, escape="\\"), 0), else_=1)
+    prefix_name_rank = case((UsStock.name.ilike(f"{pattern}%", escape="\\"), 0), else_=1)
+
+    return db.query(UsStock).filter(
+        or_(
+            UsStock.code.ilike(f"{pattern}%", escape="\\"),
+            UsStock.name.ilike(f"%{pattern}%", escape="\\"),
+        )
+    ).order_by(
+        exact_code_rank,
+        prefix_code_rank,
+        exact_name_rank,
+        prefix_name_rank,
+        UsStock.code,
+    ).limit(10).all()
+
+
+def get_us_stock_by_code(db: Session, code: str) -> UsStock | None:
+    _ensure_us_listing(db)
+    normalized = normalize_ticker(code)
+    if not normalized or normalized.isdigit():
+        return None
+    return db.get(UsStock, normalized)
 
 
 def _ensure_krx_listing(db: Session) -> None:
@@ -475,11 +522,24 @@ def _ensure_krx_listing(db: Session) -> None:
         _refresh_krx_listing(db)
 
 
+def _ensure_us_listing(db: Session) -> None:
+    latest = db.query(func.max(UsStock.updated_at)).scalar()
+    if latest is None or _is_us_expired(latest):
+        _refresh_us_listing(db)
+
+
 def _is_krx_expired(updated_at: datetime) -> bool:
     now = seoul_now()
     if updated_at.tzinfo is None:
         return now.replace(tzinfo=None) - updated_at > timedelta(hours=_KRX_TTL_HOURS)
     return now - updated_at > timedelta(hours=_KRX_TTL_HOURS)
+
+
+def _is_us_expired(updated_at: datetime) -> bool:
+    now = seoul_now()
+    if updated_at.tzinfo is None:
+        return now.replace(tzinfo=None) - updated_at > timedelta(hours=_US_TTL_HOURS)
+    return now - updated_at > timedelta(hours=_US_TTL_HOURS)
 
 
 def _refresh_krx_listing(db: Session) -> None:
@@ -496,6 +556,18 @@ def _refresh_krx_listing(db: Session) -> None:
             code=code,
             name=name,
             name_initials=extract_korean_initials(name),
+            updated_at=now,
+        ))
+    db.commit()
+
+
+def _refresh_us_listing(db: Session) -> None:
+    now = seoul_now()
+    for stock in fetch_us_listing():
+        db.merge(UsStock(
+            code=stock.code,
+            name=stock.name,
+            market=stock.market,
             updated_at=now,
         ))
     db.commit()

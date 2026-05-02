@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -141,3 +142,4 @@ class StockSummaryRead(BaseModel):
 class TickerSearchResult(BaseModel):
     code: str
     name: str
+    market: Literal["KR", "US"] = "KR"

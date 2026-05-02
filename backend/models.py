@@ -104,3 +104,16 @@ class KrxStock(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     name_initials: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=seoul_now, nullable=False)
+
+
+class UsStock(Base):
+    __tablename__ = "us_stocks"
+    __table_args__ = (
+        Index("ix_us_stocks_name", "name"),
+        Index("ix_us_stocks_market", "market"),
+    )
+
+    code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    market: Mapped[str] = mapped_column(String(20), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=seoul_now, nullable=False)

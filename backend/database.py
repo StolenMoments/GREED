@@ -58,6 +58,21 @@ def _migrate() -> None:
         conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_analyses_name_initials ON analyses(name_initials)")
         )
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS us_stocks (
+                    code VARCHAR(20) PRIMARY KEY,
+                    name VARCHAR(150) NOT NULL,
+                    market VARCHAR(20) NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_us_stocks_name ON us_stocks(name)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_us_stocks_market ON us_stocks(market)"))
         conn.commit()
 
 
