@@ -451,6 +451,10 @@ _KRX_TTL_HOURS = 24
 def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
     _ensure_krx_listing(db)
     pattern = _escape_like(q)
+    if q.isdigit():
+        return db.query(KrxStock).filter(
+            KrxStock.code.ilike(f"{pattern}%", escape="\\")
+        ).limit(10).all()
     if is_korean_initial_query(q):
         return db.query(KrxStock).filter(
             KrxStock.name_initials.ilike(f"{pattern}%", escape="\\")

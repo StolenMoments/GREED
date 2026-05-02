@@ -131,7 +131,7 @@ function TickerAnalysisForm({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (lookupDebounceRef.current) clearTimeout(lookupDebounceRef.current);
 
-    if (isKorean(value) && value.trim().length >= 2) {
+    if (value.trim().length >= 2) {
       setTickerLookup({ status: 'idle' });
       debounceRef.current = setTimeout(() => {
         searchTickers(value.trim())
