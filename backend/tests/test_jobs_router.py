@@ -809,6 +809,36 @@ def test_run_codex_passes_yolo_flag(
     assert payload["cmd"][1:4] == ["exec", "--yolo", "-"]
 
 
+def test_run_codex_writes_full_csv_to_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_popen(args, **kwargs):
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
+
+    csv_text = "ticker,name,close\n" + "\n".join(
+        f"005930,Samsung,{price}" for price in range(300)
+    )
+    prompt_path = tmp_path / "prompt.md"
+
+    jobs._run_codex(
+        csv_text,
+        jobs.SYSTEM_PROMPT,
+        tmp_path / "analysis.md",
+        prompt_path,
+        tmp_path / "stdout.log",
+        tmp_path / "stderr.log",
+        tmp_path / "model.pid",
+        tmp_path / "exit_code.txt",
+    )
+
+    prompt = prompt_path.read_text(encoding="utf-8")
+    assert "005930,Samsung,0" in prompt
+    assert "005930,Samsung,299" in prompt
+
+
 def test_run_gemini_passes_yolo_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
