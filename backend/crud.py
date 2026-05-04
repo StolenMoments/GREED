@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Literal, NamedTuple
 
 from sqlalchemy import Select, case, desc, func, or_, select
@@ -446,12 +446,7 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-_KRX_TTL_HOURS = 24
-_US_TTL_HOURS = 24
-
-
 def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
-    _ensure_krx_listing(db)
     pattern = _escape_like(q)
     if q.isdigit():
         return db.query(KrxStock).filter(
@@ -478,12 +473,10 @@ def get_krx_stock_by_exact_name(db: Session, name: str) -> KrxStock | None:
 
 
 def get_krx_stock_by_code(db: Session, code: str) -> KrxStock | None:
-    _ensure_krx_listing(db)
     return db.get(KrxStock, code)
 
 
 def search_us_stocks(db: Session, q: str) -> list[UsStock]:
-    _ensure_us_listing(db)
     query = q.strip()
     if not query:
         return []
@@ -509,40 +502,13 @@ def search_us_stocks(db: Session, q: str) -> list[UsStock]:
 
 
 def get_us_stock_by_code(db: Session, code: str) -> UsStock | None:
-    _ensure_us_listing(db)
     normalized = normalize_ticker(code)
     if not normalized or normalized.isdigit():
         return None
     return db.get(UsStock, normalized)
 
 
-def _ensure_krx_listing(db: Session) -> None:
-    latest = db.query(func.max(KrxStock.updated_at)).scalar()
-    if latest is None or _is_krx_expired(latest):
-        _refresh_krx_listing(db)
-
-
-def _ensure_us_listing(db: Session) -> None:
-    latest = db.query(func.max(UsStock.updated_at)).scalar()
-    if latest is None or _is_us_expired(latest):
-        _refresh_us_listing(db)
-
-
-def _is_krx_expired(updated_at: datetime) -> bool:
-    now = seoul_now()
-    if updated_at.tzinfo is None:
-        return now.replace(tzinfo=None) - updated_at > timedelta(hours=_KRX_TTL_HOURS)
-    return now - updated_at > timedelta(hours=_KRX_TTL_HOURS)
-
-
-def _is_us_expired(updated_at: datetime) -> bool:
-    now = seoul_now()
-    if updated_at.tzinfo is None:
-        return now.replace(tzinfo=None) - updated_at > timedelta(hours=_US_TTL_HOURS)
-    return now - updated_at > timedelta(hours=_US_TTL_HOURS)
-
-
-def _refresh_krx_listing(db: Session) -> None:
+def refresh_krx_listing(db: Session) -> None:
     import FinanceDataReader as fdr
     df = fdr.StockListing("KRX")
     code_col = next(c for c in df.columns if c in ("Code", "Symbol", "종목코드"))
@@ -561,7 +527,7 @@ def _refresh_krx_listing(db: Session) -> None:
     db.commit()
 
 
-def _refresh_us_listing(db: Session) -> None:
+def refresh_us_listing(db: Session) -> None:
     now = seoul_now()
     for stock in fetch_us_listing():
         db.merge(UsStock(
