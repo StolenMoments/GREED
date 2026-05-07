@@ -1,8 +1,13 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable';
-import { useAllAnalyses } from '../hooks/useAnalyses';
-import type { AnalysisFilters, EntryCandidateFilter, Judgment } from '../types';
+import { useAllAnalyses, useDeleteAnalysis } from '../hooks/useAnalyses';
+import type {
+  AnalysisFilters,
+  AnalysisSummary,
+  EntryCandidateFilter,
+  Judgment,
+} from '../types';
 
 const DEFAULT_PAGE_SIZE = 25;
 const ENTRY_GAP_FILTER_PCT = 2;
@@ -262,6 +267,7 @@ function AnalysisListPage() {
     page: activePage,
     page_size: activePageSize,
   });
+  const deleteAnalysisMutation = useDeleteAnalysis();
   const analyses = analysisPage?.items ?? [];
   const hasFilters = Boolean(
     activeJudgment || activeRunId || activeQuery || activeEntryGapLte !== undefined,
@@ -401,6 +407,22 @@ function AnalysisListPage() {
 
   function handlePageChange(nextPage: number) {
     updateFilters(filters, false, nextPage);
+  }
+
+  async function handleDeleteAnalysis(analysis: AnalysisSummary) {
+    const confirmed = window.confirm(
+      `Delete analysis #${analysis.id} (${analysis.ticker} ${analysis.name})?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteAnalysisMutation.mutateAsync(analysis.id);
+    } catch {
+      window.alert('Failed to delete analysis. Please try again.');
+    }
   }
 
   return (
@@ -558,6 +580,7 @@ function AnalysisListPage() {
           <AnalysisTable
             analyses={analyses}
             entryCandidateFilter={activeEntryCandidate ?? 'all'}
+            onDelete={(analysis) => void handleDeleteAnalysis(analysis)}
             onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
             showEntryGap
             showRunId

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.crud import (
     create_analysis,
+    delete_analysis,
     get_analyses,
     get_analyses_by_run,
     get_analyses_page,
@@ -102,6 +103,16 @@ def get_analysis_endpoint(
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     return analysis
+
+
+@router.delete("/api/analyses/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_analysis_endpoint(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    if not delete_analysis(db, analysis_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/analyses/{analysis_id}/history", response_model=list[AnalysisSummary])

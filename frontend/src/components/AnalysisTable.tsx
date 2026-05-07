@@ -12,9 +12,9 @@ import { formatDate } from '../utils/formatDate';
 import { formatPriceByTicker } from '../utils/formatPrice';
 
 const baseTableGrid =
-  'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_9rem_minmax(6rem,0.45fr)_5rem]';
+  'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_9rem_minmax(6rem,0.45fr)_minmax(7.5rem,0.55fr)]';
 const entryGapTableGrid =
-  'xl:grid-cols-[minmax(13rem,1.2fr)_7rem_minmax(11rem,0.95fr)_minmax(10rem,0.9fr)_8rem_5rem]';
+  'xl:grid-cols-[minmax(13rem,1.2fr)_7rem_minmax(11rem,0.95fr)_minmax(10rem,0.9fr)_8rem_minmax(7.5rem,0.55fr)]';
 
 function getTableGrid(showEntryGap: boolean) {
   return showEntryGap ? entryGapTableGrid : baseTableGrid;
@@ -226,6 +226,7 @@ function TargetStopCell({ analysis }: { analysis: AnalysisSummary }) {
 export function AnalysisTable({
   analyses,
   entryCandidateFilter = 'all',
+  onDelete,
   onSelect,
   showEntryGap = false,
   showRunId = false,
@@ -233,6 +234,7 @@ export function AnalysisTable({
 }: {
   analyses: AnalysisSummary[];
   entryCandidateFilter?: EntryCandidateFilter;
+  onDelete?: (analysis: AnalysisSummary) => void;
   onSelect: (analysis: AnalysisSummary) => void;
   showEntryGap?: boolean;
   showRunId?: boolean;
@@ -255,14 +257,16 @@ export function AnalysisTable({
       </div>
       <div className="divide-y divide-amber-100/10">
         {analyses.map((analysis) => (
-          <button
-            aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
-            className={`grid w-full gap-6 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] focus:outline-none focus-visible:bg-amber-100/[0.05] focus-visible:ring-2 focus-visible:ring-amber-300/70 ${tableGrid} xl:items-center`}
+          <div
+            className={`grid w-full gap-6 px-5 py-4 text-left transition hover:bg-amber-100/[0.035] ${tableGrid} xl:items-center`}
             key={analysis.id}
-            onClick={() => onSelect(analysis)}
-            type="button"
           >
-            <span className="min-w-0">
+            <button
+              aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
+              className="min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+              onClick={() => onSelect(analysis)}
+              type="button"
+            >
               <span className="block truncate text-lg font-semibold text-slate-50">
                 {analysis.name}
               </span>
@@ -282,7 +286,7 @@ export function AnalysisTable({
                 ) : null}
               </span>
               {showSignals ? <SignalMeta analysis={analysis} /> : null}
-            </span>
+            </button>
 
             <span
               className={[
@@ -312,10 +316,27 @@ export function AnalysisTable({
               </span>
             ) : null}
 
-            <span className="w-fit rounded-md border border-slate-700/80 px-3 py-2 text-sm font-semibold text-slate-200 transition xl:justify-self-end">
-              열기
+            <span className="flex flex-wrap justify-start gap-2 xl:justify-self-end">
+              <button
+                aria-label={`${analysis.name} (${analysis.ticker}) 분석 상세 보기`}
+                className="rounded-md border border-slate-700/80 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                onClick={() => onSelect(analysis)}
+                type="button"
+              >
+                열기
+              </button>
+              {onDelete ? (
+                <button
+                  aria-label={`${analysis.name} (${analysis.ticker}) 분석 삭제`}
+                  className="rounded-md border border-rose-300/25 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/70"
+                  onClick={() => onDelete(analysis)}
+                  type="button"
+                >
+                  삭제
+                </button>
+              ) : null}
             </span>
-          </button>
+          </div>
         ))}
       </div>
     </div>

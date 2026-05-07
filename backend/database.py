@@ -1,22 +1,34 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+import os
 from pathlib import Path
+from typing import Any
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from backend.korean_search import extract_korean_initials
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATABASE_PATH = PROJECT_ROOT / "greed.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
+load_dotenv(PROJECT_ROOT / ".env")
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-)
+DATABASE_PATH = PROJECT_ROOT / "greed.db"
+DEFAULT_DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+
+
+def build_engine_kwargs(database_url: str) -> dict[str, Any]:
+    url = make_url(database_url)
+    if url.get_backend_name() == "sqlite":
+        return {"connect_args": {"check_same_thread": False}}
+    return {"pool_pre_ping": True}
+
+
+engine = create_engine(DATABASE_URL, **build_engine_kwargs(DATABASE_URL))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -29,6 +41,12 @@ def init_db() -> None:
 
 
 def _migrate() -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    _migrate_sqlite()
+
+
+def _migrate_sqlite() -> None:
     with engine.connect() as conn:
         jobs_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(analysis_jobs)"))]
         if "raw_markdown" not in jobs_cols:

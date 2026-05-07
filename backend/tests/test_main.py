@@ -14,6 +14,11 @@ def test_app_registers_expected_routes() -> None:
     assert "/api/analyses" in paths
     assert "/api/analyses/{analysis_id}" in paths
     assert "/api/analyses/{analysis_id}/history" in paths
+    analysis_detail_methods: set[str] = set()
+    for route in app.routes:
+        if route.path == "/api/analyses/{analysis_id}":
+            analysis_detail_methods.update(getattr(route, "methods", set()))
+    assert "DELETE" in analysis_detail_methods
     assert "/api/stock/{ticker}/price" in paths
     assert "/api/stock/{ticker}/price/refresh" in paths
     assert "/api/tickers/{code}" in paths

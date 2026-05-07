@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query';
 import {
   createAnalysis,
+  deleteAnalysis,
   fetchAllAnalyses,
   fetchAnalyses,
   fetchAnalysis,
@@ -82,6 +83,22 @@ export function useCreateAnalysis() {
       queryClient.invalidateQueries({ queryKey: runKeys.lists() });
       queryClient.invalidateQueries({ queryKey: runKeys.detail(analysis.run_id) });
       queryClient.setQueryData(analysisKeys.detail(analysis.id), analysis);
+    },
+  });
+}
+
+export function useDeleteAnalysis() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (analysisId: number) => deleteAnalysis(analysisId),
+    onSuccess: (_data, analysisId) => {
+      queryClient.removeQueries({ queryKey: analysisKeys.detail(analysisId) });
+      queryClient.invalidateQueries({ queryKey: analysisKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: analysisKeys.details() });
+      queryClient.invalidateQueries({ queryKey: runKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: runKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 }

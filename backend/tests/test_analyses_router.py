@@ -11,7 +11,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.crud import create_analysis, create_run, upsert_stock_price
+from backend.crud import (
+    create_analysis,
+    create_job,
+    create_run,
+    get_job,
+    update_job_done,
+    upsert_stock_price,
+)
 from backend.database import Base, get_db
 from backend.routers.analyses import router
 from backend.schemas import AnalysisCreate
@@ -834,6 +841,49 @@ def test_get_analysis_returns_analysis_detail(client: TestClient, db_session: Se
 
 def test_get_analysis_returns_404_when_not_found(client: TestClient) -> None:
     response = client.get("/api/analyses/99999")
+
+    assert response.status_code == 404
+
+
+def test_delete_analysis_removes_analysis_and_clears_job_link(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = create_run(db_session, memo="delete run")
+    analysis = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="BUY",
+            trend="UP",
+            cloud_position="ABOVE",
+            ma_alignment="BULLISH",
+        ),
+    )
+    job = create_job(db_session, ticker="005930", run_id=run.id, model="codex")
+    update_job_done(db_session, job, analysis_id=analysis.id, raw_markdown=VALID_MARKDOWN)
+
+    response = client.delete(f"/api/analyses/{analysis.id}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.get(f"/api/analyses/{analysis.id}").status_code == 404
+    list_response = client.get(f"/api/runs/{run.id}/analyses")
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+    db_session.expire_all()
+    saved_job = get_job(db_session, job.id)
+    assert saved_job is not None
+    assert saved_job.status == "done"
+    assert saved_job.analysis_id is None
+
+
+def test_delete_analysis_returns_404_when_not_found(client: TestClient) -> None:
+    response = client.delete("/api/analyses/99999")
 
     assert response.status_code == 404
 

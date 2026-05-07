@@ -3,10 +3,11 @@ import { useMemo, useState } from 'react';
 import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable';
 import ManualInputModal from '../components/ManualInputModal';
 import TickerAnalysisForm from '../components/TickerAnalysisForm';
-import { useAnalyses } from '../hooks/useAnalyses';
+import { useAnalyses, useDeleteAnalysis } from '../hooks/useAnalyses';
 import type {
   Analysis,
   AnalysisFilters,
+  AnalysisSummary,
   Judgment,
 } from '../types';
 
@@ -61,6 +62,7 @@ function StockListPage() {
     runId,
     filters,
   );
+  const deleteAnalysisMutation = useDeleteAnalysis();
 
   const activeLabel =
     judgmentTabs.find((tab) => tab.value === activeJudgment)?.label ?? '전체';
@@ -72,6 +74,23 @@ function StockListPage() {
     }
 
     void refetch();
+  }
+
+  async function handleDeleteAnalysis(analysis: AnalysisSummary) {
+    const confirmed = window.confirm(
+      `Delete analysis #${analysis.id} (${analysis.ticker} ${analysis.name})?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteAnalysisMutation.mutateAsync(analysis.id);
+      void refetch();
+    } catch {
+      window.alert('Failed to delete analysis. Please try again.');
+    }
   }
 
   if (!runId) {
@@ -178,6 +197,7 @@ function StockListPage() {
       ) : (
         <AnalysisTable
           analyses={analyses}
+          onDelete={(analysis) => void handleDeleteAnalysis(analysis)}
           onSelect={(analysis) => navigate(`/analyses/${analysis.id}`)}
           showSignals
         />

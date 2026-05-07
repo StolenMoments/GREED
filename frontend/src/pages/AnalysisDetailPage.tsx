@@ -4,7 +4,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import PriceLevels from '../components/PriceLevels';
 import QuickAnalysisLauncher from '../components/QuickAnalysisLauncher';
 import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
-import { useAnalysis, useHistory } from '../hooks/useAnalyses';
+import { useAnalysis, useDeleteAnalysis, useHistory } from '../hooks/useAnalyses';
 import { useRefreshStockPrice, useStockPrice } from '../hooks/useStockPrice';
 import { formatDate } from '../utils/formatDate';
 import { parseMarkdown } from '../utils/parseMarkdown';
@@ -233,6 +233,7 @@ function HistoryList({
 }
 
 function AnalysisDetailPage() {
+  const navigate = useNavigate();
   const { id } = useParams();
   const analysisId = parseAnalysisId(id);
   const {
@@ -249,10 +250,32 @@ function AnalysisDetailPage() {
   } = useHistory(analysisId);
   const { data: stockPrice } = useStockPrice(analysis?.ticker);
   const refreshStockPrice = useRefreshStockPrice(analysis?.ticker);
+  const deleteAnalysisMutation = useDeleteAnalysis();
   const parsed = useMemo(
     () => (analysis ? parseMarkdown(analysis.markdown) : undefined),
     [analysis],
   );
+
+  async function handleDeleteAnalysis() {
+    if (!analysis) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete analysis #${analysis.id} (${analysis.ticker} ${analysis.name})?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteAnalysisMutation.mutateAsync(analysis.id);
+      navigate('/analyses');
+    } catch {
+      window.alert('Failed to delete analysis. Please try again.');
+    }
+  }
 
   if (!analysisId) {
     return <ErrorPanel message="분석 ID를 확인할 수 없습니다." />;
@@ -292,14 +315,24 @@ function AnalysisDetailPage() {
               </p>
             </div>
 
-            <span
-              className={[
-                'rounded-full border px-3 py-1.5 text-sm font-semibold',
-                judgmentStyles[analysis.judgment],
-              ].join(' ')}
-            >
-              {analysis.judgment}
-            </span>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <span
+                className={[
+                  'rounded-full border px-3 py-1.5 text-sm font-semibold',
+                  judgmentStyles[analysis.judgment],
+                ].join(' ')}
+              >
+                {analysis.judgment}
+              </span>
+              <button
+                className="rounded-md border border-rose-300/25 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/70 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={deleteAnalysisMutation.isPending}
+                onClick={() => void handleDeleteAnalysis()}
+                type="button"
+              >
+                삭제
+              </button>
+            </div>
           </div>
 
           <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

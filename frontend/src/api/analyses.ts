@@ -54,3 +54,7 @@ export async function createAnalysis(
   const response = await apiClient.post<Analysis>('/analyses', payload);
   return response.data;
 }
+
+export async function deleteAnalysis(analysisId: number): Promise<void> {
+  await apiClient.delete(`/analyses/${analysisId}`);
+}

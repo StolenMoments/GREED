@@ -1,6 +1,8 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
+PyMySQL
+python-dotenv
 pydantic>=2,<3
 click
 httpx

@@ -372,6 +372,20 @@ def get_analysis(db: Session, analysis_id: int) -> Analysis | None:
     return db.scalars(stmt).first()
 
 
+def delete_analysis(db: Session, analysis_id: int) -> bool:
+    analysis = get_analysis(db, analysis_id)
+    if analysis is None:
+        return False
+
+    db.query(AnalysisJob).filter(AnalysisJob.analysis_id == analysis_id).update(
+        {"analysis_id": None},
+        synchronize_session=False,
+    )
+    db.delete(analysis)
+    db.commit()
+    return True
+
+
 def get_analysis_history(db: Session, ticker: str) -> list[Analysis]:
     stmt = select(Analysis).where(Analysis.ticker == ticker).order_by(*ANALYSIS_ORDER_BY)
     return list(db.scalars(stmt).all())
