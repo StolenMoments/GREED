@@ -610,6 +610,14 @@ def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
     return match.group("name").strip()
 
 
+def _trim_csv(csv_text: str, max_data_rows: int) -> str:
+    lines = csv_text.strip().splitlines()
+    header, data_rows = lines[0], lines[1:]
+    future_rows, hist_rows = data_rows[-26:], data_rows[:-26]
+    trimmed = hist_rows[-max_data_rows:] if len(hist_rows) > max_data_rows else hist_rows
+    return "\n".join([header] + trimmed + future_rows)
+
+
 def _claude_cmd() -> list[str]:
     model_flag = ["--model", "sonnet"]
     if sys.platform != "win32":
@@ -750,6 +758,22 @@ def _run_claude(
     return _spawn_model_process(_claude_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 
+def _codex_cmd() -> list[str]:
+    if sys.platform != "win32":
+        return ["codex", "exec", "--yolo", "-"]
+    # codex.cmd (batch wrapper) doesn't forward stdin to the inner codex.exe process.
+    # Call codex.exe directly when available (npm global install layout).
+    npm_root = Path.home() / "AppData" / "Roaming" / "npm" / "node_modules" / "@openai" / "codex" / "node_modules" / "@openai"
+    candidates = [
+        npm_root / "codex-win32-x64" / "vendor" / "x86_64-pc-windows-msvc" / "codex" / "codex.exe",
+        npm_root / "codex-win32-arm64" / "vendor" / "aarch64-pc-windows-msvc" / "codex" / "codex.exe",
+    ]
+    for exe in candidates:
+        if exe.exists():
+            return [str(exe), "exec", "--yolo", "-"]
+    return ["codex.cmd", "exec", "--yolo", "-"]
+
+
 def _run_codex(
     csv_text: str,
     system_prompt: str = SYSTEM_PROMPT,
@@ -766,9 +790,24 @@ def _run_codex(
     stderr_path = stderr_path or PICK_OUTPUT_DIR / STDERR_LOG_FILENAME
     pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
     exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
-    prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
-    cmd = ["codex.cmd", "exec", "--yolo", "-"] if sys.platform == "win32" else ["codex", "exec", "--yolo", "-"]
-    return _spawn_model_process(cmd, prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+    prompt = _build_file_output_prompt(system_prompt, _trim_csv(csv_text, 200), analysis_path)
+    return _spawn_model_process(_codex_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+
+
+def _gemini_cmd() -> list[str]:
+    base_args = ["--yolo", "-p", "", "--output-format", "text"]
+    if sys.platform != "win32":
+        return ["gemini", *base_args]
+    # gemini.cmd (batch wrapper) drops empty-string args, breaking the -p "" stdin trigger.
+    # Call node + gemini.js directly so stdin is forwarded correctly.
+    gemini_js = (
+        Path.home()
+        / "AppData" / "Roaming" / "npm" / "node_modules"
+        / "@google" / "gemini-cli" / "bundle" / "gemini.js"
+    )
+    if gemini_js.exists():
+        return ["node", str(gemini_js), *base_args]
+    return ["gemini.cmd", *base_args]
 
 
 def _run_gemini(
@@ -788,10 +827,4 @@ def _run_gemini(
     pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
     exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
     prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
-    # Pass prompt via stdin; -p "" triggers non-interactive (headless) mode
-    cmd = (
-        ["gemini.cmd", "--yolo", "-p", "", "--output-format", "text"]
-        if sys.platform == "win32"
-        else ["gemini", "--yolo", "-p", "", "--output-format", "text"]
-    )
-    return _spawn_model_process(cmd, prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+    return _spawn_model_process(_gemini_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
