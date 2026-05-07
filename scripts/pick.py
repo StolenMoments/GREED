@@ -17,6 +17,21 @@ from pathlib import Path
 import FinanceDataReader as fdr
 import pandas as pd
 
+try:
+    from fdr_timeout import (
+        DEFAULT_FETCH_RETRIES,
+        DEFAULT_REQUEST_TIMEOUT,
+        fetch_with_retries,
+        install_default_timeout,
+    )
+except ModuleNotFoundError:
+    from scripts.fdr_timeout import (
+        DEFAULT_FETCH_RETRIES,
+        DEFAULT_REQUEST_TIMEOUT,
+        fetch_with_retries,
+        install_default_timeout,
+    )
+
 
 # ─────────────────────────────────────────
 # 지표 계산
@@ -227,14 +242,24 @@ def resolve_stock_name(ticker: str) -> str:
 def sanitize_filename(text: str) -> str:
     return re.sub(r'[<>:"/\\\\|?*]', "_", text).strip()
 
-def fetch_weekly(ticker: str, years: int) -> pd.DataFrame:
+def fetch_weekly(
+    ticker: str,
+    years: int,
+    request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+    fetch_retries: int = DEFAULT_FETCH_RETRIES,
+) -> pd.DataFrame:
+    install_default_timeout(request_timeout)
+
     end   = datetime.today()
     # MA120 워밍업 버퍼 + 일목 선행 26주 버퍼를 넉넉히 포함
     # 120주 ≈ 2.3년, 거기에 years 추가, 선행스팬 미래 행은 별도 처리
     start = end - timedelta(weeks=(years * 52) + 120 + 52)
 
     print(f"[INFO] {ticker} 일봉 조회: {start.date()} ~ {end.date()}")
-    df_daily = fdr.DataReader(ticker, start=start.strftime("%Y-%m-%d"))
+    df_daily = fetch_with_retries(
+        lambda: fdr.DataReader(ticker, start=start.strftime("%Y-%m-%d")),
+        retries=fetch_retries,
+    )
 
     if df_daily.empty:
         raise ValueError(f"종목 데이터 없음: {ticker}")
@@ -401,14 +426,29 @@ def print_summary(df: pd.DataFrame, ticker: str, stock_name: str, filepath: Path
 # 모듈 호출용 함수 (gogo2.py 등에서 사용)
 # ─────────────────────────────────────────
 
-def run_pick(ticker: str, years: int = 5, output_dir: str = "./output", no_future_cloud: bool = False, stock_name: str = None):
+def run_pick(
+    ticker: str,
+    years: int = 5,
+    output_dir: str = "./output",
+    no_future_cloud: bool = False,
+    stock_name: str = None,
+    request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+    fetch_retries: int = DEFAULT_FETCH_RETRIES,
+):
+    install_default_timeout(request_timeout)
+
     ticker = ticker.strip().zfill(6)
     
     # 외부에서 종목명을 넘겨주지 않은 경우에만 조회 (속도 향상)
     if not stock_name:
         stock_name = resolve_stock_name(ticker)
         
-    df = fetch_weekly(ticker, years)
+    df = fetch_weekly(
+        ticker,
+        years,
+        request_timeout=request_timeout,
+        fetch_retries=fetch_retries,
+    )
     df = add_moving_averages(df)
     df = add_liquidity_indicators(df)
     df = add_volatility_indicators(df)
@@ -436,6 +476,10 @@ def main():
     parser.add_argument("--years",   type=int, default=5,        help="조회 기간 (기본: 5년)")
     parser.add_argument("--output",            default="./output", help="출력 디렉토리 (기본: ./output)")
     parser.add_argument("--no-future-cloud",   action="store_true", help="미래 구름 행 제외")
+    parser.add_argument("--request-timeout", type=int, default=DEFAULT_REQUEST_TIMEOUT,
+                        help=f"외부 데이터 요청 timeout 초 (기본: {DEFAULT_REQUEST_TIMEOUT})")
+    parser.add_argument("--retries", type=int, default=DEFAULT_FETCH_RETRIES,
+                        help=f"외부 데이터 조회 실패 시 재시도 횟수 (기본: {DEFAULT_FETCH_RETRIES})")
     args = parser.parse_args()
 
     try:
@@ -443,7 +487,9 @@ def main():
             ticker=args.ticker, 
             years=args.years, 
             output_dir=args.output, 
-            no_future_cloud=args.no_future_cloud
+            no_future_cloud=args.no_future_cloud,
+            request_timeout=args.request_timeout,
+            fetch_retries=args.retries,
         )
     except ValueError as e:
         print(f"[ERROR] {e}", file=sys.stderr)

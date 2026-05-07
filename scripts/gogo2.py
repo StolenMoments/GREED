@@ -9,7 +9,26 @@ import os
 import json
 import argparse
 
-import pick  # pick.py 모듈 연동
+try:
+    from fdr_timeout import (
+        DEFAULT_FETCH_RETRIES,
+        DEFAULT_REQUEST_TIMEOUT,
+        fetch_with_retries,
+        format_error,
+        install_default_timeout,
+    )
+except ModuleNotFoundError:
+    from scripts.fdr_timeout import (
+        DEFAULT_FETCH_RETRIES,
+        DEFAULT_REQUEST_TIMEOUT,
+        fetch_with_retries,
+        format_error,
+        install_default_timeout,
+    )
+try:
+    import pick  # pick.py 모듈 연동
+except ModuleNotFoundError:
+    from scripts import pick  # type: ignore
 
 # ────────────────────────────────────────
 # 1. 일목균형표 계산
@@ -355,16 +374,17 @@ def load_progress():
             data = json.load(f)
         if data.get('date') == today:
             print(f"[재실행 감지] 오늘({today}) 이미 처리된 종목 {len(data.get('processed', []))}개 스킵")
-            return data.get('processed', []), data.get('results', [])
-    return [], []
+            return data.get('processed', []), data.get('results', []), data.get('errors', [])
+    return [], [], []
 
-def save_progress(processed_tickers, results, lock):
+def save_progress(processed_tickers, results, errors, lock):
     today = datetime.today().strftime("%Y-%m-%d")
     with lock:
         data = {
             'date':      today,
             'processed': processed_tickers,
             'results':   results,
+            'errors':    errors,
         }
         with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False)
@@ -379,17 +399,21 @@ def clear_progress():
 # ────────────────────────────────────────
 def process_ticker(ticker, name, market, start, end,
                    candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
-                   recent_volume_weeks=4):
+                   recent_volume_weeks=4,
+                   fetch_retries=DEFAULT_FETCH_RETRIES):
     try:
-        df = fdr.DataReader(ticker, start, end)
+        df = fetch_with_retries(
+            lambda: fdr.DataReader(ticker, start, end),
+            retries=fetch_retries,
+        )
 
         if df is None or df.empty or 'Close' not in df.columns:
-            return ticker, None
+            return ticker, None, None
 
         weekly = to_weekly(df)
 
         if weekly.empty or len(weekly) < 10:
-            return ticker, None
+            return ticker, None, None
 
         hit, detail = check_conditions(
             weekly,
@@ -403,12 +427,18 @@ def process_ticker(ticker, name, market, start, end,
             detail['종목코드'] = ticker
             detail['종목명']   = name
             detail['시장']     = market
-            return ticker, detail
+            return ticker, detail, None
 
-    except Exception:
-        pass
+    except Exception as exc:
+        return ticker, None, {
+            'market': market,
+            'ticker': ticker,
+            'name': name,
+            'error': format_error(exc),
+            'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
 
-    return ticker, None
+    return ticker, None, None
 
 # ────────────────────────────────────────
 # 8. 결과 CSV append
@@ -442,10 +472,11 @@ def flush_to_csv(batch_hits, filename, lock):
 # ────────────────────────────────────────
 def screen_market(market, start, end,
                   candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
-                  processed_tickers, all_results,
+                  processed_tickers, all_results, all_errors,
                   batch_size=50, max_workers=8,
                   file_lock=None, print_lock=None,
-                  recent_volume_weeks=4):
+                  recent_volume_weeks=4,
+                  fetch_retries=DEFAULT_FETCH_RETRIES):
     try:
         tickers, names = get_ticker_list(market)
     except Exception as e:
@@ -477,16 +508,20 @@ def screen_market(market, start, end,
                     start, end,
                     candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
                     recent_volume_weeks,
+                    fetch_retries,
                 )
                 futures_map[future] = ticker
 
             for future in as_completed(futures_map):
-                ticker, detail = future.result()
+                ticker, detail, error = future.result()
                 processed_tickers.append(ticker)
 
                 if detail:
                     batch_hits.append(detail)
                     all_results.append(detail)
+                if error:
+                    errors.append(error)
+                    all_errors.append(error)
 
         # 배치 완료 출력
         end_idx    = min(batch_start + batch_size, total)
@@ -494,16 +529,21 @@ def screen_market(market, start, end,
 
         with print_lock:
             print(f"\n  [배치 {batch_num}] {end_idx}/{total} 탐색완료 "
-                  f"| 이번배치 {found_this}개 발견 | 누적 {len(all_results)}개")
+                  f"| 이번배치 {found_this}개 발견 | 실패 {len(errors)}개 | 누적 {len(all_results)}개")
 
             if batch_hits:
                 df_batch = pd.DataFrame(batch_hits)
                 cols     = [c for c in RESULT_COLS if c in df_batch.columns]
                 print(df_batch[cols].to_string(index=False))
+            if errors:
+                print("  실패 종목 일부:")
+                for error in errors[-5:]:
+                    print(f"    - {error['market']} {error['ticker']} {error['name']}: {error['error']}")
 
         flush_to_csv(batch_hits, result_filename, file_lock)
-        save_progress(processed_tickers, all_results, file_lock)
+        save_progress(processed_tickers, all_results, all_errors, file_lock)
         batch_hits = []
+        errors = []
 
     if errors:
         print(f"  오류 발생 종목: {len(errors)}개")
@@ -539,9 +579,13 @@ def screen_all(markets=None,
                batch_size=50,
                max_workers=8,
                force_restart=False,
-               recent_volume_weeks=4):
+               recent_volume_weeks=4,
+               request_timeout=DEFAULT_REQUEST_TIMEOUT,
+               fetch_retries=DEFAULT_FETCH_RETRIES):
     if markets is None:
         markets = ['KOSPI', 'KOSDAQ']
+
+    install_default_timeout(request_timeout)
 
     if force_restart:
         clear_progress()
@@ -552,6 +596,7 @@ def screen_all(markets=None,
     print("=" * 60)
     print(f"조회 기간    : {start} ~ {end}")
     print(f"배치 단위    : {batch_size}개 | 스레드 수: {max_workers}")
+    print(f"데이터 조회  : timeout {request_timeout}초 | 재시도 {fetch_retries}회")
     if candle_override or ma_override or gc_override:
         print(f"파라미터 오버라이드 → "
               f"캔들: {candle_override}주 | 이평선: {ma_override}주 | GC: {gc_override}주")
@@ -559,7 +604,7 @@ def screen_all(markets=None,
         print("파라미터     : 시장별 기본값 사용 (KOSPI 12/6/6 | KOSDAQ 8/4/4)")
     print("=" * 60)
 
-    processed_tickers, all_results = load_progress()
+    processed_tickers, all_results, all_errors = load_progress()
 
     file_lock  = threading.Lock()
     print_lock = threading.Lock()
@@ -571,11 +616,13 @@ def screen_all(markets=None,
             candle, ma, gc,
             processed_tickers,
             all_results,
+            all_errors,
             batch_size          = batch_size,
             max_workers         = max_workers,
             file_lock           = file_lock,
             print_lock          = print_lock,
             recent_volume_weeks = recent_volume_weeks,
+            fetch_retries       = fetch_retries,
         )
 
     if not all_results:
@@ -629,6 +676,10 @@ def parse_args():
                         help='당일 진행 상태 무시하고 처음부터 재실행')
     parser.add_argument('--recent-vol-weeks', type=int, default=4,
                         help='최근 N 주 모두 volume>0 이어야 통과 (거래정지 필터, 기본 4, 0=비활성)')
+    parser.add_argument('--request-timeout', type=int, default=DEFAULT_REQUEST_TIMEOUT,
+                        help=f'외부 데이터 요청 timeout 초 (기본: {DEFAULT_REQUEST_TIMEOUT})')
+    parser.add_argument('--retries', type=int, default=DEFAULT_FETCH_RETRIES,
+                        help=f'외부 데이터 조회 실패 시 재시도 횟수 (기본: {DEFAULT_FETCH_RETRIES})')
     return parser.parse_args()
 
 # ────────────────────────────────────────
@@ -647,6 +698,8 @@ if __name__ == "__main__":
         max_workers         = args.workers,
         force_restart       = args.restart,
         recent_volume_weeks = args.recent_vol_weeks,
+        request_timeout     = args.request_timeout,
+        fetch_retries       = args.retries,
     )
 
     # ==========================================
@@ -670,7 +723,9 @@ if __name__ == "__main__":
                     ticker=ticker, 
                     years=5, 
                     output_dir=output_folder, 
-                    stock_name=name # 종목명을 바로 넘겨주어 속도 최적화
+                    stock_name=name, # 종목명을 바로 넘겨주어 속도 최적화
+                    request_timeout=args.request_timeout,
+                    fetch_retries=args.retries,
                 )
                 success_count += 1
             except Exception as e:
