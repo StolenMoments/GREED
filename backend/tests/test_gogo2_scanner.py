@@ -67,17 +67,15 @@ def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monke
     assert detail["돌파시거래량증가(배)"] == 1.0
 
 
-def test_pre_breakout_detects_stock_near_cloud_top_without_breakout(monkeypatch):
+def test_stock_below_cloud_top_is_excluded(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=96.0)
     df.loc[df.index[-2], "Close"] = 97.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
-    assert hit is True
-    assert detail["scan_type"] == "pre_breakout"
-    assert detail["캔들구름돌파_N주전"] is None
-    assert detail["돌파시거래량증가(배)"] is None
+    assert hit is False
+    assert detail == {}
 
 
 def test_pullback_detects_recent_breakout_near_support_after_three_week_limit(monkeypatch):

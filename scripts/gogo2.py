@@ -122,6 +122,11 @@ def check_conditions(df,
     current_cloud_top = max(last['span_a'], last['span_b'])
     current_cloud_bot = min(last['span_a'], last['span_b'])
     current_close = last['Close']
+
+    # 현재 주봉이 구름 위에 있는 종목만 스크리닝 대상으로 유지한다.
+    if current_close < current_cloud_top:
+        return False, {}
+
     close_vs_cloud_top_pct = pct_gap(current_close, current_cloud_top)
     cloud_thickness_pct = pct_gap(current_cloud_top, current_cloud_bot) if current_close == 0 else (
         (current_cloud_top - current_cloud_bot) / current_close * 100
@@ -207,16 +212,6 @@ def check_conditions(df,
     recent_breakout = candle_break_idx is not None and candle_break_week <= scan_candle_lookback
     breakout_type = recent_breakout and current_above_cloud and not over_max_gap
 
-    near_cloud_top = current_cloud_top * 0.95 <= current_close < current_cloud_top
-    structure_count = sum([
-        tenkan_above_kijun,
-        ma20_rising,
-        current_close > last['ma20'],
-        current_close > current_cloud_bot,
-        signal_vol_ratio_20 >= 1.0,
-    ])
-    pre_breakout_type = near_cloud_top and structure_count >= 3 and tenkan_above_kijun
-
     support_gap = nearest_support_gap_pct(
         current_close,
         [current_cloud_top, last['ma20'], last['kijun']],
@@ -236,8 +231,6 @@ def check_conditions(df,
         score += 2 if candle_break_week <= candle_max_lookback else 1
     elif recent_breakout and current_above_cloud:
         score += 2
-    if pre_breakout_type:
-        score += 3
     if pullback_type:
         score += 3
 
@@ -273,8 +266,6 @@ def check_conditions(df,
         scan_type = 'pullback'
     elif breakout_type:
         scan_type = 'breakout'
-    elif pre_breakout_type:
-        scan_type = 'pre_breakout'
     elif score >= scanner_min_score:
         scan_type = 'trend_confirm'
 
