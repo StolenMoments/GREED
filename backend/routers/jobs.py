@@ -180,8 +180,11 @@ PID_FILENAME = "model.pid"
 EXIT_CODE_FILENAME = "exit_code.txt"
 MODEL_START_GRACE_SECONDS = 15
 LOG_TAIL_CHARS = 1200
+CHART_CACHE_DIR_NAME = "chart_cache"
 _FINALIZE_LOCKS: dict[int, Lock] = {}
 _FINALIZE_LOCKS_GUARD = Lock()
+_CHART_CSV_LOCKS: dict[tuple[str, str], Lock] = {}
+_CHART_CSV_LOCKS_GUARD = Lock()
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 VALID_JOB_STATUSES = {"pending", "done", "failed"}
@@ -258,11 +261,7 @@ def run_analysis_pipeline(job_id: int) -> None:
         job_output_dir = _job_output_dir(job.id)
         try:
             stock_name = _resolve_stock_name(ticker)
-            reusable_csv_path = _today_reusable_csv_path(ticker)
-            if reusable_csv_path is not None:
-                _copy_csv_to_job_output(reusable_csv_path, job_output_dir)
-            else:
-                _run_pick(ticker, stock_name, job_output_dir)
+            _prepare_job_csv(ticker, stock_name, job_output_dir)
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
@@ -607,18 +606,71 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
     return files[-1]
 
 
-def _today_reusable_csv_path(ticker: str) -> Path | None:
+def _prepare_job_csv(ticker: str, stock_name: str, job_output_dir: Path) -> Path:
     today_str = seoul_now().strftime("%Y%m%d")
+    reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str)
+    if reusable_csv_path is None:
+        with _chart_csv_lock(ticker, today_str):
+            reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str)
+            if reusable_csv_path is None:
+                cache_dir = _chart_cache_dir(today_str)
+                _run_pick(ticker, stock_name, cache_dir)
+                reusable_csv_path = _latest_csv_path(ticker, cache_dir)
+                if reusable_csv_path is None:
+                    raise RuntimeError("CSV file was not created")
+
+    cached_csv_path = _ensure_chart_cache_csv(reusable_csv_path, today_str)
+    return _copy_csv_to_job_output(cached_csv_path, job_output_dir)
+
+
+def _chart_csv_lock(ticker: str, today_str: str) -> Lock:
+    key = (ticker, today_str)
+    with _CHART_CSV_LOCKS_GUARD:
+        lock = _CHART_CSV_LOCKS.get(key)
+        if lock is None:
+            lock = Lock()
+            _CHART_CSV_LOCKS[key] = lock
+        return lock
+
+
+def _chart_cache_dir(today_str: str | None = None) -> Path:
+    return PICK_OUTPUT_DIR / CHART_CACHE_DIR_NAME / (today_str or seoul_now().strftime("%Y%m%d"))
+
+
+def _today_reusable_csv_path(ticker: str, today_str: str | None = None) -> Path | None:
+    today_str = today_str or seoul_now().strftime("%Y%m%d")
     patterns = [
         f"{ticker}_*_weekly_{today_str}.csv",
         f"{ticker}_weekly_{today_str}.csv",
     ]
+    cache_files: list[Path] = []
+    for pattern in patterns:
+        cache_files.extend(path for path in _chart_cache_dir(today_str).glob(pattern) if path.is_file())
+    if cache_files:
+        return sorted(cache_files, key=lambda path: path.stat().st_mtime)[-1]
+
     files: list[Path] = []
     for pattern in patterns:
         files.extend(path for path in PICK_OUTPUT_DIR.glob(pattern) if path.is_file())
     if not files:
         return None
     return sorted(files, key=lambda path: path.stat().st_mtime)[-1]
+
+
+def _ensure_chart_cache_csv(csv_path: Path, today_str: str) -> Path:
+    cache_dir = _chart_cache_dir(today_str)
+    try:
+        if csv_path.resolve().parent == cache_dir.resolve():
+            return csv_path
+    except OSError:
+        pass
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    destination = cache_dir / csv_path.name
+    if destination.exists():
+        return destination
+    shutil.copy2(csv_path, destination)
+    return destination
 
 
 def _copy_csv_to_job_output(csv_path: Path, job_output_dir: Path) -> Path:

@@ -285,8 +285,10 @@ def test_run_analysis_pipeline_starts_model_process_and_keeps_job_pending(
         job = crud.create_job(db, ticker="005930", run_id=run.id)
 
     output_dir = tmp_path / "jobs" / str(job.id)
-    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
     captured: dict[str, object] = {}
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv")
 
     def fake_runner(
         csv_text: str,
@@ -315,7 +317,7 @@ def test_run_analysis_pipeline_starts_model_process_and_keeps_job_pending(
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
-    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
     run_analysis_pipeline(job.id)
@@ -373,10 +375,45 @@ def test_run_analysis_pipeline_reuses_today_root_csv(
     run_analysis_pipeline(job.id)
 
     copied_csv = output_dir / root_csv.name
+    cached_csv = tmp_path / jobs.CHART_CACHE_DIR_NAME / today / root_csv.name
     assert pick_calls == []
+    assert cached_csv.exists()
     assert copied_csv.exists()
     assert "76000" in str(captured["csv_text"])
     assert captured["analysis_path"] == output_dir / jobs.ANALYSIS_FILENAME
+
+
+def test_run_analysis_pipeline_reuses_today_chart_cache_csv(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pipeline cache reuse")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
+    cache_csv = _write_csv(cache_dir, f"005930_Samsung_weekly_{today}.csv", close="78000")
+    output_dir = tmp_path / "jobs" / str(job.id)
+    captured: dict[str, object] = {}
+    pick_calls: list[tuple[str, str, Path]] = []
+
+    def fake_runner(csv_text: str, *args: object) -> FakeProcess:
+        captured["csv_text"] = csv_text
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", lambda *args: pick_calls.append(args))
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+
+    run_analysis_pipeline(job.id)
+
+    assert pick_calls == []
+    assert (output_dir / cache_csv.name).exists()
+    assert "78000" in str(captured["csv_text"])
 
 
 def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
@@ -409,8 +446,50 @@ def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
 
     run_analysis_pipeline(job.id)
 
-    assert pick_calls == [("005930", "Samsung", output_dir)]
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / jobs.seoul_now().strftime("%Y%m%d")
+    assert pick_calls == [("005930", "Samsung", cache_dir)]
+    assert (output_dir / "005930_Samsung_weekly_20260507.csv").exists()
     assert "77000" in str(captured["csv_text"])
+
+
+def test_run_analysis_pipeline_reuses_csv_created_by_previous_job(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pipeline shared cache")
+        first_job = crud.create_job(db, ticker="005930", run_id=run.id)
+        second_job = crud.create_job(db, ticker="005930", run_id=run.id)
+        first_job_id = first_job.id
+        second_job_id = second_job.id
+
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    pick_calls: list[tuple[str, str, Path]] = []
+    runner_csv_texts: list[str] = []
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        pick_calls.append((ticker, stock_name, output_dir))
+        _write_csv(output_dir, f"005930_Samsung_weekly_{today}.csv", close="79000")
+
+    def fake_runner(csv_text: str, *args: object) -> FakeProcess:
+        runner_csv_texts.append(csv_text)
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+
+    run_analysis_pipeline(first_job_id)
+    run_analysis_pipeline(second_job_id)
+
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
+    assert pick_calls == [("005930", "Samsung", cache_dir)]
+    assert (tmp_path / "jobs" / str(first_job_id) / f"005930_Samsung_weekly_{today}.csv").exists()
+    assert (tmp_path / "jobs" / str(second_job_id) / f"005930_Samsung_weekly_{today}.csv").exists()
+    assert all("79000" in csv_text for csv_text in runner_csv_texts)
 
 
 def test_run_analysis_pipeline_ignores_yesterday_root_csv(
@@ -439,7 +518,8 @@ def test_run_analysis_pipeline_ignores_yesterday_root_csv(
 
     run_analysis_pipeline(job.id)
 
-    assert pick_calls == [("005930", "Samsung", output_dir)]
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / jobs.seoul_now().strftime("%Y%m%d")
+    assert pick_calls == [("005930", "Samsung", cache_dir)]
 
 
 def test_today_reusable_csv_path_picks_latest_mtime(
@@ -828,13 +908,14 @@ def test_run_analysis_pipeline_marks_model_start_failure(
         run = crud.create_run(db, memo="model start failure")
         job = crud.create_job(db, ticker="005930", run_id=run.id)
 
-    output_dir = tmp_path / "jobs" / str(job.id)
-    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
-
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
-    monkeypatch.setattr(jobs, "_run_pick", lambda ticker, stock_name, output_dir: None)
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv")
+
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
 
     def fail_claude(*args: object) -> FakeProcess:
         raise FileNotFoundError("claude")
