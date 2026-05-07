@@ -105,3 +105,74 @@ def test_result_columns_include_scanner_metadata():
         "구름두께_pct",
     ]:
         assert column in gogo2.RESULT_COLS
+
+
+def test_get_ticker_list_excludes_current_zero_trade_rows(monkeypatch):
+    listing = pd.DataFrame(
+        [
+            {
+                "Code": "184230",
+                "Name": "SGA솔루션즈",
+                "Open": 0,
+                "High": 0,
+                "Low": 0,
+                "Volume": 0,
+                "Amount": 0,
+                "Marcap": 71_000_000_000,
+            },
+            {
+                "Code": "123450",
+                "Name": "정상거래",
+                "Open": 1000,
+                "High": 1100,
+                "Low": 990,
+                "Volume": 100,
+                "Amount": 100_000,
+                "Marcap": 80_000_000_000,
+            },
+        ]
+    )
+    monkeypatch.setattr(gogo2.fdr, "StockListing", lambda market: listing, raising=False)
+
+    tickers, names = gogo2.get_ticker_list("KOSDAQ")
+
+    assert tickers == ["123450"]
+    assert names == {"123450": "정상거래"}
+
+
+def test_get_ticker_list_keeps_rows_when_current_trade_columns_are_missing(monkeypatch):
+    listing = pd.DataFrame(
+        [
+            {
+                "Code": "184230",
+                "Name": "SGA솔루션즈",
+                "Open": 0,
+                "High": 0,
+                "Low": 0,
+                "Volume": 0,
+                "Marcap": 71_000_000_000,
+            },
+        ]
+    )
+    monkeypatch.setattr(gogo2.fdr, "StockListing", lambda market: listing, raising=False)
+
+    tickers, names = gogo2.get_ticker_list("KOSDAQ")
+
+    assert tickers == ["184230"]
+    assert names == {"184230": "SGA솔루션즈"}
+
+
+def test_remove_ineligible_results_drops_stale_market_hits_only():
+    results = [
+        {"시장": "KOSDAQ", "종목코드": "184230", "종목명": "SGA솔루션즈"},
+        {"시장": "KOSDAQ", "종목코드": "123450", "종목명": "정상거래"},
+        {"시장": "KOSPI", "종목코드": "184230", "종목명": "다른시장"},
+    ]
+
+    removed = gogo2.remove_ineligible_results(results, "KOSDAQ", ["123450"])
+
+    assert removed == 1
+    assert results == [
+        {"시장": "KOSDAQ", "종목코드": "123450", "종목명": "정상거래"},
+        {"시장": "KOSPI", "종목코드": "184230", "종목명": "다른시장"},
+    ]

@@ -329,6 +329,8 @@ def get_ticker_list(market, min_marcap_billions=500):
 
     if is_korean_market:
         df[code_col] = df[code_col].astype(str).str.zfill(6)
+
+        df = filter_currently_trading_rows(df)
         
         # 1. 시가총액 필터 (Marcap 컬럼이 존재할 경우)
         if 'Marcap' in df.columns:
@@ -350,6 +352,15 @@ def get_ticker_list(market, min_marcap_billions=500):
     names   = dict(zip(df[code_col], df[name_col] if name_col else [''] * len(df)))
     
     return tickers, names
+
+def filter_currently_trading_rows(df):
+    current_trade_cols = ['Open', 'High', 'Low', 'Volume', 'Amount']
+    if not all(col in df.columns for col in current_trade_cols):
+        return df
+
+    current_trade_values = df[current_trade_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+    current_zero_trade = current_trade_values.eq(0).all(axis=1)
+    return df[~current_zero_trade].copy()
 
 # ────────────────────────────────────────
 # 6. 진행 상태 저장/로드
@@ -458,6 +469,24 @@ def flush_to_csv(batch_hits, filename, lock):
         df_batch[cols].to_csv(filename, mode='a', index=False,
                               header=write_header, encoding='utf-8-sig')
 
+def rewrite_result_csv(df_result, filename, lock):
+    cols = [c for c in RESULT_COLS if c in df_result.columns]
+    if not cols:
+        cols = RESULT_COLS
+        df_result = pd.DataFrame(columns=cols)
+    with lock:
+        df_result[cols].to_csv(filename, mode='w', index=False,
+                               header=True, encoding='utf-8-sig')
+
+def remove_ineligible_results(all_results, market, eligible_tickers):
+    eligible_set = set(eligible_tickers)
+    before = len(all_results)
+    all_results[:] = [
+        result for result in all_results
+        if result.get('시장') != market or result.get('종목코드') in eligible_set
+    ]
+    return before - len(all_results)
+
 # ────────────────────────────────────────
 # 9. 단일 시장 스크리닝 (멀티스레드)
 # ────────────────────────────────────────
@@ -473,6 +502,12 @@ def screen_market(market, start, end,
     except Exception as e:
         print(f"  [{market}] 종목 리스트 오류: {e}")
         return
+
+    removed_results = remove_ineligible_results(all_results, market, tickers)
+    if removed_results:
+        print(f"  [{market}] 현재 거래 불가 종목 기존 결과 {removed_results}개 제외")
+        if file_lock is not None:
+            save_progress(processed_tickers, all_results, all_errors, file_lock)
 
     processed_set = set(processed_tickers)
     remaining     = [t for t in tickers if t not in processed_set]
@@ -618,6 +653,8 @@ def screen_all(markets=None,
 
     if not all_results:
         print("\n조건 충족 종목 없음")
+        rewrite_result_csv(pd.DataFrame(columns=RESULT_COLS), get_result_filename(), file_lock)
+        save_progress(processed_tickers, all_results, all_errors, file_lock)
         return pd.DataFrame()
 
     df_result = pd.DataFrame(all_results)
@@ -625,6 +662,8 @@ def screen_all(markets=None,
     sort_cols = [c for c in ['score', '캔들구름돌파_N주전'] if c in df_result.columns]
     ascending = [False if c == 'score' else True for c in sort_cols]
     df_result = df_result[cols].sort_values(sort_cols, ascending=ascending, na_position='last')
+    rewrite_result_csv(df_result, get_result_filename(), file_lock)
+    save_progress(processed_tickers, all_results, all_errors, file_lock)
 
     print(f"\n{'='*60}")
     print(f"✅ 스크리닝 완료 | 조건 충족 종목 : {len(df_result)}개")
