@@ -77,6 +77,10 @@ class AnalysisSummary(BaseModel):
     created_at: datetime
     entry_price: float | None = None
     entry_price_max: float | None = None
+    target_price: float | None = None
+    target_price_max: float | None = None
+    stop_loss: float | None = None
+    stop_loss_max: float | None = None
     current_price: float | None = None
     current_price_date: date | None = None
     entry_gap_pct: float | None = None
@@ -94,10 +98,6 @@ class AnalysisPage(BaseModel):
 
 class AnalysisRead(AnalysisSummary):
     markdown: str
-    target_price: float | None
-    target_price_max: float | None
-    stop_loss: float | None
-    stop_loss_max: float | None
 
 
 class JobTriggerRequest(BaseModel):

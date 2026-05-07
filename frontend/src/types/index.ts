@@ -36,6 +36,10 @@ export interface AnalysisSummary {
   created_at: string;
   entry_price: number | null;
   entry_price_max: number | null;
+  target_price: number | null;
+  target_price_max: number | null;
+  stop_loss: number | null;
+  stop_loss_max: number | null;
   current_price: number | null;
   current_price_date: string | null;
   entry_gap_pct: number | null;
@@ -45,10 +49,6 @@ export interface AnalysisSummary {
 
 export interface Analysis extends AnalysisSummary {
   markdown: string;
-  target_price: number | null;
-  target_price_max: number | null;
-  stop_loss: number | null;
-  stop_loss_max: number | null;
 }
 
 export interface PaginatedResponse<T> {

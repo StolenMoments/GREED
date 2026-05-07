@@ -14,7 +14,7 @@ import { formatPriceByTicker } from '../utils/formatPrice';
 const baseTableGrid =
   'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_9rem_minmax(6rem,0.45fr)_5rem]';
 const entryGapTableGrid =
-  'xl:grid-cols-[minmax(13rem,1.25fr)_7rem_minmax(11rem,0.95fr)_8rem_minmax(6rem,0.45fr)_5rem]';
+  'xl:grid-cols-[minmax(13rem,1.2fr)_7rem_minmax(11rem,0.95fr)_minmax(10rem,0.9fr)_8rem_5rem]';
 
 function getTableGrid(showEntryGap: boolean) {
   return showEntryGap ? entryGapTableGrid : baseTableGrid;
@@ -77,8 +77,16 @@ export function AnalysisTableLoading({
               <div className="h-3 w-28 animate-pulse rounded bg-slate-800/80" />
             </div>
           ) : null}
+          {showEntryGap ? (
+            <div className="space-y-2">
+              <div className="h-4 w-28 animate-pulse rounded bg-slate-800/80" />
+              <div className="h-3 w-24 animate-pulse rounded bg-slate-800/80" />
+            </div>
+          ) : null}
           <div className="h-4 w-28 animate-pulse rounded bg-slate-800/80" />
-          <div className="h-4 w-24 animate-pulse rounded bg-slate-800/80" />
+          {!showEntryGap ? (
+            <div className="h-4 w-24 animate-pulse rounded bg-slate-800/80" />
+          ) : null}
           <div className="h-4 w-16 animate-pulse rounded bg-slate-800/80" />
         </div>
       ))}
@@ -91,6 +99,21 @@ function formatCandidatePrice(candidate: EntryCandidate, ticker: string) {
   const entryMax = formatPriceByTicker(candidate.price_max, ticker);
 
   return entryMax ? `${entry}~${entryMax}` : entry;
+}
+
+function formatPriceRange(
+  price: number | null,
+  priceMax: number | null,
+  ticker: string,
+) {
+  const formattedPrice = formatPriceByTicker(price, ticker);
+  const formattedMax = formatPriceByTicker(priceMax, ticker);
+
+  if (!formattedPrice) {
+    return formattedMax ?? '-';
+  }
+
+  return formattedMax ? `${formattedPrice}~${formattedMax}` : formattedPrice;
 }
 
 function getCandidatePriority(
@@ -169,6 +192,37 @@ function EntryGapCell({
   );
 }
 
+function TargetStopCell({ analysis }: { analysis: AnalysisSummary }) {
+  return (
+    <span className="grid min-w-0 gap-1.5">
+      <span className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-baseline gap-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300/80">
+          TGT
+        </span>
+        <span className="truncate text-xs font-semibold tabular-nums text-amber-100">
+          {formatPriceRange(
+            analysis.target_price,
+            analysis.target_price_max,
+            analysis.ticker,
+          )}
+        </span>
+      </span>
+      <span className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-baseline gap-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-300/70">
+          STP
+        </span>
+        <span className="truncate text-xs font-medium tabular-nums text-rose-100/80">
+          {formatPriceRange(
+            analysis.stop_loss,
+            analysis.stop_loss_max,
+            analysis.ticker,
+          )}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 export function AnalysisTable({
   analyses,
   entryCandidateFilter = 'all',
@@ -194,8 +248,9 @@ export function AnalysisTable({
         <span>ticker / name</span>
         <span className="-translate-x-1 text-center">judgment</span>
         {showEntryGap ? <span>entry gap</span> : null}
+        {showEntryGap ? <span>target / stop</span> : null}
         <span className="translate-x-1">created</span>
-        <span className="text-center">model</span>
+        {!showEntryGap ? <span className="text-center">model</span> : null}
         <span className="text-right">action</span>
       </div>
       <div className="divide-y divide-amber-100/10">
@@ -219,6 +274,12 @@ export function AnalysisTable({
                     <span>run #{analysis.run_id}</span>
                   </>
                 ) : null}
+                {showEntryGap ? (
+                  <>
+                    <span className="text-slate-700">/</span>
+                    <span>{analysis.model}</span>
+                  </>
+                ) : null}
               </span>
               {showSignals ? <SignalMeta analysis={analysis} /> : null}
             </span>
@@ -239,13 +300,17 @@ export function AnalysisTable({
               />
             ) : null}
 
+            {showEntryGap ? <TargetStopCell analysis={analysis} /> : null}
+
             <span className="translate-x-1 whitespace-nowrap text-sm font-medium text-slate-300">
               {formatDate(analysis.created_at)}
             </span>
 
-            <span className="truncate text-center text-sm font-medium text-slate-400 xl:justify-self-center">
-              {analysis.model}
-            </span>
+            {!showEntryGap ? (
+              <span className="truncate text-center text-sm font-medium text-slate-400 xl:justify-self-center">
+                {analysis.model}
+              </span>
+            ) : null}
 
             <span className="w-fit rounded-md border border-slate-700/80 px-3 py-2 text-sm font-semibold text-slate-200 transition xl:justify-self-end">
               열기

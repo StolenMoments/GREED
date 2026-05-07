@@ -842,3 +842,40 @@ def test_get_analysis_history_returns_404_when_not_found(client: TestClient) -> 
     response = client.get("/api/analyses/99999/history")
 
     assert response.status_code == 404
+
+
+def test_list_all_analyses_includes_target_and_stop_prices(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = create_run(db_session, memo="summary price levels")
+    analysis = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown="summary markdown",
+            judgment="BUY",
+            trend="UP",
+            cloud_position="ABOVE",
+            ma_alignment="BULLISH",
+            entry_price=75000,
+            entry_price_max=76000,
+            target_price=82000,
+            target_price_max=85000,
+            stop_loss=71500,
+            stop_loss_max=None,
+        ),
+    )
+
+    response = client.get("/api/analyses")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["id"] == analysis.id
+    assert body["items"][0]["target_price"] == 82000
+    assert body["items"][0]["target_price_max"] == 85000
+    assert body["items"][0]["stop_loss"] == 71500
+    assert body["items"][0]["stop_loss_max"] is None

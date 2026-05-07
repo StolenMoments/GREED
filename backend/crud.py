@@ -54,6 +54,10 @@ class AnalysisSummaryRow(NamedTuple):
     created_at: datetime
     entry_price: float | None
     entry_price_max: float | None
+    target_price: float | None
+    target_price_max: float | None
+    stop_loss: float | None
+    stop_loss_max: float | None
     current_price: float | None
     current_price_date: date | None
     entry_gap_pct: float | None
@@ -249,6 +253,10 @@ def _to_analysis_summary_row(
         created_at=analysis.created_at,
         entry_price=analysis.entry_price,
         entry_price_max=analysis.entry_price_max,
+        target_price=analysis.target_price,
+        target_price_max=analysis.target_price_max,
+        stop_loss=analysis.stop_loss,
+        stop_loss_max=analysis.stop_loss_max,
         current_price=current_price,
         current_price_date=stock_price.price_date if stock_price is not None else None,
         entry_gap_pct=entry_gap_pct,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Generator
 from datetime import timedelta
 from pathlib import Path
@@ -332,6 +333,127 @@ def test_run_analysis_pipeline_starts_model_process_and_keeps_job_pending(
     assert captured["stderr_path"] == output_dir / jobs.STDERR_LOG_FILENAME
     assert captured["pid_path"] == output_dir / jobs.PID_FILENAME
     assert captured["exit_code_path"] == output_dir / jobs.EXIT_CODE_FILENAME
+
+
+def test_run_analysis_pipeline_reuses_today_root_csv(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pipeline reuse")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    root_csv = _write_csv(tmp_path, f"005930_Samsung_weekly_{today}.csv", close="76000")
+    output_dir = tmp_path / "jobs" / str(job.id)
+    captured: dict[str, object] = {}
+    pick_calls: list[tuple[str, str, Path]] = []
+
+    def fake_runner(
+        csv_text: str,
+        system_prompt: str,
+        analysis_path: Path,
+        prompt_path: Path,
+        stdout_path: Path,
+        stderr_path: Path,
+        pid_path: Path,
+        exit_code_path: Path,
+    ) -> FakeProcess:
+        captured["csv_text"] = csv_text
+        captured["analysis_path"] = analysis_path
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", lambda *args: pick_calls.append(args))
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+
+    run_analysis_pipeline(job.id)
+
+    copied_csv = output_dir / root_csv.name
+    assert pick_calls == []
+    assert copied_csv.exists()
+    assert "76000" in str(captured["csv_text"])
+    assert captured["analysis_path"] == output_dir / jobs.ANALYSIS_FILENAME
+
+
+def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pipeline no reuse")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    _write_csv(tmp_path, "005930_Samsung_weekly_20260421.csv", close="74000")
+    output_dir = tmp_path / "jobs" / str(job.id)
+    pick_calls: list[tuple[str, str, Path]] = []
+    captured: dict[str, object] = {}
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        pick_calls.append((ticker, stock_name, output_dir))
+        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv", close="77000")
+
+    def fake_runner(csv_text: str, *args: object) -> FakeProcess:
+        captured["csv_text"] = csv_text
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+
+    run_analysis_pipeline(job.id)
+
+    assert pick_calls == [("005930", "Samsung", output_dir)]
+    assert "77000" in str(captured["csv_text"])
+
+
+def test_run_analysis_pipeline_ignores_yesterday_root_csv(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="pipeline yesterday")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    yesterday = (jobs.seoul_now() - timedelta(days=1)).strftime("%Y%m%d")
+    _write_csv(tmp_path, f"005930_Samsung_weekly_{yesterday}.csv", close="74000")
+    output_dir = tmp_path / "jobs" / str(job.id)
+    pick_calls: list[tuple[str, str, Path]] = []
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        pick_calls.append((ticker, stock_name, output_dir))
+        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv", close="77000")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", lambda *args: FakeProcess())
+
+    run_analysis_pipeline(job.id)
+
+    assert pick_calls == [("005930", "Samsung", output_dir)]
+
+
+def test_today_reusable_csv_path_picks_latest_mtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    older = _write_csv(tmp_path, f"005930_Older_weekly_{today}.csv", close="74000")
+    newer = _write_csv(tmp_path, f"005930_Newer_weekly_{today}.csv", close="76000")
+    os.utime(older, (1000, 1000))
+    os.utime(newer, (2000, 2000))
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+
+    assert jobs._today_reusable_csv_path("005930") == newer
 
 
 def test_get_job_finalizes_analysis_file(

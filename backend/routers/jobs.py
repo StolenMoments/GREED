@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -257,7 +258,11 @@ def run_analysis_pipeline(job_id: int) -> None:
         job_output_dir = _job_output_dir(job.id)
         try:
             stock_name = _resolve_stock_name(ticker)
-            _run_pick(ticker, stock_name, job_output_dir)
+            reusable_csv_path = _today_reusable_csv_path(ticker)
+            if reusable_csv_path is not None:
+                _copy_csv_to_job_output(reusable_csv_path, job_output_dir)
+            else:
+                _run_pick(ticker, stock_name, job_output_dir)
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
@@ -600,6 +605,27 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
     if not files:
         return None
     return files[-1]
+
+
+def _today_reusable_csv_path(ticker: str) -> Path | None:
+    today_str = seoul_now().strftime("%Y%m%d")
+    patterns = [
+        f"{ticker}_*_weekly_{today_str}.csv",
+        f"{ticker}_weekly_{today_str}.csv",
+    ]
+    files: list[Path] = []
+    for pattern in patterns:
+        files.extend(path for path in PICK_OUTPUT_DIR.glob(pattern) if path.is_file())
+    if not files:
+        return None
+    return sorted(files, key=lambda path: path.stat().st_mtime)[-1]
+
+
+def _copy_csv_to_job_output(csv_path: Path, job_output_dir: Path) -> Path:
+    job_output_dir.mkdir(parents=True, exist_ok=True)
+    destination = job_output_dir / csv_path.name
+    shutil.copy2(csv_path, destination)
+    return destination
 
 
 def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
