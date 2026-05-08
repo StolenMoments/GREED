@@ -116,6 +116,30 @@ function formatPriceRange(
   return formattedMax ? `${formattedPrice}~${formattedMax}` : formattedPrice;
 }
 
+function formatSignedPct(price: number, currentPrice: number) {
+  const pct = ((price - currentPrice) / currentPrice) * 100;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
+
+function formatPriceDistancePct(
+  price: number | null,
+  priceMax: number | null,
+  currentPrice: number | null,
+) {
+  if (currentPrice == null || currentPrice <= 0) {
+    return null;
+  }
+
+  const formattedPrice = price == null ? null : formatSignedPct(price, currentPrice);
+  const formattedMax = priceMax == null ? null : formatSignedPct(priceMax, currentPrice);
+
+  if (!formattedPrice) {
+    return formattedMax;
+  }
+
+  return formattedMax ? `${formattedPrice}~${formattedMax}` : formattedPrice;
+}
+
 function getCandidatePriority(
   candidate: EntryCandidate,
   entryCandidateFilter: EntryCandidateFilter,
@@ -192,33 +216,66 @@ function EntryGapCell({
   );
 }
 
+function TargetStopRow({
+  label,
+  labelClassName,
+  pctClassName,
+  price,
+  priceClassName,
+  priceMax,
+  ticker,
+  currentPrice,
+}: {
+  label: string;
+  labelClassName: string;
+  pctClassName: string;
+  price: number | null;
+  priceClassName: string;
+  priceMax: number | null;
+  ticker: string;
+  currentPrice: number | null;
+}) {
+  const priceLabel = formatPriceRange(price, priceMax, ticker);
+  const pctLabel = formatPriceDistancePct(price, priceMax, currentPrice) ?? '-';
+
+  return (
+    <span className="grid grid-cols-[2.4rem_minmax(0,1fr)_4.9rem] items-baseline gap-2">
+      <span className={`text-xs font-semibold uppercase tracking-[0.14em] ${labelClassName}`}>
+        {label}
+      </span>
+      <span className={`truncate text-xs tabular-nums ${priceClassName}`}>
+        {priceLabel}
+      </span>
+      <span className={`truncate text-right text-xs font-semibold tabular-nums ${pctClassName}`}>
+        {pctLabel}
+      </span>
+    </span>
+  );
+}
+
 function TargetStopCell({ analysis }: { analysis: AnalysisSummary }) {
   return (
     <span className="grid min-w-0 gap-1.5">
-      <span className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300/80">
-          TGT
-        </span>
-        <span className="truncate text-xs font-semibold tabular-nums text-amber-100">
-          {formatPriceRange(
-            analysis.target_price,
-            analysis.target_price_max,
-            analysis.ticker,
-          )}
-        </span>
-      </span>
-      <span className="grid grid-cols-[2.4rem_minmax(0,1fr)] items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-300/70">
-          STP
-        </span>
-        <span className="truncate text-xs font-medium tabular-nums text-rose-100/80">
-          {formatPriceRange(
-            analysis.stop_loss,
-            analysis.stop_loss_max,
-            analysis.ticker,
-          )}
-        </span>
-      </span>
+      <TargetStopRow
+        label="TGT"
+        labelClassName="text-amber-300/80"
+        pctClassName="text-emerald-200/80"
+        price={analysis.target_price}
+        priceClassName="font-semibold text-amber-100"
+        priceMax={analysis.target_price_max}
+        ticker={analysis.ticker}
+        currentPrice={analysis.current_price}
+      />
+      <TargetStopRow
+        label="STP"
+        labelClassName="text-rose-300/70"
+        pctClassName="text-rose-200/75"
+        price={analysis.stop_loss}
+        priceClassName="font-medium text-rose-100/80"
+        priceMax={analysis.stop_loss_max}
+        ticker={analysis.ticker}
+        currentPrice={analysis.current_price}
+      />
     </span>
   );
 }
