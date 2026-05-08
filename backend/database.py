@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from backend.korean_search import extract_korean_initials
 
 
+logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -28,7 +31,11 @@ def build_engine_kwargs(database_url: str) -> dict[str, Any]:
     return {"pool_pre_ping": True}
 
 
-engine = create_engine(DATABASE_URL, **build_engine_kwargs(DATABASE_URL))
+def create_database_engine(database_url: str) -> Engine:
+    return create_engine(database_url, **build_engine_kwargs(database_url))
+
+
+engine = create_database_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -36,8 +43,44 @@ Base = declarative_base()
 def init_db() -> None:
     from backend import models  # noqa: F401
 
+    try:
+        _initialize_active_engine()
+    except SQLAlchemyError as exc:
+        if _is_sqlite_url(DATABASE_URL):
+            raise
+        _fallback_to_sqlite(exc)
+
+
+def _initialize_active_engine() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate()
+
+
+def _fallback_to_sqlite(exc: SQLAlchemyError) -> None:
+    global engine
+
+    failed_url = _safe_database_url(DATABASE_URL)
+    fallback_url = DEFAULT_DATABASE_URL
+    logger.warning(
+        "Database initialization failed for %s; falling back to local SQLite at %s: %s",
+        failed_url,
+        DATABASE_PATH,
+        exc,
+    )
+
+    engine.dispose()
+    engine = create_database_engine(fallback_url)
+    SessionLocal.configure(bind=engine)
+    _initialize_active_engine()
+    logger.info("Active database backend is sqlite: %s", DATABASE_PATH)
+
+
+def _is_sqlite_url(database_url: str) -> bool:
+    return make_url(database_url).get_backend_name() == "sqlite"
+
+
+def _safe_database_url(database_url: str) -> str:
+    return make_url(database_url).render_as_string(hide_password=True)
 
 
 def _migrate() -> None:
