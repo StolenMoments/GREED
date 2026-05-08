@@ -17,6 +17,8 @@ from pathlib import Path
 import FinanceDataReader as fdr
 import pandas as pd
 
+KOREAN_MARKETS = ("KOSPI", "KOSDAQ")
+
 try:
     from fdr_timeout import (
         DEFAULT_FETCH_RETRIES,
@@ -215,32 +217,54 @@ def add_ichimoku_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # 데이터 수집 및 리샘플
 # ─────────────────────────────────────────
 
+def resolve_stock_metadata(ticker: str) -> tuple[str, str]:
+    ticker = ticker.strip().zfill(6)
+
+    for market in KOREAN_MARKETS:
+        try:
+            listing = fdr.StockListing(market)
+        except Exception:
+            continue
+
+        code_col, name_col = None, None
+        for col in listing.columns:
+            if col in ("Code", "Symbol", "ticker"):
+                code_col = col
+            if col in ("Name", "CompanyName", "name"):
+                name_col = col
+
+        if not code_col or not name_col:
+            continue
+
+        codes = listing[code_col].astype(str).str.zfill(6)
+        matched = listing.loc[codes == ticker, name_col]
+        if not matched.empty:
+            return str(matched.iloc[0]).strip(), market
+
+    return "", ""
+
+
 def resolve_stock_name(ticker: str) -> str:
-    try:
-        listing = fdr.StockListing("KRX")
-    except Exception:
-        return ""
+    stock_name, _ = resolve_stock_metadata(ticker)
+    return stock_name
 
-    code_col, name_col = None, None
-    for col in listing.columns:
-        if col in ("Code", "Symbol", "ticker"):
-            code_col = col
-        if col in ("Name", "CompanyName", "name"):
-            name_col = col
 
-    if not code_col or not name_col:
-        return ""
-
-    listing[code_col] = listing[code_col].astype(str).str.zfill(6)
-    matched = listing.loc[listing[code_col] == ticker, name_col]
-    if matched.empty:
-        return ""
-
-    return str(matched.iloc[0]).strip()
+def resolve_stock_market(ticker: str) -> str:
+    _, market = resolve_stock_metadata(ticker)
+    return market
 
 
 def sanitize_filename(text: str) -> str:
     return re.sub(r'[<>:"/\\\\|?*]', "_", text).strip()
+
+
+def normalize_market(market: str | None) -> str:
+    if not market:
+        return ""
+    market_text = str(market).strip().upper()
+    if not market_text or market_text == "NAN":
+        return ""
+    return sanitize_filename(market_text)
 
 
 def cleanup_old_weekly_csvs(output_dir: Path, ticker: str, today_str: str) -> None:
@@ -370,13 +394,20 @@ def trim_to_years(df: pd.DataFrame, years: int) -> pd.DataFrame:
 # CSV 저장
 # ─────────────────────────────────────────
 
-def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) -> Path:
+def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str, market: str | None = None) -> Path:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     today_str = datetime.today().strftime("%Y%m%d")
+    safe_market = normalize_market(market)
     safe_name = sanitize_filename(stock_name)
+    filename_parts = [ticker]
+    if safe_market:
+        filename_parts.append(safe_market)
     if safe_name:
-        filename = output_path / f"{ticker}_{safe_name}_weekly_{today_str}.csv"
+        filename_parts.append(safe_name)
+
+    if len(filename_parts) > 1:
+        filename = output_path / f"{'_'.join(filename_parts)}_weekly_{today_str}.csv"
     else:
         filename = output_path / f"{ticker}_weekly_{today_str}.csv"
 
@@ -462,6 +493,7 @@ def run_pick(
     output_dir: str = "./output",
     no_future_cloud: bool = False,
     stock_name: str = None,
+    market: str | None = None,
     request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
     fetch_retries: int = DEFAULT_FETCH_RETRIES,
 ):
@@ -470,8 +502,12 @@ def run_pick(
     ticker = ticker.strip().zfill(6)
     
     # 외부에서 종목명을 넘겨주지 않은 경우에만 조회 (속도 향상)
-    if not stock_name:
-        stock_name = resolve_stock_name(ticker)
+    if not stock_name or not market:
+        resolved_name, resolved_market = resolve_stock_metadata(ticker)
+        if not stock_name:
+            stock_name = resolved_name
+        if not market:
+            market = resolved_market
         
     df = fetch_weekly(
         ticker,
@@ -492,7 +528,7 @@ def run_pick(
         df = add_ichimoku_derived_indicators(df)
 
     df = trim_to_years(df, years)
-    filepath = save_csv(df, ticker, stock_name, output_dir)
+    filepath = save_csv(df, ticker, stock_name, output_dir, market=market)
     print_summary(df, ticker, stock_name, filepath)
 
 
@@ -506,6 +542,7 @@ def main():
     parser.add_argument("--years",   type=int, default=5,        help="조회 기간 (기본: 5년)")
     parser.add_argument("--output",            default="./output", help="출력 디렉토리 (기본: ./output)")
     parser.add_argument("--no-future-cloud",   action="store_true", help="미래 구름 행 제외")
+    parser.add_argument("--market",            default=None, help="Market label for filename (e.g. KOSPI, KOSDAQ)")
     parser.add_argument("--request-timeout", type=int, default=DEFAULT_REQUEST_TIMEOUT,
                         help=f"외부 데이터 요청 timeout 초 (기본: {DEFAULT_REQUEST_TIMEOUT})")
     parser.add_argument("--retries", type=int, default=DEFAULT_FETCH_RETRIES,
@@ -518,6 +555,7 @@ def main():
             years=args.years, 
             output_dir=args.output, 
             no_future_cloud=args.no_future_cloud,
+            market=args.market,
             request_timeout=args.request_timeout,
             fetch_retries=args.retries,
         )

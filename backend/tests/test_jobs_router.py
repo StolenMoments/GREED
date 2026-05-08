@@ -729,6 +729,12 @@ def test_stock_name_from_csv_filename_allows_names_with_underscores() -> None:
     assert jobs._stock_name_from_csv_filename(csv_path, "005930") == "Samsung_Electronics"
 
 
+def test_stock_name_from_csv_filename_ignores_market_prefix() -> None:
+    csv_path = Path("005930_KOSPI_Samsung_Electronics_weekly_20260422.csv")
+
+    assert jobs._stock_name_from_csv_filename(csv_path, "005930") == "Samsung_Electronics"
+
+
 def test_get_job_keeps_pending_before_timeout(
     client: TestClient,
     test_db: sessionmaker[Session],

@@ -184,3 +184,10 @@ def test_parse_analysis_filename_allows_names_with_underscores() -> None:
         "005930",
         "Samsung_Electronics",
     )
+
+
+def test_parse_analysis_filename_ignores_market_prefix() -> None:
+    assert cli_module.parse_analysis_filename(Path("005930_KOSPI_Samsung_Electronics_weekly_20260421.md")) == (
+        "005930",
+        "Samsung_Electronics",
+    )

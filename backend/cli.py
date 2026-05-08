@@ -8,6 +8,7 @@ import httpx
 
 
 DEFAULT_API_BASE_URL = "http://localhost:8000/api"
+MARKET_FILENAME_LABELS = {"KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX"}
 PLACEHOLDER_PARSED_FIELDS = {
     "judgment": "보류",
     "trend": "보류",
@@ -129,6 +130,9 @@ def parse_analysis_filename(file_path: Path) -> tuple[str, str]:
         name_parts = parts[1:-2]
     else:
         name_parts = parts[1:]
+
+    if name_parts and name_parts[0].upper() in MARKET_FILENAME_LABELS:
+        name_parts = name_parts[1:]
 
     name = "_".join(name_parts).strip()
     if not name:

@@ -181,6 +181,7 @@ EXIT_CODE_FILENAME = "exit_code.txt"
 MODEL_START_GRACE_SECONDS = 15
 LOG_TAIL_CHARS = 1200
 CHART_CACHE_DIR_NAME = "chart_cache"
+MARKET_FILENAME_LABELS = {"KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX"}
 _FINALIZE_LOCKS: dict[int, Lock] = {}
 _FINALIZE_LOCKS_GUARD = Lock()
 _CHART_CSV_LOCKS: dict[tuple[str, str], Lock] = {}
@@ -685,7 +686,10 @@ def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
     match = re.match(pattern, csv_path.stem)
     if match is None:
         return ""
-    return match.group("name").strip()
+    name_parts = match.group("name").split("_")
+    if name_parts and name_parts[0].upper() in MARKET_FILENAME_LABELS:
+        name_parts = name_parts[1:]
+    return "_".join(name_parts).strip()
 
 
 def _trim_csv(csv_text: str, max_data_rows: int) -> str:

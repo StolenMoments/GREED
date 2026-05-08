@@ -761,6 +761,7 @@ if __name__ == "__main__":
         for index, row in result_df.iterrows():
             ticker = row['종목코드']
             name = row['종목명']
+            market = row.get('시장')
             
             try:
                 # pick.py 의 run_pick 함수 호출
@@ -769,6 +770,7 @@ if __name__ == "__main__":
                     years=5, 
                     output_dir=output_folder, 
                     stock_name=name, # 종목명을 바로 넘겨주어 속도 최적화
+                    market=market,
                     request_timeout=args.request_timeout,
                     fetch_retries=args.retries,
                 )

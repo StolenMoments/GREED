@@ -205,7 +205,7 @@ def normalize_ticker(ticker: str) -> str:
     return ticker.strip().upper()
 
 
-def resolve_stock_name(ticker: str) -> str:
+def resolve_stock_metadata(ticker: str) -> tuple[str, str]:
     ticker = normalize_ticker(ticker)
     for market in US_MARKETS:
         try:
@@ -227,13 +227,32 @@ def resolve_stock_name(ticker: str) -> str:
         codes = listing[code_col].astype(str).str.upper()
         matched = listing.loc[codes == ticker, name_col]
         if not matched.empty:
-            return str(matched.iloc[0]).strip()
+            return str(matched.iloc[0]).strip(), market
 
-    return ""
+    return "", ""
+
+
+def resolve_stock_name(ticker: str) -> str:
+    stock_name, _ = resolve_stock_metadata(ticker)
+    return stock_name
+
+
+def resolve_stock_market(ticker: str) -> str:
+    _, market = resolve_stock_metadata(ticker)
+    return market
 
 
 def sanitize_filename(text: str) -> str:
     return re.sub(r'[<>:"/\\\\|?*]', "_", text).strip()
+
+
+def normalize_market(market: str | None) -> str:
+    if not market:
+        return ""
+    market_text = str(market).strip().upper()
+    if not market_text or market_text == "NAN":
+        return ""
+    return sanitize_filename(market_text)
 
 
 def fetch_weekly(ticker: str, years: int) -> pd.DataFrame:
@@ -317,13 +336,20 @@ def trim_to_years(df: pd.DataFrame, years: int) -> pd.DataFrame:
 # CSV output
 # ─────────────────────────────────────────
 
-def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) -> Path:
+def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str, market: str | None = None) -> Path:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     today_str = datetime.today().strftime("%Y%m%d")
     safe_ticker = sanitize_filename(ticker)
+    safe_market = normalize_market(market)
     safe_name = sanitize_filename(stock_name)
+    filename_parts = [safe_ticker]
+    if safe_market:
+        filename_parts.append(safe_market)
     if safe_name:
-        filename = Path(output_dir) / f"{safe_ticker}_{safe_name}_weekly_{today_str}.csv"
+        filename_parts.append(safe_name)
+
+    if len(filename_parts) > 1:
+        filename = Path(output_dir) / f"{'_'.join(filename_parts)}_weekly_{today_str}.csv"
     else:
         filename = Path(output_dir) / f"{safe_ticker}_weekly_{today_str}.csv"
 
@@ -410,11 +436,16 @@ def run_pick_us(
     output_dir: str = "./output",
     no_future_cloud: bool = False,
     stock_name: str | None = None,
+    market: str | None = None,
 ) -> None:
     ticker = normalize_ticker(ticker)
 
-    if not stock_name:
-        stock_name = resolve_stock_name(ticker)
+    if not stock_name or not market:
+        resolved_name, resolved_market = resolve_stock_metadata(ticker)
+        if not stock_name:
+            stock_name = resolved_name
+        if not market:
+            market = resolved_market
 
     df = fetch_weekly(ticker, years)
     df = add_moving_averages(df)
@@ -430,7 +461,7 @@ def run_pick_us(
         df = add_ichimoku_derived_indicators(df)
 
     df = trim_to_years(df, years)
-    filepath = save_csv(df, ticker, stock_name, output_dir)
+    filepath = save_csv(df, ticker, stock_name, output_dir, market=market)
     print_summary(df, ticker, stock_name, filepath)
 
 
@@ -444,6 +475,7 @@ def main() -> None:
     parser.add_argument("--years", type=int, default=5, help="Lookup period in years (default: 5)")
     parser.add_argument("--output", default="./output", help="Output directory (default: ./output)")
     parser.add_argument("--no-future-cloud", action="store_true", help="Exclude future cloud rows")
+    parser.add_argument("--market", default=None, help="Market label for filename (e.g. NASDAQ, NYSE, AMEX)")
     args = parser.parse_args()
 
     try:
@@ -452,6 +484,7 @@ def main() -> None:
             years=args.years,
             output_dir=args.output,
             no_future_cloud=args.no_future_cloud,
+            market=args.market,
         )
     except ValueError as e:
         print(f"[ERROR] {e}", file=sys.stderr)
