@@ -363,6 +363,7 @@ function TickerAnalysisForm({
                   ].join(' ')}
                   disabled={triggerAnalysis.isPending}
                   onChange={(event) => handleTickerChange(event.target.value)}
+                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
                   onKeyDown={handleKeyDown}
                   placeholder="005930 · AAPL · 삼성전자"
                   value={ticker}
