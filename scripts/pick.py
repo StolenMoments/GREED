@@ -242,6 +242,34 @@ def resolve_stock_name(ticker: str) -> str:
 def sanitize_filename(text: str) -> str:
     return re.sub(r'[<>:"/\\\\|?*]', "_", text).strip()
 
+
+def cleanup_old_weekly_csvs(output_dir: Path, ticker: str, today_str: str) -> None:
+    pattern = re.compile(rf"^{re.escape(ticker)}(?:_.+)?_weekly_(\d{{8}})\.csv$")
+    today = datetime.strptime(today_str, "%Y%m%d").date()
+
+    for path in output_dir.glob(f"{ticker}*_weekly_*.csv"):
+        if not path.is_file():
+            continue
+
+        match = pattern.match(path.name)
+        if not match:
+            continue
+
+        try:
+            file_date = datetime.strptime(match.group(1), "%Y%m%d").date()
+        except ValueError:
+            continue
+
+        if file_date >= today:
+            continue
+
+        try:
+            path.unlink()
+            print(f"[INFO] old weekly CSV removed: {path}")
+        except OSError as exc:
+            print(f"[WARN] old weekly CSV remove failed: {path} ({exc})", file=sys.stderr)
+
+
 def fetch_weekly(
     ticker: str,
     years: int,
@@ -343,13 +371,14 @@ def trim_to_years(df: pd.DataFrame, years: int) -> pd.DataFrame:
 # ─────────────────────────────────────────
 
 def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) -> Path:
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
     today_str = datetime.today().strftime("%Y%m%d")
     safe_name = sanitize_filename(stock_name)
     if safe_name:
-        filename = Path(output_dir) / f"{ticker}_{safe_name}_weekly_{today_str}.csv"
+        filename = output_path / f"{ticker}_{safe_name}_weekly_{today_str}.csv"
     else:
-        filename = Path(output_dir) / f"{ticker}_weekly_{today_str}.csv"
+        filename = output_path / f"{ticker}_weekly_{today_str}.csv"
 
     # 컬럼 순서 정렬
     df = df.copy()
@@ -387,6 +416,7 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str) ->
     df.index = df.index.strftime("%Y-%m-%d")
 
     df.to_csv(filename, encoding="utf-8-sig")
+    cleanup_old_weekly_csvs(output_path, ticker, today_str)
     return filename
 
 
