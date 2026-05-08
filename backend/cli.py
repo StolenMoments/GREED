@@ -119,6 +119,22 @@ def save_analysis_dir(ctx: click.Context, run_id: int, model_name: str, dir_path
 def parse_analysis_filename(file_path: Path) -> tuple[str, str]:
     stem = file_path.stem
     parts = stem.split("_")
+    if len(parts) >= 4 and parts[-2] == "weekly" and len(parts[-1]) == 8 and parts[-1].isdigit():
+        body_parts = parts[:-2]
+    else:
+        body_parts = parts
+
+    if body_parts[0].upper() in MARKET_FILENAME_LABELS and len(body_parts) < 3:
+        raise ValueError("파일명에서 ticker/name 추출 실패")
+
+    if len(body_parts) >= 3 and body_parts[0].upper() in MARKET_FILENAME_LABELS:
+        ticker = body_parts[1].strip()
+        name = "_".join(body_parts[2:]).strip()
+        if not ticker:
+            raise ValueError("파일명에서 ticker 추출 실패")
+        if not name:
+            raise ValueError("파일명에서 name 추출 실패")
+        return ticker, name
     if len(parts) < 2:
         raise ValueError("파일명에서 ticker/name 추출 실패")
 

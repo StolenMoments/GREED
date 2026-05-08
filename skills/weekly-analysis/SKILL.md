@@ -19,8 +19,9 @@ Body: { "memo": "YYYYMMDD 자동 분석 — {에이전트명}" }
 
 ### Step 2 — CSV 파일 목록 수집
 scripts/pick_output/*.csv 파일 목록을 수집한다.
-파일명 패턴: {ticker}_{name}_weekly_{YYYYMMDD}.csv
-  - ticker: 첫 번째 _ 이전 6자리
+파일명 패턴: {market}_{ticker}_{name}_weekly_{YYYYMMDD}.csv
+  - market: 첫 번째 _ 이전 문자열
+  - ticker: market 이후 ~ 다음 _ 이전 문자열
   - name: ticker 이후 ~ _weekly_ 이전 문자열
 
 ### Step 3 — 각 종목 분석 (파일마다 반복)

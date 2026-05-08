@@ -84,7 +84,7 @@ def test_pick_csv_output_includes_new_indicators_and_empty_future_values(tmp_pat
     future_rows = df[df["open"].isna()]
     saved_future_rows = saved[saved["open"].isna()]
 
-    assert csv_path.name.startswith("005930_KOSPI_Samsung_weekly_")
+    assert csv_path.name.startswith("KOSPI_005930_Samsung_weekly_")
     assert len(future_rows) == 26
     assert future_rows[NEW_INDICATOR_COLS + SIGNAL_COLS].isna().all().all()
     assert saved_future_rows[NEW_INDICATOR_COLS + SIGNAL_COLS].isna().all().all()
@@ -110,7 +110,7 @@ def test_pick_us_csv_filename_includes_market(tmp_path: Path) -> None:
 
     csv_path = pick_us.save_csv(df, "NVDA", "NVIDIA", str(tmp_path), market="NASDAQ")
 
-    assert csv_path.name.startswith("NVDA_NASDAQ_NVIDIA_weekly_")
+    assert csv_path.name.startswith("NASDAQ_NVDA_NVIDIA_weekly_")
 
 
 def make_signal_frame(rows: int = 60) -> pd.DataFrame:

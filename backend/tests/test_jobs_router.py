@@ -288,7 +288,7 @@ def test_run_analysis_pipeline_starts_model_process_and_keeps_job_pending(
     captured: dict[str, object] = {}
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
-        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv")
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv")
 
     def fake_runner(
         csv_text: str,
@@ -347,7 +347,7 @@ def test_run_analysis_pipeline_reuses_today_root_csv(
         job = crud.create_job(db, ticker="005930", run_id=run.id)
 
     today = jobs.seoul_now().strftime("%Y%m%d")
-    root_csv = _write_csv(tmp_path, f"005930_Samsung_weekly_{today}.csv", close="76000")
+    root_csv = _write_csv(tmp_path, f"KOSPI_005930_Samsung_weekly_{today}.csv", close="76000")
     output_dir = tmp_path / "jobs" / str(job.id)
     captured: dict[str, object] = {}
     pick_calls: list[tuple[str, str, Path]] = []
@@ -394,7 +394,7 @@ def test_run_analysis_pipeline_reuses_today_chart_cache_csv(
 
     today = jobs.seoul_now().strftime("%Y%m%d")
     cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
-    cache_csv = _write_csv(cache_dir, f"005930_Samsung_weekly_{today}.csv", close="78000")
+    cache_csv = _write_csv(cache_dir, f"KOSPI_005930_Samsung_weekly_{today}.csv", close="78000")
     output_dir = tmp_path / "jobs" / str(job.id)
     captured: dict[str, object] = {}
     pick_calls: list[tuple[str, str, Path]] = []
@@ -432,7 +432,7 @@ def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
         pick_calls.append((ticker, stock_name, output_dir))
-        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv", close="77000")
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv", close="77000")
 
     def fake_runner(csv_text: str, *args: object) -> FakeProcess:
         captured["csv_text"] = csv_text
@@ -448,7 +448,7 @@ def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
 
     cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / jobs.seoul_now().strftime("%Y%m%d")
     assert pick_calls == [("005930", "Samsung", cache_dir)]
-    assert (output_dir / "005930_Samsung_weekly_20260507.csv").exists()
+    assert (output_dir / "KOSPI_005930_Samsung_weekly_20260507.csv").exists()
     assert "77000" in str(captured["csv_text"])
 
 
@@ -470,7 +470,7 @@ def test_run_analysis_pipeline_reuses_csv_created_by_previous_job(
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
         pick_calls.append((ticker, stock_name, output_dir))
-        _write_csv(output_dir, f"005930_Samsung_weekly_{today}.csv", close="79000")
+        _write_csv(output_dir, f"KOSPI_005930_Samsung_weekly_{today}.csv", close="79000")
 
     def fake_runner(csv_text: str, *args: object) -> FakeProcess:
         runner_csv_texts.append(csv_text)
@@ -487,8 +487,8 @@ def test_run_analysis_pipeline_reuses_csv_created_by_previous_job(
 
     cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
     assert pick_calls == [("005930", "Samsung", cache_dir)]
-    assert (tmp_path / "jobs" / str(first_job_id) / f"005930_Samsung_weekly_{today}.csv").exists()
-    assert (tmp_path / "jobs" / str(second_job_id) / f"005930_Samsung_weekly_{today}.csv").exists()
+    assert (tmp_path / "jobs" / str(first_job_id) / f"KOSPI_005930_Samsung_weekly_{today}.csv").exists()
+    assert (tmp_path / "jobs" / str(second_job_id) / f"KOSPI_005930_Samsung_weekly_{today}.csv").exists()
     assert all("79000" in csv_text for csv_text in runner_csv_texts)
 
 
@@ -508,7 +508,7 @@ def test_run_analysis_pipeline_ignores_yesterday_root_csv(
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
         pick_calls.append((ticker, stock_name, output_dir))
-        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv", close="77000")
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv", close="77000")
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
@@ -527,8 +527,8 @@ def test_today_reusable_csv_path_picks_latest_mtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     today = jobs.seoul_now().strftime("%Y%m%d")
-    older = _write_csv(tmp_path, f"005930_Older_weekly_{today}.csv", close="74000")
-    newer = _write_csv(tmp_path, f"005930_Newer_weekly_{today}.csv", close="76000")
+    older = _write_csv(tmp_path, f"KOSPI_005930_Older_weekly_{today}.csv", close="74000")
+    newer = _write_csv(tmp_path, f"KOSPI_005930_Newer_weekly_{today}.csv", close="76000")
     os.utime(older, (1000, 1000))
     os.utime(newer, (2000, 2000))
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
@@ -735,6 +735,18 @@ def test_stock_name_from_csv_filename_ignores_market_prefix() -> None:
     assert jobs._stock_name_from_csv_filename(csv_path, "005930") == "Samsung_Electronics"
 
 
+def test_stock_name_from_csv_filename_supports_market_first_prefix() -> None:
+    csv_path = Path("KOSPI_005930_Samsung_Electronics_weekly_20260422.csv")
+
+    assert jobs._stock_name_from_csv_filename(csv_path, "005930") == "Samsung_Electronics"
+
+
+def test_stock_name_from_csv_filename_supports_us_market_first_prefix() -> None:
+    csv_path = Path("NASDAQ_AAPL_Apple Inc_weekly_20260422.csv")
+
+    assert jobs._stock_name_from_csv_filename(csv_path, "AAPL") == "Apple Inc"
+
+
 def test_get_job_keeps_pending_before_timeout(
     client: TestClient,
     test_db: sessionmaker[Session],
@@ -919,7 +931,7 @@ def test_run_analysis_pipeline_marks_model_start_failure(
     monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
-        _write_csv(output_dir, "005930_Samsung_weekly_20260507.csv")
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv")
 
     monkeypatch.setattr(jobs, "_run_pick", fake_pick)
 

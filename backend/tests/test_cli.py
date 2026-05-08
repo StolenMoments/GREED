@@ -191,3 +191,17 @@ def test_parse_analysis_filename_ignores_market_prefix() -> None:
         "005930",
         "Samsung_Electronics",
     )
+
+
+def test_parse_analysis_filename_supports_market_first_prefix() -> None:
+    assert cli_module.parse_analysis_filename(Path("KOSPI_005930_Samsung_Electronics_weekly_20260421.md")) == (
+        "005930",
+        "Samsung_Electronics",
+    )
+
+
+def test_parse_analysis_filename_supports_us_market_first_prefix() -> None:
+    assert cli_module.parse_analysis_filename(Path("NASDAQ_AAPL_Apple Inc_weekly_20260421.md")) == (
+        "AAPL",
+        "Apple Inc",
+    )

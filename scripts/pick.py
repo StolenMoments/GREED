@@ -268,19 +268,24 @@ def normalize_market(market: str | None) -> str:
 
 
 def cleanup_old_weekly_csvs(output_dir: Path, ticker: str, today_str: str) -> None:
-    pattern = re.compile(rf"^{re.escape(ticker)}(?:_.+)?_weekly_(\d{{8}})\.csv$")
+    weekly_pattern = re.compile(r"^(?P<body>.+)_weekly_(?P<date>\d{8})\.csv$")
     today = datetime.strptime(today_str, "%Y%m%d").date()
 
-    for path in output_dir.glob(f"{ticker}*_weekly_*.csv"):
+    for path in output_dir.glob("*_weekly_*.csv"):
         if not path.is_file():
             continue
 
-        match = pattern.match(path.name)
+        match = weekly_pattern.match(path.name)
         if not match:
             continue
 
+        body_parts = match.group("body").split("_")
+        file_ticker = body_parts[1] if body_parts[0].upper() in KOREAN_MARKETS and len(body_parts) > 1 else body_parts[0]
+        if file_ticker != ticker:
+            continue
+
         try:
-            file_date = datetime.strptime(match.group(1), "%Y%m%d").date()
+            file_date = datetime.strptime(match.group("date"), "%Y%m%d").date()
         except ValueError:
             continue
 
@@ -398,18 +403,19 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str, ma
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     today_str = datetime.today().strftime("%Y%m%d")
+    safe_ticker = sanitize_filename(ticker)
     safe_market = normalize_market(market)
     safe_name = sanitize_filename(stock_name)
-    filename_parts = [ticker]
+    filename_parts = [safe_ticker]
     if safe_market:
-        filename_parts.append(safe_market)
+        filename_parts = [safe_market, safe_ticker]
     if safe_name:
         filename_parts.append(safe_name)
 
     if len(filename_parts) > 1:
         filename = output_path / f"{'_'.join(filename_parts)}_weekly_{today_str}.csv"
     else:
-        filename = output_path / f"{ticker}_weekly_{today_str}.csv"
+        filename = output_path / f"{safe_ticker}_weekly_{today_str}.csv"
 
     # 컬럼 순서 정렬
     df = df.copy()

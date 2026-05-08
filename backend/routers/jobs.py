@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -600,8 +599,47 @@ def _start_runner(
     return runner(csv_text)
 
 
+def _weekly_csv_metadata(csv_path: Path) -> tuple[str, str, str] | None:
+    parts = csv_path.stem.split("_")
+    if len(parts) < 3:
+        return None
+    if parts[-2] != "weekly" or len(parts[-1]) != 8 or not parts[-1].isdigit():
+        return None
+
+    body_parts = parts[:-2]
+    if body_parts[0].upper() in MARKET_FILENAME_LABELS:
+        if len(body_parts) < 2:
+            return None
+        ticker = body_parts[1].strip()
+        name_parts = body_parts[2:]
+    else:
+        ticker = body_parts[0].strip()
+        name_parts = body_parts[1:]
+        if name_parts and name_parts[0].upper() in MARKET_FILENAME_LABELS:
+            name_parts = name_parts[1:]
+
+    if not ticker:
+        return None
+    return ticker, "_".join(name_parts).strip(), parts[-1]
+
+
+def _weekly_csv_paths_for_ticker(directory: Path, ticker: str, today_str: str | None = None) -> list[Path]:
+    paths: list[Path] = []
+    pattern = f"*_weekly_{today_str}.csv" if today_str else "*_weekly_*.csv"
+    for path in directory.glob(pattern):
+        if not path.is_file():
+            continue
+        metadata = _weekly_csv_metadata(path)
+        if metadata is None:
+            continue
+        file_ticker, _, file_date = metadata
+        if file_ticker == ticker and (today_str is None or file_date == today_str):
+            paths.append(path)
+    return paths
+
+
 def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
-    files = sorted(output_dir.glob(f"{ticker}_*.csv"), key=lambda path: path.stat().st_mtime)
+    files = sorted(_weekly_csv_paths_for_ticker(output_dir, ticker), key=lambda path: path.stat().st_mtime)
     if not files:
         return None
     return files[-1]
@@ -640,19 +678,11 @@ def _chart_cache_dir(today_str: str | None = None) -> Path:
 
 def _today_reusable_csv_path(ticker: str, today_str: str | None = None) -> Path | None:
     today_str = today_str or seoul_now().strftime("%Y%m%d")
-    patterns = [
-        f"{ticker}_*_weekly_{today_str}.csv",
-        f"{ticker}_weekly_{today_str}.csv",
-    ]
-    cache_files: list[Path] = []
-    for pattern in patterns:
-        cache_files.extend(path for path in _chart_cache_dir(today_str).glob(pattern) if path.is_file())
+    cache_files = _weekly_csv_paths_for_ticker(_chart_cache_dir(today_str), ticker, today_str)
     if cache_files:
         return sorted(cache_files, key=lambda path: path.stat().st_mtime)[-1]
 
-    files: list[Path] = []
-    for pattern in patterns:
-        files.extend(path for path in PICK_OUTPUT_DIR.glob(pattern) if path.is_file())
+    files = _weekly_csv_paths_for_ticker(PICK_OUTPUT_DIR, ticker, today_str)
     if not files:
         return None
     return sorted(files, key=lambda path: path.stat().st_mtime)[-1]
@@ -682,14 +712,13 @@ def _copy_csv_to_job_output(csv_path: Path, job_output_dir: Path) -> Path:
 
 
 def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
-    pattern = rf"^{re.escape(ticker)}_(?P<name>.+)_weekly_\d{{8}}$"
-    match = re.match(pattern, csv_path.stem)
-    if match is None:
+    metadata = _weekly_csv_metadata(csv_path)
+    if metadata is None:
         return ""
-    name_parts = match.group("name").split("_")
-    if name_parts and name_parts[0].upper() in MARKET_FILENAME_LABELS:
-        name_parts = name_parts[1:]
-    return "_".join(name_parts).strip()
+    file_ticker, name, _ = metadata
+    if file_ticker != ticker:
+        return ""
+    return name
 
 
 def _trim_csv(csv_text: str, max_data_rows: int) -> str:

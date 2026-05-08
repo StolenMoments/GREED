@@ -344,7 +344,7 @@ def save_csv(df: pd.DataFrame, ticker: str, stock_name: str, output_dir: str, ma
     safe_name = sanitize_filename(stock_name)
     filename_parts = [safe_ticker]
     if safe_market:
-        filename_parts.append(safe_market)
+        filename_parts = [safe_market, safe_ticker]
     if safe_name:
         filename_parts.append(safe_name)
 

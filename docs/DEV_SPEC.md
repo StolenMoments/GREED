@@ -13,7 +13,7 @@ scripts/gogo2.py
   -> KOSPI/KOSDAQ 스크리닝
   -> pick_output/screening_YYYYMMDD.csv 저장
   -> 조건 충족 종목마다 scripts/pick.py run_pick() 호출
-  -> pick_output/{ticker}_{market}_{name}_weekly_{YYYYMMDD}.csv 저장
+  -> pick_output/{market}_{ticker}_{name}_weekly_{YYYYMMDD}.csv 저장
 
 scripts/pick.py / scripts/pick_us.py
   -> 단일 한국/미국 종목 주봉 CSV 생성
@@ -410,7 +410,7 @@ python -m backend.cli analysis save-dir --run-id 1 --model GPT --dir analyses
 - 기본 API base URL은 `http://localhost:8000/api`이다.
 - `run create`는 생성된 Run ID만 출력한다.
 - `analysis save-dir`는 `*.md` 파일을 정렬해 순회한다.
-- 파일명 패턴이 `{ticker}_{name}_weekly_{YYYYMMDD}.md` 또는 `{ticker}_{market}_{name}_weekly_{YYYYMMDD}.md`이면 ticker와 name을 자동 추출한다.
+- 파일명 패턴이 `{market}_{ticker}_{name}_weekly_{YYYYMMDD}.md`, `{ticker}_{market}_{name}_weekly_{YYYYMMDD}.md`, 또는 `{ticker}_{name}_weekly_{YYYYMMDD}.md`이면 ticker와 name을 자동 추출한다.
 - 이름에 `_`가 포함되어도 `_weekly_YYYYMMDD` 앞까지 name으로 처리한다.
 
 ## 7. 스크립트
