@@ -29,6 +29,11 @@ def make_weekly(close: float = 96.0, volume: float = 1000.0, rows: int = 180) ->
 
 
 def install_fake_indicators(monkeypatch):
+    class FakeDateTime:
+        @classmethod
+        def today(cls):
+            return SimpleNamespace(weekday=lambda: 0)
+
     def fake_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
         df["span_a"] = 100.0
         df["span_b"] = 90.0
@@ -50,6 +55,7 @@ def install_fake_indicators(monkeypatch):
 
     monkeypatch.setattr(gogo2, "ichimoku", fake_ichimoku)
     monkeypatch.setattr(gogo2, "moving_averages", fake_moving_averages)
+    monkeypatch.setattr(gogo2, "datetime", FakeDateTime)
 
 
 def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monkeypatch):
@@ -67,10 +73,21 @@ def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monke
     assert detail["돌파시거래량증가(배)"] == 1.0
 
 
-def test_stock_below_cloud_top_is_excluded(monkeypatch):
+def test_near_cloud_top_stock_is_marked_pre_breakout(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=96.0)
     df.loc[df.index[-2], "Close"] = 97.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is True
+    assert detail["scan_type"] == "pre_breakout"
+
+
+def test_stock_far_below_cloud_top_is_excluded(monkeypatch):
+    install_fake_indicators(monkeypatch)
+    df = make_weekly(close=90.0)
+    df.loc[df.index[-2], "Close"] = 94.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
