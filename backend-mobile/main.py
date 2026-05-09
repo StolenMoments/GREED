@@ -20,3 +20,8 @@ app = FastAPI(title="GREED Mobile API", lifespan=lifespan)
 
 app.include_router(analyses.router)
 app.include_router(stocks.router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
