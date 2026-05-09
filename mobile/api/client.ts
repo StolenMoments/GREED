@@ -10,7 +10,7 @@ export const apiKeyStorage = {
   delete: ()                => SecureStore.deleteItemAsync(API_KEY_STORAGE_KEY),
 };
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8001';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://mygreed.shop';
 
 const client = axios.create({
   baseURL: BASE_URL,
