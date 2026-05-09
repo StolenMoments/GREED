@@ -3,6 +3,8 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - master
     tags:
       - 'android-v*'
 
@@ -71,7 +73,12 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p mobile/dist
-          cp mobile/android/app/build/outputs/apk/release/*.apk mobile/dist/greed-${GITHUB_REF_NAME:-manual}.apk
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            APK_NAME="greed-android-latest.apk"
+          else
+            APK_NAME="greed-${GITHUB_REF_NAME:-manual}.apk"
+          fi
+          cp mobile/android/app/build/outputs/apk/release/*.apk "mobile/dist/$APK_NAME"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -86,3 +93,15 @@ jobs:
         with:
           files: mobile/dist/*.apk
           generate_release_notes: true
+
+      - name: Publish latest Android Release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: Android Latest
+          body: Latest Android APK from master.
+          files: mobile/dist/greed-android-latest.apk
+          overwrite_files: true
+          prerelease: true
+          make_latest: false
