@@ -1,0 +1,48 @@
+name: Deploy Mobile API
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: deploy-mobile-master
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to OCI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/oci_deploy_key
+          chmod 600 ~/.ssh/oci_deploy_key
+          printf '%s\n' "${{ secrets.OCI_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          test -s ~/.ssh/oci_deploy_key || (echo "Missing OCI_SSH_KEY secret" >&2; exit 1)
+          test -s ~/.ssh/known_hosts || (echo "Missing OCI_KNOWN_HOSTS secret" >&2; exit 1)
+
+      - name: Run deploy script on OCI
+        shell: bash
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_PORT: ${{ secrets.OCI_PORT }}
+        run: |
+          set -euo pipefail
+          test -n "$OCI_HOST" || (echo "Missing OCI_HOST secret" >&2; exit 1)
+          test -n "$OCI_USER" || (echo "Missing OCI_USER secret" >&2; exit 1)
+          PORT="${OCI_PORT:-22}"
+          ssh -i ~/.ssh/oci_deploy_key \
+            -p "$PORT" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$OCI_USER@$OCI_HOST" \
+            "cd /opt/greed && git fetch origin master && git checkout master && git pull --ff-only origin master && bash deploy/deploy-mobile.sh"

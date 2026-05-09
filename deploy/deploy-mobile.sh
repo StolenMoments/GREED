@@ -1,57 +1,65 @@
 #!/usr/bin/env bash
-# OCI Oracle Linux 서버에서 backend-mobile 배포/업데이트 스크립트
-# 사용법: bash deploy/deploy-mobile.sh
+# Deploy/update backend-mobile on OCI Oracle Linux.
+# Usage: bash deploy/deploy-mobile.sh
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$DEPLOY_DIR")"
 APP_DIR="$PROJECT_DIR/backend-mobile"
 SERVICE=greed-mobile
+BRANCH=master
 
-echo "==> backend-mobile 배포 시작"
+echo "==> backend-mobile deploy start"
 echo "    PROJECT_DIR: $PROJECT_DIR"
 
-# 1. Python venv 생성 (없을 경우)
+# 1. Update source from GitHub. Fail if the server checkout cannot fast-forward.
+echo "--> update source: origin/$BRANCH"
+git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree > /dev/null
+git -C "$PROJECT_DIR" fetch origin "$BRANCH"
+git -C "$PROJECT_DIR" checkout "$BRANCH"
+git -C "$PROJECT_DIR" pull --ff-only origin "$BRANCH"
+
+# 2. Create Python venv if needed.
 if [ ! -d "$APP_DIR/venv" ]; then
-    echo "--> venv 생성"
+    echo "--> create venv"
     python3 -m venv "$APP_DIR/venv"
 fi
 
-# 2. 의존성 설치
-echo "--> 의존성 설치"
+# 3. Install dependencies.
+echo "--> install dependencies"
 "$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$APP_DIR/venv/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
 
-# 3. systemd 서비스 등록 (처음 실행 시)
+# 4. Register systemd service on first run.
 SERVICE_FILE=/etc/systemd/system/$SERVICE.service
 if [ ! -f "$SERVICE_FILE" ]; then
-    echo "--> systemd 서비스 등록"
+    echo "--> register systemd service"
     sed "s|/opt/greed|$PROJECT_DIR|g; s|User=opc|User=$(whoami)|g; s|Group=opc|Group=$(whoami)|g" \
         "$DEPLOY_DIR/greed-mobile.service" | sudo tee "$SERVICE_FILE" > /dev/null
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE"
 fi
 
-# 4. nginx 설정 등록 (처음 실행 시) — Oracle Linux: conf.d 방식
+# 5. Register nginx config on first run.
 NGINX_CONF=/etc/nginx/conf.d/$SERVICE.conf
 if [ ! -f "$NGINX_CONF" ]; then
-    echo "--> nginx 설정 등록"
+    echo "--> register nginx config"
     sudo cp "$DEPLOY_DIR/nginx-mobile.conf" "$NGINX_CONF"
 fi
 
-# 5. 서비스 재시작
-echo "--> 서비스 재시작"
+# 6. Restart service.
+echo "--> restart service"
 sudo systemctl restart "$SERVICE"
 
-# 6. nginx 설정 검사 및 reload
+# 7. Validate and reload nginx.
 echo "--> nginx reload"
 sudo nginx -t
 sudo systemctl reload nginx
 
-# 7. 상태 확인
-echo "--> 서비스 상태"
+# 8. Show status.
+echo "--> service status"
 sudo systemctl status "$SERVICE" --no-pager
 
 echo ""
-echo "==> 배포 완료"
+echo "==> deploy complete"
 echo "    health check: curl http://localhost:8001/health"
