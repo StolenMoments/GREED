@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "GREED",
+    "slug": "greed-mobile",
+    "version": "1.0.0",
+    "scheme": "greed",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0D09"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.personal.greed"
+    },
+    "android": {
+      "package": "com.personal.greed",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0D09"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

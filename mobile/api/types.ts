@@ -1,0 +1,33 @@
+export type Judgment = '매수' | '홀드' | '매도';
+
+export interface AnalysisItem {
+  id: number;
+  ticker: string;
+  name: string;
+  judgment: Judgment;
+  trend: string;
+  cloud_position: string;
+  ma_alignment: string;
+  created_at: string;
+}
+
+export interface AnalysisDetail extends AnalysisItem {
+  markdown: string;
+}
+
+export interface AnalysesPage {
+  items: AnalysisItem[];
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface StockSummary {
+  ticker: string;
+  name: string;
+  buy_count: number;
+  hold_count: number;
+  sell_count: number;
+  latest_at: string;
+}
