@@ -19,7 +19,6 @@ import { AnalysisCard } from '@/components/AnalysisCard';
 import { FilterBar } from '@/components/FilterBar';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { AnalysisDetailPanel } from '@/components/AnalysisDetailPanel';
-import { apiKeyStorage } from '@/api/client';
 import type { AnalysisItem, Judgment } from '@/api/types';
 
 type Filter = Judgment | null;
@@ -63,11 +62,6 @@ export default function AnalysesScreen() {
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  async function resetKey() {
-    await apiKeyStorage.delete();
-    router.replace('/setup');
-  }
 
   const skeletons = [0, 1, 2, 3, 4];
 
@@ -155,9 +149,6 @@ export default function AnalysesScreen() {
             </Pressable>
           )}
         </View>
-        <Pressable onPress={resetKey} hitSlop={8} style={styles.keyBtn}>
-          <Ionicons name="key-outline" size={20} color={colors.textTer} />
-        </Pressable>
       </View>
 
       <FilterBar value={filter} onChange={setFilter} />
@@ -212,9 +203,6 @@ const styles = StyleSheet.create({
     flex:       1,
     fontSize:   fontSize.sm,
     padding:    0,
-  },
-  keyBtn: {
-    padding: spacing.xs,
   },
   list: {
     padding: spacing.base,
