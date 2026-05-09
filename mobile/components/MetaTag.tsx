@@ -6,14 +6,15 @@ import { fontSize, spacing, radius } from '@/constants/theme';
 interface Props {
   label: string;
   value: string;
+  valueColor?: string;
 }
 
-export function MetaTag({ label, value }: Props) {
+export function MetaTag({ label, value, valueColor }: Props) {
   const { colors } = useTheme();
   return (
     <View style={[styles.tag, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
       <Text style={[styles.lbl, { color: colors.textTer }]}>{label}</Text>
-      <Text style={[styles.val, { color: colors.textSec }]}>{value}</Text>
+      <Text style={[styles.val, { color: valueColor ?? colors.textSec }]}>{value}</Text>
     </View>
   );
 }

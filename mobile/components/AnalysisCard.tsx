@@ -19,6 +19,17 @@ function formatPrice(price: number | null, priceMax: number | null): string | nu
   return priceMax != null ? `${fmt(price)}~${fmt(priceMax)}` : fmt(price);
 }
 
+function getSignalColor(value: string, isDark: boolean): string | undefined {
+  const positive = ['상승', '구름 위', '정배열'];
+  const neutral = ['횡보', '구름 안', '혼조'];
+  const negative = ['하락', '구름 아래', '역배열'];
+
+  if (positive.includes(value)) return isDark ? palette.buy : palette.buyLight;
+  if (neutral.includes(value)) return isDark ? palette.hold : palette.holdLight;
+  if (negative.includes(value)) return isDark ? palette.sell : palette.sellLight;
+  return undefined;
+}
+
 export function AnalysisCard({ item, onPress, selected = false }: Props) {
   const { colors, isDark } = useTheme();
 
@@ -54,9 +65,9 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
       </View>
 
       <View style={styles.tags}>
-        <MetaTag label="추세" value={item.trend} />
-        <MetaTag label="구름" value={item.cloud_position} />
-        <MetaTag label="MA" value={item.ma_alignment} />
+        <MetaTag label="추세" value={item.trend} valueColor={getSignalColor(item.trend, isDark)} />
+        <MetaTag label="구름" value={item.cloud_position} valueColor={getSignalColor(item.cloud_position, isDark)} />
+        <MetaTag label="MA" value={item.ma_alignment} valueColor={getSignalColor(item.ma_alignment, isDark)} />
       </View>
 
       {hasPrices && (
@@ -64,7 +75,7 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
           {entryStr != null && (
             <View style={styles.priceItem}>
               <Text style={[styles.priceLabel, { color: colors.textTer }]}>진입</Text>
-              <Text style={[styles.priceValue, { color: colors.textSec }]}>{entryStr}</Text>
+              <Text style={[styles.priceValue, { color: isDark ? palette.hold : palette.holdLight }]}>{entryStr}</Text>
             </View>
           )}
           {targetStr != null && (
@@ -125,6 +136,7 @@ const styles = StyleSheet.create({
   },
   priceSection: {
     flexDirection:  'row',
+    flexWrap:       'wrap',
     gap:            spacing.md,
     paddingTop:     spacing.sm,
     marginTop:      spacing.xs,
@@ -141,8 +153,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase' as const,
   },
   priceValue: {
-    fontSize:   fontSize.xs,
-    fontWeight: '600',
+    fontSize:   fontSize.base,
+    fontWeight: '700',
   },
   time: {
     fontSize: fontSize.xs,
