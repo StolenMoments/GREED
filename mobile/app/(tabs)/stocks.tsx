@@ -98,7 +98,7 @@ export default function StocksScreen() {
   }, [data, search]);
 
   function handleStockPress(ticker: string) {
-    router.push({ pathname: '/(tabs)/', params: { ticker } });
+    router.push({ pathname: '/(tabs)', params: { ticker } });
   }
 
   return (

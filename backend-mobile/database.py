@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND_DIR = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(BACKEND_DIR / ".env", override=False)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:

@@ -1,8 +1,10 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/contexts/ThemeContext';
 import { fontSize } from '@/constants/theme';
+import { apiKeyStorage } from '@/api/client';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -20,6 +22,33 @@ function TabIcon({
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    apiKeyStorage.get()
+      .then((key) => {
+        if (mounted) setHasApiKey(Boolean(key));
+      })
+      .catch(() => {
+        if (mounted) setHasApiKey(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (hasApiKey === null) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (!hasApiKey) return <Redirect href="/setup" />;
 
   return (
     <Tabs

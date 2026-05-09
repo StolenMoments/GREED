@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { Stack, router } from 'expo-router';
+import React, { useEffect } from 'react';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import {
@@ -11,7 +10,6 @@ import {
 } from '@expo-google-fonts/archivo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
-import { apiKeyStorage } from '@/api/client';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,20 +24,6 @@ const queryClient = new QueryClient({
 
 function RootStack() {
   const { colors, isDark } = useTheme();
-  const [apiKeyChecked, setApiKeyChecked] = useState(false);
-
-  useEffect(() => {
-    apiKeyStorage.get().then((key) => {
-      setApiKeyChecked(true);
-      if (!key) {
-        router.replace('/setup');
-      } else {
-        router.replace('/(tabs)');
-      }
-    });
-  }, []);
-
-  if (!apiKeyChecked) return null;
 
   return (
     <>
@@ -67,17 +51,17 @@ function RootStack() {
 }
 
 export default function Layout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Archivo_400Regular,
     Archivo_600SemiBold,
     Archivo_700Bold,
   });
 
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+    if (fontsLoaded || fontError) SplashScreen.hideAsync();
+  }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <QueryClientProvider client={queryClient}>

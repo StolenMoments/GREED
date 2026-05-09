@@ -71,13 +71,23 @@ npm install -g eas-cli   # 클라우드 빌드 시 필요
 ## 2. 환경변수 설정
 
 Expo는 `app.json`의 `extra` 필드나 `.env` 파일을 통해 환경변수를 주입할 수 있다.  
-현재 프로젝트는 `expo-secure-store`를 사용해 API Key를 기기에 저장하므로, 빌드 시 별도 환경변수 설정은 불필요하다.
+현재 프로젝트는 `expo-secure-store`를 사용해 API Key를 기기에 저장하므로, API 키는 별도 환경변수 설정이 불필요하다.
 
-백엔드 URL을 환경에 따라 분리하고 싶은 경우:
+백엔드 URL은 파일 두 개로 환경을 분리한다:
+
+| 파일 | 값 | 용도 |
+|------|-----|------|
+| `mobile/.env` | `https://mygreed.shop` | 기본값 — 프로덕션 빌드에 적용됨 |
+| `mobile/.env.local` | `http://10.0.2.2:8001` | 로컬 개발 오버라이드 (에뮬레이터용) |
+
+> **⚠️ 실기기용 APK/IPA 빌드 시 주의**: Expo는 `.env.local`이 존재하면 `.env`를 덮어쓴다.  
+> 프로덕션 빌드 전에 `.env.local`을 삭제하거나 아래처럼 명시적으로 환경을 지정해야 한다.
 
 ```bash
-# .env (mobile/ 디렉토리에 생성)
-EXPO_PUBLIC_API_URL=https://your-server-ip-or-domain
+# .env.local을 임시 제외하고 빌드 (PowerShell)
+Rename-Item mobile\.env.local mobile\.env.local.bak
+# ... 빌드 수행 ...
+Rename-Item mobile\.env.local.bak mobile\.env.local
 ```
 
 코드에서는 `process.env.EXPO_PUBLIC_API_URL`으로 접근한다 (`EXPO_PUBLIC_` 접두사 필수).
@@ -86,15 +96,66 @@ EXPO_PUBLIC_API_URL=https://your-server-ip-or-domain
 
 ## 3. Android 빌드
 
-### 3-1. 개발용 (Expo Go / Dev Client)
+### ⚠️ Expo Go 사용 불가
+
+이 앱은 **Expo Go로 실행할 수 없다.** 다음 이유로 네이티브 빌드가 필수다:
+
+- `"newArchEnabled": true` — New Architecture(Fabric) 활성화
+- `expo-secure-store` 플러그인 — 네이티브 키체인 접근
+- `expo-font` 플러그인
+
+Expo Go로 실행하면 **빈 화면**만 표시되고 아무 로그도 나오지 않는다.
+
+---
+
+### 3-1. 로컬 개발 (에뮬레이터 / 실기기 권장)
+
+> 가장 빠른 개발 방법. 빌드 후 Metro HMR로 JS 변경사항은 즉시 반영된다.
+
+**사전 조건:**
+- Android Studio 설치 및 AVD(에뮬레이터) 실행 중
+- `ANDROID_HOME` 환경변수 설정 ([아래 트러블슈팅 참고](#android-sdk-location-not-found))
+
+**처음 실행 (네이티브 빌드 + 설치 + 실행):**
 
 ```bash
 cd mobile
-npx expo start --android
+npx expo run:android
 ```
 
-- Android 에뮬레이터 또는 실제 기기에서 Expo Go 앱으로 즉시 테스트 가능
-- 실기기는 USB 디버깅 활성화 후 연결, 또는 동일 Wi-Fi에서 QR 코드 스캔
+- `android/` 디렉토리 자동 생성(prebuild) → Gradle 빌드 → 에뮬레이터에 설치 → Metro 시작
+- 처음 빌드는 5~15분 소요
+
+**이후 실행 (JS만 변경된 경우):**
+
+```bash
+cd mobile
+npx expo start
+```
+
+- 네이티브 코드 변경 없이 JS/TSX만 수정했을 때는 Metro만 띄우면 된다
+- 에뮬레이터에서 `R` 키 또는 흔들기로 리로드
+
+**네이티브 코드가 변경된 경우** (패키지 추가, `app.json` 플러그인 수정 등):
+
+```bash
+cd mobile
+npx expo run:android
+```
+
+다시 풀 빌드를 해야 한다.
+
+**환경변수 (Android 에뮬레이터 전용):**
+
+`mobile/.env.local`:
+```
+EXPO_PUBLIC_API_URL=http://10.0.2.2:8001
+```
+
+> 에뮬레이터에서 `localhost`는 에뮬레이터 자신을 가리킨다. 호스트 PC는 `10.0.2.2`를 써야 한다.  
+> 실기기에서는 PC의 실제 IP(`192.168.x.x`)를 사용한다.
+
+---
 
 ### 3-2. 로컬 APK 빌드 (사전 준비)
 
@@ -359,6 +420,11 @@ npx expo start --clear
 ### `expo-secure-store`: 시뮬레이터 주의사항
 
 `expo-secure-store`는 iOS 시뮬레이터에서 정상 동작하지만 Android 에뮬레이터에서 간헐적 이슈가 있을 수 있다. 실기기 테스트 권장.
+
+### 에뮬레이터에서 빈 화면만 표시됨
+
+Expo Go 앱을 사용하고 있을 가능성이 높다. 이 앱은 Expo Go와 호환되지 않는다.  
+`npx expo run:android`로 개발 빌드를 에뮬레이터에 직접 설치해야 한다.
 
 ### 앱 첫 실행 시 `/setup` 화면으로 이동
 
