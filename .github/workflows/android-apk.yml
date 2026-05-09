@@ -38,7 +38,7 @@ jobs:
 
       - name: Install mobile dependencies
         working-directory: mobile
-        run: npm install
+        run: npm ci
 
       - name: Write mobile environment
         run: |
