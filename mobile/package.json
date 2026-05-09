@@ -7,6 +7,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "prebuild:android": "expo prebuild --platform android",
+    "build:apk": "node scripts/build-apk.js",
+    "build:apk:debug": "node scripts/build-apk.js --debug",
+    "build:apk:prebuild": "node scripts/build-apk.js --prebuild",
     "postinstall": "node scripts/fix-windows-autolinking.js"
   },
   "dependencies": {
