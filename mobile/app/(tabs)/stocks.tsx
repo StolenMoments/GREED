@@ -18,6 +18,34 @@ import { formatRelativeTime } from '@/utils/time';
 import { extractChoseong } from '@/utils/korean';
 import type { StockSummary } from '@/api/types';
 
+type SortMode = 'latest' | 'buy' | 'sell' | 'hold';
+
+const sortOptions: { label: string; value: Exclude<SortMode, 'latest'> }[] = [
+  { label: '매수', value: 'buy' },
+  { label: '매도', value: 'sell' },
+  { label: '홀드', value: 'hold' },
+];
+
+function getSortCount(item: StockSummary, mode: SortMode) {
+  switch (mode) {
+    case 'buy':
+      return item.buy_count;
+    case 'sell':
+      return item.sell_count;
+    case 'hold':
+      return item.hold_count;
+    default:
+      return 0;
+  }
+}
+
+function compareLatestThenTicker(a: StockSummary, b: StockSummary) {
+  const latestDiff =
+    new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime();
+  if (latestDiff !== 0) return latestDiff;
+  return a.ticker.localeCompare(b.ticker);
+}
+
 function StockCard({ item, onPress }: { item: StockSummary; onPress: () => void }) {
   const { colors, isDark } = useTheme();
   const total = item.buy_count + item.hold_count + item.sell_count;
@@ -52,20 +80,20 @@ function StockCard({ item, onPress }: { item: StockSummary; onPress: () => void 
             매수
           </Text>
         </View>
-        <View style={[styles.countPill, { backgroundColor: isDark ? '#3A2D0A' : '#F5E8C0' }]}>
-          <Text style={[styles.countNum, { color: isDark ? palette.hold : palette.holdLight }]}>
-            {item.hold_count}
-          </Text>
-          <Text style={[styles.countLbl, { color: isDark ? palette.hold : palette.holdLight }]}>
-            홀드
-          </Text>
-        </View>
         <View style={[styles.countPill, { backgroundColor: isDark ? '#3D1410' : '#F5D0CC' }]}>
           <Text style={[styles.countNum, { color: isDark ? palette.sell : palette.sellLight }]}>
             {item.sell_count}
           </Text>
           <Text style={[styles.countLbl, { color: isDark ? palette.sell : palette.sellLight }]}>
             매도
+          </Text>
+        </View>
+        <View style={[styles.countPill, { backgroundColor: isDark ? '#3A2D0A' : '#F5E8C0' }]}>
+          <Text style={[styles.countNum, { color: isDark ? palette.hold : palette.holdLight }]}>
+            {item.hold_count}
+          </Text>
+          <Text style={[styles.countLbl, { color: isDark ? palette.hold : palette.holdLight }]}>
+            홀드
           </Text>
         </View>
         <Text style={[styles.total, { color: colors.textTer }]}>
@@ -81,21 +109,33 @@ function StockCard({ item, onPress }: { item: StockSummary; onPress: () => void 
 }
 
 export default function StocksScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [search, setSearch] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('latest');
   const { data, isPending, isRefetching, refetch } = useStocks();
 
   const filtered = useMemo(() => {
     if (!data) return [];
     const q = search.trim().toLowerCase();
-    if (!q) return data;
-    return data.filter(
+    const searched = q ? data.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.ticker.toLowerCase().includes(q) ||
         extractChoseong(s.name).includes(q),
-    );
-  }, [data, search]);
+    ) : data;
+
+    return [...searched].sort((a, b) => {
+      if (sortMode === 'latest') return compareLatestThenTicker(a, b);
+
+      const countDiff = getSortCount(b, sortMode) - getSortCount(a, sortMode);
+      if (countDiff !== 0) return countDiff;
+      return compareLatestThenTicker(a, b);
+    });
+  }, [data, search, sortMode]);
+
+  function handleSortPress(nextMode: Exclude<SortMode, 'latest'>) {
+    setSortMode((current) => (current === nextMode ? 'latest' : nextMode));
+  }
 
   function handleStockPress(ticker: string) {
     router.push({ pathname: '/(tabs)', params: { ticker } });
@@ -121,6 +161,43 @@ export default function StocksScreen() {
               <Ionicons name="close-circle" size={16} color={colors.textTer} />
             </Pressable>
           )}
+        </View>
+        <View style={styles.sortRow}>
+          {sortOptions.map((option) => {
+            const active = sortMode === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => handleSortPress(option.value)}
+                style={({ pressed }) => [
+                  styles.sortButton,
+                  {
+                    backgroundColor: active
+                      ? (isDark ? palette.dark.accent : palette.light.accent)
+                      : colors.surface2,
+                    borderColor: active
+                      ? (isDark ? palette.dark.accent : palette.light.accent)
+                      : colors.border,
+                  },
+                  pressed && styles.sortButtonPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sortButtonText,
+                    {
+                      color: active
+                        ? (isDark ? '#1A1000' : '#FFFFFF')
+                        : colors.textSec,
+                      fontWeight: active ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -169,6 +246,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingVertical:   spacing.sm,
     borderBottomWidth: 1,
+    gap:               spacing.sm,
   },
   searchRow: {
     flexDirection:     'row',
@@ -183,6 +261,27 @@ const styles = StyleSheet.create({
     flex:     1,
     fontSize: fontSize.sm,
     padding:  0,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    gap:           spacing.sm,
+  },
+  sortButton: {
+    flex:              1,
+    minHeight:         44,
+    alignItems:        'center',
+    justifyContent:    'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical:   spacing.sm,
+    borderRadius:      radius.md,
+    borderWidth:       1,
+  },
+  sortButtonText: {
+    fontSize:   fontSize.sm,
+    lineHeight: 18,
+  },
+  sortButtonPressed: {
+    opacity: 0.7,
   },
   center: {
     flex:           1,
