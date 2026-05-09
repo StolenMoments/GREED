@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=ubuntu
-Group=ubuntu
+User=opc
+Group=opc
 WorkingDirectory=/opt/greed/backend-mobile
 EnvironmentFile=/opt/greed/backend-mobile/.env
 ExecStart=/opt/greed/backend-mobile/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001

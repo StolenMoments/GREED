@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# OCI Ubuntu 서버에서 backend-mobile 배포/업데이트 스크립트
+# OCI Oracle Linux 서버에서 backend-mobile 배포/업데이트 스크립트
 # 사용법: bash deploy/deploy-mobile.sh
 set -euo pipefail
 
-APP_DIR=/opt/greed/backend-mobile
+DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$DEPLOY_DIR")"
+APP_DIR="$PROJECT_DIR/backend-mobile"
 SERVICE=greed-mobile
 
 echo "==> backend-mobile 배포 시작"
+echo "    PROJECT_DIR: $PROJECT_DIR"
 
 # 1. Python venv 생성 (없을 경우)
 if [ ! -d "$APP_DIR/venv" ]; then
@@ -23,18 +26,17 @@ echo "--> 의존성 설치"
 SERVICE_FILE=/etc/systemd/system/$SERVICE.service
 if [ ! -f "$SERVICE_FILE" ]; then
     echo "--> systemd 서비스 등록"
-    sudo cp "$(dirname "$0")/greed-mobile.service" "$SERVICE_FILE"
+    sed "s|/opt/greed|$PROJECT_DIR|g; s|User=opc|User=$(whoami)|g; s|Group=opc|Group=$(whoami)|g" \
+        "$DEPLOY_DIR/greed-mobile.service" | sudo tee "$SERVICE_FILE" > /dev/null
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE"
 fi
 
-# 4. nginx 설정 심링크 (처음 실행 시)
-NGINX_AVAIL=/etc/nginx/sites-available/greed-mobile
-NGINX_ENABLED=/etc/nginx/sites-enabled/greed-mobile
-if [ ! -f "$NGINX_AVAIL" ]; then
+# 4. nginx 설정 등록 (처음 실행 시) — Oracle Linux: conf.d 방식
+NGINX_CONF=/etc/nginx/conf.d/$SERVICE.conf
+if [ ! -f "$NGINX_CONF" ]; then
     echo "--> nginx 설정 등록"
-    sudo cp "$(dirname "$0")/nginx-mobile.conf" "$NGINX_AVAIL"
-    sudo ln -sf "$NGINX_AVAIL" "$NGINX_ENABLED"
+    sudo cp "$DEPLOY_DIR/nginx-mobile.conf" "$NGINX_CONF"
 fi
 
 # 5. 서비스 재시작

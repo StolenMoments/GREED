@@ -85,7 +85,7 @@ nano /opt/greed/backend-mobile/.env
 ```
 
 ```env
-DATABASE_URL=mysql+pymysql://greed_mobile:DB_PASSWORD@146.56.146.157:3306/greed?charset=utf8mb4
+DATABASE_URL=mysql+pymysql://greed_mobile:DB_PASSWORD@127.0.0.1:3306/greed?charset=utf8mb4
 MOBILE_API_KEY=여기에_강력한_키_입력
 ```
 
@@ -102,7 +102,7 @@ openssl rand -hex 32
 
 ## 3. MariaDB 읽기 전용 계정 생성
 
-MariaDB 서버(146.56.146.157)에 접속해 실행한다.
+MariaDB 서버(로컬)에 접속해 실행한다.
 
 ```bash
 mysql -u root -p
