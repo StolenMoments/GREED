@@ -25,6 +25,7 @@ export function FilterBar({ value, onChange }: Props) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.container}
       contentContainerStyle={styles.row}
     >
       {filters.map((f) => {
@@ -47,6 +48,7 @@ export function FilterBar({ value, onChange }: Props) {
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.label,
                 {
@@ -67,6 +69,10 @@ export function FilterBar({ value, onChange }: Props) {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   row: {
     flexDirection: 'row',
     gap:           spacing.sm,
@@ -75,12 +81,14 @@ const styles = StyleSheet.create({
   },
   chip: {
     paddingHorizontal: spacing.md,
-    paddingVertical:   spacing.xs + 2,
+    paddingVertical:   spacing.sm,
     borderRadius:      radius.full,
     borderWidth:       1,
+    flexShrink:        0,
   },
   label: {
-    fontSize: fontSize.sm,
+    fontSize:   fontSize.sm,
+    lineHeight: 18,
   },
   pressed: {
     opacity: 0.7,

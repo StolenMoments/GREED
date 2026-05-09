@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { spacing, fontSize, radius } from '@/constants/theme';
+import { spacing, fontSize, radius, palette } from '@/constants/theme';
 import { JudgmentBadge } from './JudgmentBadge';
 import { MetaTag } from './MetaTag';
 import { formatRelativeTime } from '@/utils/time';
@@ -13,8 +13,19 @@ interface Props {
   selected?: boolean;
 }
 
+function formatPrice(price: number | null, priceMax: number | null): string | null {
+  if (price == null) return null;
+  const fmt = (n: number) => n.toLocaleString('ko-KR');
+  return priceMax != null ? `${fmt(price)}~${fmt(priceMax)}` : fmt(price);
+}
+
 export function AnalysisCard({ item, onPress, selected = false }: Props) {
   const { colors, isDark } = useTheme();
+
+  const entryStr  = formatPrice(item.entry_price,  item.entry_price_max);
+  const targetStr = formatPrice(item.target_price,  item.target_price_max);
+  const stopStr   = formatPrice(item.stop_loss,     item.stop_loss_max);
+  const hasPrices = entryStr != null || targetStr != null || stopStr != null;
 
   return (
     <Pressable
@@ -47,6 +58,29 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
         <MetaTag label="구름" value={item.cloud_position} />
         <MetaTag label="MA" value={item.ma_alignment} />
       </View>
+
+      {hasPrices && (
+        <View style={styles.prices}>
+          {entryStr != null && (
+            <View style={styles.priceItem}>
+              <Text style={[styles.priceLabel, { color: colors.textTer }]}>진입</Text>
+              <Text style={[styles.priceValue, { color: colors.textSec }]}>{entryStr}</Text>
+            </View>
+          )}
+          {targetStr != null && (
+            <View style={styles.priceItem}>
+              <Text style={[styles.priceLabel, { color: isDark ? palette.buy : palette.buyLight }]}>목표</Text>
+              <Text style={[styles.priceValue, { color: isDark ? palette.buy : palette.buyLight }]}>{targetStr}</Text>
+            </View>
+          )}
+          {stopStr != null && (
+            <View style={styles.priceItem}>
+              <Text style={[styles.priceLabel, { color: isDark ? palette.sell : palette.sellLight }]}>손절</Text>
+              <Text style={[styles.priceValue, { color: isDark ? palette.sell : palette.sellLight }]}>{stopStr}</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       <Text style={[styles.time, { color: colors.textTer }]}>
         {formatRelativeTime(item.created_at)}
@@ -88,6 +122,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap:      'wrap',
     gap:           spacing.xs,
+  },
+  prices: {
+    flexDirection: 'row',
+    flexWrap:      'wrap',
+    gap:           spacing.md,
+  },
+  priceItem: {
+    flexDirection: 'row',
+    alignItems:    'center',
+    gap:           spacing.xs,
+  },
+  priceLabel: {
+    fontSize:   fontSize.xs,
+    fontWeight: '500',
+  },
+  priceValue: {
+    fontSize:   fontSize.xs,
+    fontWeight: '600',
   },
   time: {
     fontSize: fontSize.xs,

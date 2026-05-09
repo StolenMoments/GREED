@@ -136,6 +136,50 @@ def _migrate_sqlite() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_us_stocks_market ON us_stocks(market)"))
         conn.commit()
 
+        # Backfill price fields for analyses created before price extraction was added
+        _backfill_prices(conn)
+
+
+def _backfill_prices(conn: Any) -> None:
+    from backend.parser import parse_markdown
+
+    rows = list(
+        conn.execute(
+            text(
+                "SELECT id, markdown FROM analyses"
+                " WHERE entry_price IS NULL AND target_price IS NULL AND stop_loss IS NULL"
+                " AND markdown IS NOT NULL AND markdown != ''"
+            )
+        ).mappings()
+    )
+    if not rows:
+        return
+
+    for row in rows:
+        result = parse_markdown(row["markdown"])
+        conn.execute(
+            text(
+                "UPDATE analyses SET"
+                " entry_price = :entry_price,"
+                " entry_price_max = :entry_price_max,"
+                " target_price = :target_price,"
+                " target_price_max = :target_price_max,"
+                " stop_loss = :stop_loss,"
+                " stop_loss_max = :stop_loss_max"
+                " WHERE id = :id"
+            ),
+            {
+                "id": row["id"],
+                "entry_price": result.data.get("entry_price"),
+                "entry_price_max": result.data.get("entry_price_max"),
+                "target_price": result.data.get("target_price"),
+                "target_price_max": result.data.get("target_price_max"),
+                "stop_loss": result.data.get("stop_loss"),
+                "stop_loss_max": result.data.get("stop_loss_max"),
+            },
+        )
+    conn.commit()
+
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

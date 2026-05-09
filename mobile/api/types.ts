@@ -9,6 +9,12 @@ export interface AnalysisItem {
   cloud_position: string;
   ma_alignment: string;
   created_at: string;
+  entry_price:      number | null;
+  entry_price_max:  number | null;
+  target_price:     number | null;
+  target_price_max: number | null;
+  stop_loss:        number | null;
+  stop_loss_max:    number | null;
 }
 
 export interface AnalysisDetail extends AnalysisItem {

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -32,6 +32,13 @@ export default function AnalysesScreen() {
   const [filter, setFilter] = useState<Filter>(null);
   const [search, setSearch] = useState(params.ticker ?? '');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (params.ticker) {
+      setSearch(params.ticker);
+      setFilter(null);
+    }
+  }, [params.ticker]);
 
   const querySearch = search.trim();
   const { data, isPending, isRefetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } =
@@ -91,6 +98,7 @@ export default function AnalysesScreen() {
 
   const listContent = (
     <FlatList
+      style={{ flex: 1 }}
       data={isPending ? [] : items}
       keyExtractor={(item) => String(item.id)}
       renderItem={({ item }) => (
