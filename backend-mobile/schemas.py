@@ -16,6 +16,12 @@ class AnalysisItem(BaseModel):
     cloud_position: str
     ma_alignment: str
     created_at: datetime
+    entry_price: float | None = None
+    entry_price_max: float | None = None
+    target_price: float | None = None
+    target_price_max: float | None = None
+    stop_loss: float | None = None
+    stop_loss_max: float | None = None
 
 
 class AnalysisDetail(AnalysisItem):

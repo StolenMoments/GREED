@@ -60,7 +60,7 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
       </View>
 
       {hasPrices && (
-        <View style={styles.prices}>
+        <View style={[styles.priceSection, { borderTopColor: colors.border }]}>
           {entryStr != null && (
             <View style={styles.priceItem}>
               <Text style={[styles.priceLabel, { color: colors.textTer }]}>진입</Text>
@@ -69,13 +69,13 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
           )}
           {targetStr != null && (
             <View style={styles.priceItem}>
-              <Text style={[styles.priceLabel, { color: isDark ? palette.buy : palette.buyLight }]}>목표</Text>
+              <Text style={[styles.priceLabel, { color: colors.textTer }]}>목표</Text>
               <Text style={[styles.priceValue, { color: isDark ? palette.buy : palette.buyLight }]}>{targetStr}</Text>
             </View>
           )}
           {stopStr != null && (
             <View style={styles.priceItem}>
-              <Text style={[styles.priceLabel, { color: isDark ? palette.sell : palette.sellLight }]}>손절</Text>
+              <Text style={[styles.priceLabel, { color: colors.textTer }]}>손절</Text>
               <Text style={[styles.priceValue, { color: isDark ? palette.sell : palette.sellLight }]}>{stopStr}</Text>
             </View>
           )}
@@ -123,19 +123,22 @@ const styles = StyleSheet.create({
     flexWrap:      'wrap',
     gap:           spacing.xs,
   },
-  prices: {
-    flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           spacing.md,
+  priceSection: {
+    flexDirection:  'row',
+    gap:            spacing.md,
+    paddingTop:     spacing.sm,
+    marginTop:      spacing.xs,
+    borderTopWidth: 1,
   },
   priceItem: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           spacing.xs,
+    flexDirection: 'column',
+    gap:           2,
   },
   priceLabel: {
-    fontSize:   fontSize.xs,
-    fontWeight: '500',
+    fontSize:      fontSize.xs,
+    fontWeight:    '500',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase' as const,
   },
   priceValue: {
     fontSize:   fontSize.xs,
