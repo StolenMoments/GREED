@@ -77,18 +77,10 @@ Expo는 `app.json`의 `extra` 필드나 `.env` 파일을 통해 환경변수를 
 
 | 파일 | 값 | 용도 |
 |------|-----|------|
-| `mobile/.env` | `https://mygreed.shop` | 기본값 — 프로덕션 빌드에 적용됨 |
+| `mobile/.env.mobile` | `https://mygreed.shop` | APK/IPA 빌드에 적용되는 프로덕션 값 |
 | `mobile/.env.local` | `http://10.0.2.2:8001` | 로컬 개발 오버라이드 (에뮬레이터용) |
 
-> **⚠️ 실기기용 APK/IPA 빌드 시 주의**: Expo는 `.env.local`이 존재하면 `.env`를 덮어쓴다.  
-> 프로덕션 빌드 전에 `.env.local`을 삭제하거나 아래처럼 명시적으로 환경을 지정해야 한다.
-
-```bash
-# .env.local을 임시 제외하고 빌드 (PowerShell)
-Rename-Item mobile\.env.local mobile\.env.local.bak
-# ... 빌드 수행 ...
-Rename-Item mobile\.env.local.bak mobile\.env.local
-```
+`npm run build:apk` 스크립트는 `.env.mobile`만 명시적으로 읽고 `.env.local`은 무시한다.
 
 코드에서는 `process.env.EXPO_PUBLIC_API_URL`으로 접근한다 (`EXPO_PUBLIC_` 접두사 필수).
 
@@ -234,6 +226,65 @@ cd mobile/android
 ```bash
 adb install android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+---
+
+### 3-3. GitHub Actions 자동 APK 배포
+
+개인 배포용 Android APK는 `.github/workflows/android-apk.yml`에서 자동 빌드한다.
+
+지원하는 실행 방식:
+- GitHub Actions 화면에서 `Android APK` 워크플로 수동 실행
+- `android-v*` 태그 push 시 APK 빌드 후 GitHub Release에 자동 첨부
+
+#### Release keystore 생성 (최초 1회)
+
+```bash
+cd mobile
+keytool -genkeypair -v \
+  -keystore greed-release.jks \
+  -alias greed \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000
+```
+
+이 keystore는 앱 업데이트 서명에 계속 사용해야 한다. 분실하면 기존 설치 앱을 업데이트할 수 없다.
+
+#### GitHub Secrets 등록
+
+GitHub Repository → Settings → Secrets and variables → Actions → Repository secrets에 아래 값을 등록한다.
+
+| Secret | 값 |
+|--------|-----|
+| `ANDROID_KEYSTORE_BASE64` | `greed-release.jks`를 base64로 인코딩한 값 |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore 생성 시 입력한 store password |
+| `ANDROID_KEY_ALIAS` | 예: `greed` |
+| `ANDROID_KEY_PASSWORD` | keystore 생성 시 입력한 key password |
+| `EXPO_PUBLIC_API_URL` | 선택값. 없으면 `https://mygreed.shop` 사용 |
+
+base64 인코딩:
+
+```bash
+# macOS / Linux
+base64 -i greed-release.jks | tr -d '\n' | pbcopy
+
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("greed-release.jks")) | Set-Clipboard
+```
+
+#### GitHub Release 배포
+
+```bash
+git tag android-v1.0.0
+git push origin android-v1.0.0
+```
+
+태그가 push되면 GitHub Releases에 `greed-android-v1.0.0.apk`가 첨부된다.
+
+#### 휴대폰 설치
+
+릴리즈 페이지에서 APK를 내려받아 설치한다. Android 설정에서 브라우저 또는 파일 관리자에 대해 `알 수 없는 앱 설치` 권한을 허용해야 한다.
 
 ---
 
