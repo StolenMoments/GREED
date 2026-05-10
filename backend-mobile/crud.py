@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -65,7 +65,7 @@ def list_analyses(
     )
 
 
-def get_analysis(db: Session, analysis_id: int) -> tuple[Analysis, float | None, object | None] | None:
+def get_analysis(db: Session, analysis_id: int) -> tuple[Analysis, float | None, date | None] | None:
     row = (
         db.query(Analysis, StockPrice.close_price, StockPrice.price_date)
         .outerjoin(StockPrice, Analysis.ticker == StockPrice.ticker)

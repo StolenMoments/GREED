@@ -6,17 +6,12 @@ import { JudgmentBadge } from './JudgmentBadge';
 import { MetaTag } from './MetaTag';
 import { formatRelativeTime } from '@/utils/time';
 import type { AnalysisItem } from '@/api/types';
+import { formatPrice } from '@/utils/formatPrice';
 
 interface Props {
   item: AnalysisItem;
   onPress: () => void;
   selected?: boolean;
-}
-
-function formatPrice(price: number | null, priceMax: number | null): string | null {
-  if (price == null) return null;
-  const fmt = (n: number) => n.toLocaleString('ko-KR');
-  return priceMax != null ? `${fmt(price)}~${fmt(priceMax)}` : fmt(price);
 }
 
 function calcPct(current: number, base: number): string {

@@ -13,15 +13,10 @@ import { MetaTag } from './MetaTag';
 import { MarkdownView } from './MarkdownView';
 import { formatRelativeTime } from '@/utils/time';
 import { parsePricesFromMarkdown } from '@/utils/parsePrice';
+import { formatPrice } from '@/utils/formatPrice';
 
 interface Props {
   id: number;
-}
-
-function formatPrice(price: number | null, priceMax: number | null): string | null {
-  if (price == null) return null;
-  const fmt = (n: number) => n.toLocaleString('ko-KR');
-  return priceMax != null ? `${fmt(price)}~${fmt(priceMax)}` : fmt(price);
 }
 
 export function AnalysisDetailPanel({ id }: Props) {
