@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Date, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
+
+
+class StockPrice(Base):
+    __tablename__ = "stock_prices"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    price_date: Mapped[date] = mapped_column(Date, nullable=False)
+    close_price: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 def _seoul_now() -> datetime:

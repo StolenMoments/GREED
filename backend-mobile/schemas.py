@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -22,6 +22,8 @@ class AnalysisItem(BaseModel):
     target_price_max: float | None = None
     stop_loss: float | None = None
     stop_loss_max: float | None = None
+    current_price: float | None = None
+    current_price_date: date | None = None
 
 
 class AnalysisDetail(AnalysisItem):

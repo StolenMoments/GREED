@@ -19,6 +19,11 @@ function formatPrice(price: number | null, priceMax: number | null): string | nu
   return priceMax != null ? `${fmt(price)}~${fmt(priceMax)}` : fmt(price);
 }
 
+function calcPct(current: number, base: number): string {
+  const pct = ((current - base) / base) * 100;
+  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+}
+
 function getSignalColor(value: string, isDark: boolean): string | undefined {
   const positive = ['상승', '구름 위', '정배열'];
   const neutral = ['횡보', '구름 안', '혼조'];
@@ -37,6 +42,13 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
   const targetStr = formatPrice(item.target_price,  item.target_price_max);
   const stopStr   = formatPrice(item.stop_loss,     item.stop_loss_max);
   const hasPrices = entryStr != null || targetStr != null || stopStr != null;
+
+  const currentPrice = item.current_price;
+  const pctFromEntry =
+    currentPrice != null && item.entry_price != null
+      ? calcPct(currentPrice, item.entry_price)
+      : null;
+  const pctIsPositive = pctFromEntry != null && pctFromEntry.startsWith('+');
 
   return (
     <Pressable
@@ -60,6 +72,18 @@ export function AnalysisCard({ item, onPress, selected = false }: Props) {
           <Text style={[styles.ticker, { color: colors.textTer }]}>
             {item.ticker}
           </Text>
+          {currentPrice != null && (
+            <View style={styles.currentPriceRow}>
+              <Text style={[styles.currentPrice, { color: colors.textPri }]}>
+                {currentPrice.toLocaleString('ko-KR')}
+              </Text>
+              {pctFromEntry != null && (
+                <Text style={[styles.pct, { color: pctIsPositive ? (isDark ? palette.buy : palette.buyLight) : (isDark ? palette.sell : palette.sellLight) }]}>
+                  {pctFromEntry}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
         <JudgmentBadge judgment={item.judgment} size="sm" />
       </View>
@@ -128,6 +152,20 @@ const styles = StyleSheet.create({
     fontSize:      fontSize.xs,
     fontWeight:    '500',
     letterSpacing: 0.5,
+  },
+  currentPriceRow: {
+    flexDirection: 'row',
+    alignItems:    'baseline',
+    gap:           spacing.xs,
+    marginTop:     2,
+  },
+  currentPrice: {
+    fontSize:   fontSize.sm,
+    fontWeight: '600',
+  },
+  pct: {
+    fontSize:   fontSize.xs,
+    fontWeight: '600',
   },
   tags: {
     flexDirection: 'row',

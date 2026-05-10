@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from models import Analysis
+from models import Analysis, StockPrice
 from schemas import AnalysesPage, AnalysisItem, StockSummary
 
 
@@ -39,16 +39,25 @@ def list_analyses(
         )
 
     total = query.count()
-    items = (
-        query.order_by(Analysis.created_at.desc())
+    rows = (
+        query.outerjoin(StockPrice, Analysis.ticker == StockPrice.ticker)
+        .add_columns(StockPrice.close_price, StockPrice.price_date)
+        .order_by(Analysis.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()
     )
     total_pages = max(1, math.ceil(total / per_page))
 
+    items = []
+    for a, close_price, price_date in rows:
+        item = AnalysisItem.model_validate(a)
+        item.current_price = close_price
+        item.current_price_date = price_date
+        items.append(item)
+
     return AnalysesPage(
-        items=[AnalysisItem.model_validate(a) for a in items],
+        items=items,
         page=page,
         per_page=per_page,
         total=total,
@@ -56,8 +65,14 @@ def list_analyses(
     )
 
 
-def get_analysis(db: Session, analysis_id: int) -> Analysis | None:
-    return db.query(Analysis).filter(Analysis.id == analysis_id).first()
+def get_analysis(db: Session, analysis_id: int) -> tuple[Analysis, float | None, object | None] | None:
+    row = (
+        db.query(Analysis, StockPrice.close_price, StockPrice.price_date)
+        .outerjoin(StockPrice, Analysis.ticker == StockPrice.ticker)
+        .filter(Analysis.id == analysis_id)
+        .first()
+    )
+    return row
 
 
 def list_stock_summary(db: Session) -> list[StockSummary]:

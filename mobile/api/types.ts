@@ -13,8 +13,10 @@ export interface AnalysisItem {
   entry_price_max:  number | null;
   target_price:     number | null;
   target_price_max: number | null;
-  stop_loss:        number | null;
-  stop_loss_max:    number | null;
+  stop_loss:          number | null;
+  stop_loss_max:      number | null;
+  current_price:      number | null;
+  current_price_date: string | null;
 }
 
 export interface AnalysisDetail extends AnalysisItem {

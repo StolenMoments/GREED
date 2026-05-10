@@ -31,7 +31,11 @@ def get_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
 ) -> AnalysisDetail:
-    analysis = crud.get_analysis(db, analysis_id)
-    if analysis is None:
+    row = crud.get_analysis(db, analysis_id)
+    if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
-    return AnalysisDetail.model_validate(analysis)
+    analysis, close_price, price_date = row
+    detail = AnalysisDetail.model_validate(analysis)
+    detail.current_price = close_price
+    detail.current_price_date = price_date
+    return detail

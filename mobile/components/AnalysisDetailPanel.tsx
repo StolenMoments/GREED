@@ -59,6 +59,16 @@ export function AnalysisDetailPanel({ id }: Props) {
   const stopStr   = formatPrice(stopLoss,    stopMax);
   const hasPrices = entryStr != null || targetStr != null || stopStr != null;
 
+  const currentPrice = data.current_price;
+  const currentPriceDate = data.current_price_date;
+  const pctFromEntry =
+    currentPrice != null && entryPrice != null
+      ? ((currentPrice - entryPrice) / entryPrice * 100)
+      : null;
+  const pctStr = pctFromEntry != null
+    ? (pctFromEntry >= 0 ? '+' : '') + pctFromEntry.toFixed(1) + '%'
+    : null;
+
   const entryBg  = isDark ? colors.surface2  : colors.surface2;
   const targetBg = isDark ? '#1A3D2B'        : '#D0EDD9';
   const stopBg   = isDark ? '#3D1410'        : '#F5D0CC';
@@ -83,6 +93,29 @@ export function AnalysisDetailPanel({ id }: Props) {
           <MetaTag label="구름" value={data.cloud_position} />
           <MetaTag label="MA" value={data.ma_alignment} />
         </View>
+
+        {currentPrice != null && (
+          <View style={styles.currentPriceBlock}>
+            <View style={styles.currentPriceRow}>
+              <Text style={[styles.currentPriceValue, { color: colors.textPri }]}>
+                {currentPrice.toLocaleString('ko-KR')}
+              </Text>
+              {pctStr != null && (
+                <Text style={[
+                  styles.currentPricePct,
+                  { color: pctFromEntry! >= 0 ? (isDark ? palette.buy : palette.buyLight) : (isDark ? palette.sell : palette.sellLight) },
+                ]}>
+                  {pctStr}
+                </Text>
+              )}
+            </View>
+            {currentPriceDate != null && (
+              <Text style={[styles.currentPriceDate, { color: colors.textTer }]}>
+                {currentPriceDate.slice(5).replace('-', '/')} 종가
+              </Text>
+            )}
+          </View>
+        )}
 
         {hasPrices && (
           <View style={styles.priceRow}>
@@ -162,6 +195,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap:      'wrap',
     gap:           spacing.xs,
+  },
+  currentPriceBlock: {
+    gap: 2,
+  },
+  currentPriceRow: {
+    flexDirection: 'row',
+    alignItems:    'baseline',
+    gap:           spacing.xs,
+  },
+  currentPriceValue: {
+    fontSize:   fontSize.xl,
+    fontWeight: '700',
+  },
+  currentPricePct: {
+    fontSize:   fontSize.sm,
+    fontWeight: '600',
+  },
+  currentPriceDate: {
+    fontSize: fontSize.xs,
   },
   pricePill: {
     flexDirection:     'row',
