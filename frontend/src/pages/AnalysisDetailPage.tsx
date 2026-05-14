@@ -3,12 +3,18 @@ import { useMemo, useState } from 'react';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import PriceLevels from '../components/PriceLevels';
 import QuickAnalysisLauncher from '../components/QuickAnalysisLauncher';
-import { getSignalTone, judgmentStyles, signalStyles } from '../constants/analysisStyles';
+import {
+  getSignalTone,
+  judgmentStyles,
+  outcomeStyles,
+  signalStyles,
+} from '../constants/analysisStyles';
 import { useAnalysis, useDeleteAnalysis, useHistory } from '../hooks/useAnalyses';
 import { useRefreshStockPrice, useStockPrice } from '../hooks/useStockPrice';
-import { formatDate } from '../utils/formatDate';
+import { formatDate, formatDateOnly } from '../utils/formatDate';
+import { formatPriceByTicker } from '../utils/formatPrice';
 import { parseMarkdown } from '../utils/parseMarkdown';
-import type { AnalysisSummary } from '../types';
+import type { Analysis, AnalysisSummary } from '../types';
 
 function parseAnalysisId(idParam: string | undefined) {
   if (!idParam) {
@@ -142,6 +148,56 @@ function CopyTickerButton({ ticker }: { ticker: string }) {
     >
       {label}
     </button>
+  );
+}
+
+function OutcomePanel({ analysis }: { analysis: Analysis }) {
+  const outcomePrice = formatPriceByTicker(
+    analysis.outcome_price,
+    analysis.ticker,
+  );
+
+  return (
+    <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-slate-100">판정 결과</h3>
+        {analysis.outcome ? (
+          <span
+            className={[
+              'rounded-full border px-3 py-1 text-xs font-semibold',
+              outcomeStyles[analysis.outcome],
+            ].join(' ')}
+          >
+            {analysis.outcome}
+          </span>
+        ) : (
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-slate-600">
+            미평가
+          </span>
+        )}
+      </div>
+
+      <dl className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-3">
+          <dt className="text-xs font-medium text-slate-500">달성일</dt>
+          <dd className="mt-1 whitespace-nowrap text-sm font-semibold text-slate-100">
+            {analysis.outcome_date
+              ? formatDateOnly(analysis.outcome_date)
+              : '—'}
+          </dd>
+        </div>
+        <div className="rounded-md border border-slate-800 bg-slate-950/50 px-3 py-3">
+          <dt className="text-xs font-medium text-slate-500">달성가</dt>
+          <dd className="mt-1 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-100">
+            {outcomePrice ?? '—'}
+          </dd>
+        </div>
+      </dl>
+
+      <p className="mt-4 text-xs leading-5 text-slate-500">
+        일봉 고가/저가 기준으로 저장된 목표가 또는 손절가 도달 정보입니다.
+      </p>
+    </aside>
   );
 }
 
@@ -369,6 +425,7 @@ function AnalysisDetailPage() {
       </article>
 
       <div className="flex flex-col gap-4">
+        <OutcomePanel analysis={analysis} />
         <PriceLevels
           ticker={analysis.ticker}
           currentPrice={stockPrice}
