@@ -190,3 +190,39 @@ def test_stock_summary_orders_by_latest_analysis_desc(
 
     assert response.status_code == 200
     assert [item["ticker"] for item in response.json()] == ["128660", "005930"]
+
+
+def test_stock_summary_returns_outcome_counts(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = crud.create_run(db_session, memo="stock summary outcomes")
+
+    outcomes = ["목표달성", "목표달성", "진행중", "손절", "판정불가", None]
+    for index, outcome in enumerate(outcomes):
+        analysis = crud.create_analysis(
+            db_session,
+            AnalysisCreate(
+                run_id=run.id,
+                ticker="005930",
+                name="삼성전자",
+                model="claude",
+                markdown=f"outcome markdown {index}",
+                judgment="매수",
+                trend="상승",
+                cloud_position="구름 위",
+                ma_alignment="정배열",
+            ),
+        )
+        analysis.outcome = outcome
+
+    db_session.commit()
+
+    response = client.get("/api/stocks/summary")
+
+    assert response.status_code == 200
+    summary = response.json()[0]
+    assert summary["ticker"] == "005930"
+    assert summary["target_reached_count"] == 2
+    assert summary["ongoing_count"] == 1
+    assert summary["stop_loss_count"] == 1

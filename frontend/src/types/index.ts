@@ -135,5 +135,8 @@ export interface StockSummary {
   buy_count: number;
   hold_count: number;
   sell_count: number;
+  target_reached_count: number;
+  ongoing_count: number;
+  stop_loss_count: number;
   latest_at: string;
 }

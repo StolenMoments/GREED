@@ -6,13 +6,24 @@ import type { StockSummary } from '../types';
 const PAGE_SIZE = 25;
 const KOREAN_INITIALS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 
-type SortKey = 'name' | 'buy_count' | 'hold_count' | 'sell_count' | 'latest_at';
+type SortKey =
+  | 'name'
+  | 'buy_count'
+  | 'hold_count'
+  | 'sell_count'
+  | 'target_reached_count'
+  | 'ongoing_count'
+  | 'stop_loss_count'
+  | 'latest_at';
 
 const DEFAULT_SORT_DIR: Record<SortKey, 'asc' | 'desc'> = {
   name: 'asc',
   buy_count: 'desc',
   hold_count: 'desc',
   sell_count: 'desc',
+  target_reached_count: 'desc',
+  ongoing_count: 'desc',
+  stop_loss_count: 'desc',
   latest_at: 'desc',
 };
 
@@ -39,7 +50,8 @@ function isKoreanInitialQuery(value: string) {
   return Boolean(value) && [...value].every((char) => KOREAN_INITIALS.includes(char));
 }
 
-const COL = 'grid-cols-[1fr_4.5rem_4.5rem_4.5rem_8rem]';
+const COL =
+  'grid-cols-[minmax(12rem,1fr)_4rem_4rem_4rem_4rem_4.5rem_4rem_7rem]';
 
 interface PaginationControlsProps {
   disabled: boolean;
@@ -156,10 +168,23 @@ function LoadingRows() {
   return (
     <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-slate-950/60">
       <div className={`grid ${COL} border-b border-white/[0.06] px-6 py-3`}>
-        {['종목', '매수', '홀드', '매도', '분석일'].map((label, i) => (
+        {[
+          '종목',
+          '매수',
+          '홀드',
+          '매도',
+          '달성',
+          '진행중',
+          '손절',
+          '분석일',
+        ].map((label, i) => (
           <div
             key={label}
-            className={`h-3 w-8 animate-pulse rounded bg-slate-800 ${i > 0 ? 'justify-self-center' : ''} ${i === 4 ? 'justify-self-end' : ''}`}
+            className={`h-3 w-8 animate-pulse rounded bg-slate-800 ${
+              i > 0 ? 'justify-self-center' : ''
+            } ${i === 4 ? 'border-l border-amber-300/45 pl-4' : ''} ${
+              i === 7 ? 'justify-self-end' : ''
+            }`}
           />
         ))}
       </div>
@@ -175,10 +200,12 @@ function LoadingRows() {
             />
             <div className="h-2.5 w-16 animate-pulse rounded bg-slate-800/60" />
           </div>
-          {[0, 1, 2].map((j) => (
+          {[0, 1, 2, 3, 4, 5].map((j) => (
             <div
               key={j}
-              className="h-3.5 w-5 animate-pulse justify-self-center rounded bg-slate-800/60"
+              className={`h-3.5 w-5 animate-pulse justify-self-center rounded bg-slate-800/60 ${
+                j === 3 ? 'border-l border-amber-300/45 pl-4' : ''
+              }`}
             />
           ))}
           <div className="h-3 w-14 animate-pulse justify-self-end rounded bg-slate-800/40" />
@@ -193,12 +220,15 @@ function JudgmentCount({
   variant,
 }: {
   count: number;
-  variant: 'buy' | 'hold' | 'sell';
+  variant: 'buy' | 'hold' | 'sell' | 'target' | 'ongoing' | 'stop';
 }) {
   const activeColor = {
     buy: 'text-[oklch(0.75_0.14_152)]',
     hold: 'text-[oklch(0.82_0.16_80)]',
     sell: 'text-[oklch(0.68_0.18_25)]',
+    target: 'text-[oklch(0.75_0.14_152)]',
+    ongoing: 'text-slate-300',
+    stop: 'text-[oklch(0.68_0.18_25)]',
   }[variant];
 
   return (
@@ -238,6 +268,15 @@ function StockRow({ stock }: { stock: StockSummary }) {
       </span>
       <span className="flex justify-center">
         <JudgmentCount count={stock.sell_count} variant="sell" />
+      </span>
+      <span className="flex justify-center border-l border-amber-300/45 pl-4">
+        <JudgmentCount count={stock.target_reached_count} variant="target" />
+      </span>
+      <span className="flex justify-center">
+        <JudgmentCount count={stock.ongoing_count} variant="ongoing" />
+      </span>
+      <span className="flex justify-center">
+        <JudgmentCount count={stock.stop_loss_count} variant="stop" />
       </span>
 
       <span className="justify-self-end text-sm tabular-nums font-medium text-slate-50 group-hover:text-white">
@@ -295,10 +334,18 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 }
 
 const SORT_COLUMNS = [
-  { key: 'buy_count' as SortKey,  label: '매수', align: 'justify-center' },
+  { key: 'buy_count' as SortKey, label: '매수', align: 'justify-center' },
   { key: 'hold_count' as SortKey, label: '홀드', align: 'justify-center' },
   { key: 'sell_count' as SortKey, label: '매도', align: 'justify-center' },
-  { key: 'latest_at' as SortKey,  label: '분석일', align: 'justify-end' },
+  {
+    key: 'target_reached_count' as SortKey,
+    label: '달성',
+    align: 'justify-center',
+    groupStart: true,
+  },
+  { key: 'ongoing_count' as SortKey, label: '진행중', align: 'justify-center' },
+  { key: 'stop_loss_count' as SortKey, label: '손절', align: 'justify-center' },
+  { key: 'latest_at' as SortKey, label: '분석일', align: 'justify-end' },
 ];
 
 function StockSummaryPage() {
@@ -408,13 +455,16 @@ function StockSummaryPage() {
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 종목
               </span>
-              {SORT_COLUMNS.map(({ key, label, align }) => {
+              {SORT_COLUMNS.map(({ key, label, align, groupStart }) => {
                 const isActive = sortKey === key;
                 return (
                   <button
                     className={[
                       'group/hdr flex items-center text-xs font-semibold uppercase tracking-[0.18em] transition',
                       align,
+                      groupStart
+                        ? 'border-l border-amber-300/45 pl-4'
+                        : '',
                       isActive
                         ? 'text-amber-300/90'
                         : 'text-slate-400 hover:text-slate-200',

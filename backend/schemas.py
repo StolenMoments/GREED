@@ -151,6 +151,9 @@ class StockSummaryRead(BaseModel):
     buy_count: int
     hold_count: int
     sell_count: int
+    target_reached_count: int
+    ongoing_count: int
+    stop_loss_count: int
     latest_at: datetime
 
 

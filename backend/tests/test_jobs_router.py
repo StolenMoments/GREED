@@ -111,6 +111,21 @@ def _write_csv(output_dir: Path, filename: str, close: str = "75000") -> Path:
     return csv_path
 
 
+def test_system_prompt_uses_conservative_buy_gate() -> None:
+    assert "매수 신뢰성 필터" in jobs.KR_SYSTEM_PROMPT
+    assert "구름 위 + MA 정배열만으로는 매수 불가" in jobs.KR_SYSTEM_PROMPT
+    assert "다음 리스크가 2개 이상이면 매수 판정을 금지" in jobs.KR_SYSTEM_PROMPT
+    assert "atr14_pct >= 6%" in jobs.KR_SYSTEM_PROMPT
+    assert "구름 위 + MA 정배열 + RSI < 70 → 매수를 우선 판정" not in jobs.KR_SYSTEM_PROMPT
+
+
+def test_us_system_prompt_keeps_conservative_buy_gate() -> None:
+    assert "미국 주식시장 전문 기술적 분석가" in jobs.US_SYSTEM_PROMPT
+    assert "매수 신뢰성 필터" in jobs.US_SYSTEM_PROMPT
+    assert "구름 위 + MA 정배열만으로는 매수 불가" in jobs.US_SYSTEM_PROMPT
+    assert "가격은 가능하면 실제 숫자와 달러 단위로 쓰고" in jobs.US_SYSTEM_PROMPT
+
+
 def test_trigger_analysis_creates_pending_job(
     client: TestClient,
     test_db: sessionmaker[Session],
