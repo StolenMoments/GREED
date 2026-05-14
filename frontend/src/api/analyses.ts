@@ -58,3 +58,12 @@ export async function createAnalysis(
 export async function deleteAnalysis(analysisId: number): Promise<void> {
   await apiClient.delete(`/analyses/${analysisId}`);
 }
+
+export async function evaluateOutcomes(force = false): Promise<{ evaluated: number; skipped: number }> {
+  const response = await apiClient.post<{ evaluated: number; skipped: number }>(
+    '/analyses/evaluate-outcomes',
+    undefined,
+    { params: { force } },
+  );
+  return response.data;
+}

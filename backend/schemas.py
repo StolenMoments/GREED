@@ -13,6 +13,13 @@ class JudgmentEnum(str, Enum):
     sell = "매도"
 
 
+class OutcomeEnum(str, Enum):
+    target_reached = "목표달성"
+    stop_loss = "손절"
+    ongoing = "진행중"
+    na = "판정불가"
+
+
 class EntryCandidateFilterEnum(str, Enum):
     all = "all"
     pullback = "pullback"
@@ -86,6 +93,9 @@ class AnalysisSummary(BaseModel):
     entry_gap_pct: float | None = None
     is_entry_near: bool = False
     entry_candidates: list[EntryCandidateSummary] = Field(default_factory=list)
+    outcome: str | None = None
+    outcome_date: date | None = None
+    outcome_price: float | None = None
 
 
 class AnalysisPage(BaseModel):
@@ -118,6 +128,11 @@ class JobRead(BaseModel):
     raw_markdown: str | None
     analysis_id: int | None
     created_at: datetime
+
+
+class EvaluateOutcomesResult(BaseModel):
+    evaluated: int
+    skipped: int
 
 
 class StockPriceRead(BaseModel):

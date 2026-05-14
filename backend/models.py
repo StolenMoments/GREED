@@ -53,6 +53,9 @@ class Analysis(Base):
     target_price_max: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    outcome_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    outcome_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=seoul_now,

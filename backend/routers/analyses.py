@@ -20,13 +20,16 @@ from backend.crud import (
 )
 from backend.database import get_db
 from backend.parser import parse_markdown
+from backend.outcome import run_evaluate_outcomes
 from backend.schemas import (
     AnalysisCreate,
     AnalysisPage,
     AnalysisRead,
     AnalysisSummary,
     EntryCandidateFilterEnum,
+    EvaluateOutcomesResult,
     JudgmentEnum,
+    OutcomeEnum,
 )
 from backend.stock_price import fetch_latest_close
 from backend.tickers import normalize_ticker
@@ -61,11 +64,13 @@ def list_analyses_endpoint(
     q: str | None = None,
     entry_gap_lte: float | None = Query(default=None, ge=0),
     entry_candidate: EntryCandidateFilterEnum = EntryCandidateFilterEnum.all,
+    outcome: OutcomeEnum | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> AnalysisPage:
     judgment_value = judgment.value if judgment else None
+    outcome_value = outcome.value if outcome else None
     if entry_gap_lte is not None:
         _refresh_candidate_stock_prices(db, judgment=judgment_value, run_id=run_id, q=q)
 
@@ -77,10 +82,20 @@ def list_analyses_endpoint(
             q=q,
             entry_gap_lte=entry_gap_lte,
             entry_candidate=entry_candidate.value,
+            outcome=outcome_value,
             page=page,
             page_size=page_size,
         )._asdict()
     )
+
+
+@router.post("/api/analyses/evaluate-outcomes", response_model=EvaluateOutcomesResult)
+def evaluate_outcomes_endpoint(
+    force: bool = False,
+    db: Session = Depends(get_db),
+) -> EvaluateOutcomesResult:
+    result = run_evaluate_outcomes(db, force=force)
+    return EvaluateOutcomesResult(**result)
 
 
 @router.get("/api/runs/{run_id}/analyses", response_model=list[AnalysisSummary])

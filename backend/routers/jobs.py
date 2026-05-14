@@ -259,6 +259,19 @@ def run_analysis_pipeline(job_id: int) -> None:
 
         ticker = normalize_ticker(job.ticker)
         job_output_dir = _job_output_dir(job.id)
+
+        # Remove stale output files from a previous job that shared this ID
+        # (e.g. SQLite and MariaDB running independently with overlapping auto-increment IDs).
+        for stale in (
+            _analysis_path(job.id),
+            _exit_code_path(job.id),
+            _pid_path(job.id),
+        ):
+            try:
+                stale.unlink()
+            except FileNotFoundError:
+                pass
+
         try:
             stock_name = _resolve_stock_name(ticker)
             _prepare_job_csv(ticker, stock_name, job_output_dir)

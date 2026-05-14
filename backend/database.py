@@ -84,9 +84,10 @@ def _safe_database_url(database_url: str) -> str:
 
 
 def _migrate() -> None:
-    if engine.dialect.name != "sqlite":
-        return
-    _migrate_sqlite()
+    if engine.dialect.name == "sqlite":
+        _migrate_sqlite()
+    elif engine.dialect.name in ("mysql", "mariadb"):
+        _migrate_mariadb()
 
 
 def _migrate_sqlite() -> None:
@@ -103,6 +104,9 @@ def _migrate_sqlite() -> None:
         for col in ("entry_price_max", "target_price_max", "stop_loss_max"):
             if col not in analyses_cols:
                 conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col} REAL"))
+        for col, typedef in (("outcome", "VARCHAR(20)"), ("outcome_date", "DATE"), ("outcome_price", "REAL")):
+            if col not in analyses_cols:
+                conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col} {typedef}"))
         if "name_initials" not in analyses_cols:
             conn.execute(text("ALTER TABLE analyses ADD COLUMN name_initials TEXT NOT NULL DEFAULT ''"))
         rows = conn.execute(
@@ -138,6 +142,17 @@ def _migrate_sqlite() -> None:
 
         # Backfill price fields for analyses created before price extraction was added
         _backfill_prices(conn)
+
+
+def _migrate_mariadb() -> None:
+    with engine.connect() as conn:
+        for col, typedef in [
+            ("outcome", "VARCHAR(20)"),
+            ("outcome_date", "DATE"),
+            ("outcome_price", "FLOAT"),
+        ]:
+            conn.execute(text(f"ALTER TABLE analyses ADD COLUMN IF NOT EXISTS {col} {typedef}"))
+        conn.commit()
 
 
 def _backfill_prices(conn: Any) -> None:

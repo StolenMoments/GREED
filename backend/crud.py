@@ -63,6 +63,9 @@ class AnalysisSummaryRow(NamedTuple):
     entry_gap_pct: float | None
     is_entry_near: bool
     entry_candidates: list["EntryCandidateRow"]
+    outcome: str | None
+    outcome_date: date | None
+    outcome_price: float | None
 
 
 class EntryCandidateRow(NamedTuple):
@@ -132,8 +135,9 @@ def get_analyses(
     judgment: str | None = None,
     run_id: int | None = None,
     q: str | None = None,
+    outcome: str | None = None,
 ) -> list[Analysis]:
-    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q)
+    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q, outcome=outcome)
     return list(db.scalars(stmt.order_by(*ANALYSIS_ORDER_BY)).all())
 
 
@@ -146,8 +150,9 @@ def get_analyses_page(
     entry_candidate: EntryCandidateFilter = "all",
     page: int = 1,
     page_size: int = 25,
+    outcome: str | None = None,
 ) -> AnalysisPageRow:
-    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q)
+    stmt = _analysis_filter_stmt(judgment=judgment, run_id=run_id, q=q, outcome=outcome)
     offset = (page - 1) * page_size
 
     if entry_gap_lte is not None:
@@ -187,12 +192,15 @@ def _analysis_filter_stmt(
     judgment: str | None = None,
     run_id: int | None = None,
     q: str | None = None,
+    outcome: str | None = None,
 ) -> Select[tuple[Analysis]]:
     stmt = select(Analysis)
     if judgment is not None:
         stmt = stmt.where(Analysis.judgment == judgment)
     if run_id is not None:
         stmt = stmt.where(Analysis.run_id == run_id)
+    if outcome is not None:
+        stmt = stmt.where(Analysis.outcome == outcome)
     if q is not None:
         query = q.strip()
         if query:
@@ -262,6 +270,9 @@ def _to_analysis_summary_row(
         entry_gap_pct=entry_gap_pct,
         is_entry_near=entry_gap_pct is not None and entry_gap_pct <= ENTRY_NEAR_THRESHOLD_PCT,
         entry_candidates=entry_candidates,
+        outcome=analysis.outcome,
+        outcome_date=analysis.outcome_date,
+        outcome_price=analysis.outcome_price,
     )
 
 

@@ -2,11 +2,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AnalysisTable, AnalysisTableLoading } from '../components/AnalysisTable';
 import { useAllAnalyses, useDeleteAnalysis } from '../hooks/useAnalyses';
+import { evaluateOutcomes } from '../api/analyses';
 import type {
   AnalysisFilters,
   AnalysisSummary,
   EntryCandidateFilter,
   Judgment,
+  Outcome,
 } from '../types';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -17,6 +19,14 @@ const judgmentTabs: Array<{ label: string; value?: Judgment }> = [
   { label: '매수', value: '매수' },
   { label: '홀드', value: '홀드' },
   { label: '매도', value: '매도' },
+];
+
+const outcomeTabs: Array<{ label: string; value?: Outcome }> = [
+  { label: '전체' },
+  { label: '목표달성', value: '목표달성' },
+  { label: '손절', value: '손절' },
+  { label: '진행중', value: '진행중' },
+  { label: '판정불가', value: '판정불가' },
 ];
 
 const entryCandidateTabs: Array<{
@@ -39,6 +49,10 @@ interface PaginationControlsProps {
 
 function isValidJudgment(value: string | null): value is Judgment {
   return judgmentTabs.some((tab) => tab.value === value);
+}
+
+function isValidOutcome(value: string | null): value is Outcome {
+  return outcomeTabs.some((tab) => tab.value === value);
 }
 
 function isValidEntryCandidate(
@@ -225,6 +239,8 @@ function AnalysisListPage() {
   const activeJudgment = isValidJudgment(requestedJudgment)
     ? requestedJudgment
     : undefined;
+  const requestedOutcome = searchParams.get('outcome');
+  const activeOutcome = isValidOutcome(requestedOutcome) ? requestedOutcome : undefined;
   const activeRunId = parseRunId(searchParams.get('run_id'));
   const activeQuery = (searchParams.get('q') ?? '').trim();
   const activePage = parsePage(searchParams.get('page'));
@@ -241,9 +257,12 @@ function AnalysisListPage() {
   const [runIdInput, setRunIdInput] = useState(
     activeRunId ? String(activeRunId) : '',
   );
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evaluateResult, setEvaluateResult] = useState<{ evaluated: number; skipped: number } | null>(null);
   const filters = useMemo<AnalysisFilters>(
     () => ({
       ...(activeJudgment ? { judgment: activeJudgment } : {}),
+      ...(activeOutcome ? { outcome: activeOutcome } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
       ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
@@ -253,6 +272,7 @@ function AnalysisListPage() {
       activeEntryCandidate,
       activeEntryGapLte,
       activeJudgment,
+      activeOutcome,
       activeQuery,
       activeRunId,
     ],
@@ -270,7 +290,7 @@ function AnalysisListPage() {
   const deleteAnalysisMutation = useDeleteAnalysis();
   const analyses = analysisPage?.items ?? [];
   const hasFilters = Boolean(
-    activeJudgment || activeRunId || activeQuery || activeEntryGapLte !== undefined,
+    activeJudgment || activeOutcome || activeRunId || activeQuery || activeEntryGapLte !== undefined,
   );
   const showInitialLoading = isLoading && !analysisPage;
 
@@ -293,6 +313,7 @@ function AnalysisListPage() {
       updateFilters(
         {
           ...(activeJudgment ? { judgment: activeJudgment } : {}),
+          ...(activeOutcome ? { outcome: activeOutcome } : {}),
           ...(activeRunId ? { run_id: activeRunId } : {}),
           ...(nextQuery ? { q: nextQuery } : {}),
           ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
@@ -307,6 +328,7 @@ function AnalysisListPage() {
     activeEntryCandidate,
     activeEntryGapLte,
     activeJudgment,
+    activeOutcome,
     activeQuery,
     activeRunId,
     queryInput,
@@ -333,6 +355,10 @@ function AnalysisListPage() {
       params.set('judgment', next.judgment);
     }
 
+    if (next.outcome) {
+      params.set('outcome', next.outcome);
+    }
+
     if (next.run_id) {
       params.set('run_id', String(next.run_id));
     }
@@ -355,11 +381,35 @@ function AnalysisListPage() {
   function handleJudgmentChange(judgment?: Judgment) {
     updateFilters({
       ...(judgment ? { judgment } : {}),
+      ...(activeOutcome ? { outcome: activeOutcome } : {}),
       ...(activeRunId ? { run_id: activeRunId } : {}),
       ...(activeQuery ? { q: activeQuery } : {}),
       ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
       ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
     });
+  }
+
+  function handleOutcomeChange(outcome?: Outcome) {
+    updateFilters({
+      ...(activeJudgment ? { judgment: activeJudgment } : {}),
+      ...(outcome ? { outcome } : {}),
+      ...(activeRunId ? { run_id: activeRunId } : {}),
+      ...(activeQuery ? { q: activeQuery } : {}),
+      ...(activeEntryGapLte !== undefined ? { entry_gap_lte: activeEntryGapLte } : {}),
+      ...(activeEntryCandidate ? { entry_candidate: activeEntryCandidate } : {}),
+    });
+  }
+
+  async function handleEvaluateOutcomes() {
+    setIsEvaluating(true);
+    setEvaluateResult(null);
+    try {
+      const result = await evaluateOutcomes();
+      setEvaluateResult(result);
+      void refetch();
+    } finally {
+      setIsEvaluating(false);
+    }
   }
 
   function handleRunFilterSubmit(event: FormEvent<HTMLFormElement>) {
@@ -463,6 +513,48 @@ function AnalysisListPage() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div
+              className="flex w-fit items-center rounded-lg border border-amber-100/10 bg-slate-950/70 p-1"
+              role="tablist"
+            >
+              {outcomeTabs.map((tab) => {
+                const isActive = tab.value === activeOutcome;
+
+                return (
+                  <button
+                    aria-selected={isActive}
+                    className={[
+                      'min-w-16 rounded-md px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
+                      isActive
+                        ? 'bg-amber-300 text-slate-950'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-slate-50',
+                    ].join(' ')}
+                    key={tab.label}
+                    onClick={() => handleOutcomeChange(tab.value)}
+                    role="tab"
+                    type="button"
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              className="h-9 rounded-md border border-amber-200/20 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+              disabled={isEvaluating}
+              onClick={() => void handleEvaluateOutcomes()}
+              type="button"
+            >
+              {isEvaluating ? '판정 중…' : '판정 실행'}
+            </button>
+            {evaluateResult && (
+              <span className="text-xs font-medium text-slate-400">
+                {evaluateResult.evaluated}건 처리 · {evaluateResult.skipped}건 스킵
+              </span>
+            )}
           </div>
 
           <form

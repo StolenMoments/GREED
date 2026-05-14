@@ -929,3 +929,28 @@ def test_list_all_analyses_includes_target_and_stop_prices(
     assert body["items"][0]["target_price_max"] == 85000
     assert body["items"][0]["stop_loss"] == 71500
     assert body["items"][0]["stop_loss_max"] is None
+
+
+def test_evaluate_outcomes_endpoint_passes_force_flag(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+
+    def fake_run_evaluate_outcomes(db: Session, force: bool = False) -> dict[str, int]:
+        calls.append(force)
+        return {"evaluated": 1 if force else 0, "skipped": 0}
+
+    monkeypatch.setattr(
+        "backend.routers.analyses.run_evaluate_outcomes",
+        fake_run_evaluate_outcomes,
+    )
+
+    default_response = client.post("/api/analyses/evaluate-outcomes")
+    force_response = client.post("/api/analyses/evaluate-outcomes", params={"force": True})
+
+    assert default_response.status_code == 200
+    assert default_response.json() == {"evaluated": 0, "skipped": 0}
+    assert force_response.status_code == 200
+    assert force_response.json() == {"evaluated": 1, "skipped": 0}
+    assert calls == [False, True]

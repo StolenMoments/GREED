@@ -1,6 +1,7 @@
 import {
   getSignalTone,
   judgmentStyles,
+  outcomeStyles,
   signalStyles,
 } from '../constants/analysisStyles';
 import type {
@@ -12,9 +13,9 @@ import { formatDate } from '../utils/formatDate';
 import { formatPriceByTicker } from '../utils/formatPrice';
 
 const baseTableGrid =
-  'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_9rem_minmax(6rem,0.45fr)_minmax(7.5rem,0.55fr)]';
+  'xl:grid-cols-[minmax(14rem,1.35fr)_7rem_7rem_9rem_minmax(6rem,0.45fr)_minmax(7.5rem,0.55fr)]';
 const entryGapTableGrid =
-  'xl:grid-cols-[minmax(13rem,1.2fr)_7rem_minmax(11rem,0.95fr)_minmax(10rem,0.9fr)_8rem_minmax(7.5rem,0.55fr)]';
+  'xl:grid-cols-[minmax(13rem,1.2fr)_7rem_6rem_minmax(11rem,0.95fr)_minmax(10rem,0.9fr)_8rem_minmax(7.5rem,0.55fr)]';
 
 function getTableGrid(showEntryGap: boolean) {
   return showEntryGap ? entryGapTableGrid : baseTableGrid;
@@ -70,6 +71,7 @@ export function AnalysisTableLoading({
             <div className="h-4 w-32 animate-pulse rounded bg-slate-700/60" />
             <div className="h-3 w-44 animate-pulse rounded bg-slate-800/80" />
           </div>
+          <div className="h-8 w-16 animate-pulse rounded-full bg-slate-800/80" />
           <div className="h-8 w-16 animate-pulse rounded-full bg-slate-800/80" />
           {showEntryGap ? (
             <div className="space-y-2">
@@ -306,6 +308,7 @@ export function AnalysisTable({
       >
         <span>ticker / name</span>
         <span className="-translate-x-1 text-center">judgment</span>
+        <span className="text-center">outcome</span>
         {showEntryGap ? <span>entry gap</span> : null}
         {showEntryGap ? <span>target / stop</span> : null}
         <span className="translate-x-1">created</span>
@@ -352,6 +355,21 @@ export function AnalysisTable({
               ].join(' ')}
             >
               {analysis.judgment}
+            </span>
+
+            <span className="xl:justify-self-center">
+              {analysis.outcome ? (
+                <span
+                  className={[
+                    'inline-flex min-w-16 justify-center rounded-full border px-3 py-1.5 text-sm font-semibold',
+                    outcomeStyles[analysis.outcome],
+                  ].join(' ')}
+                >
+                  {analysis.outcome}
+                </span>
+              ) : (
+                <span className="text-sm text-slate-700">—</span>
+              )}
             </span>
 
             {showEntryGap ? (

@@ -8,6 +8,8 @@ export type MaAlignment = '정배열' | '역배열' | '혼조';
 
 export type EntryCandidateFilter = 'all' | 'pullback' | 'breakout';
 
+export type Outcome = '목표달성' | '손절' | '진행중' | '판정불가';
+
 export interface Run {
   id: number;
   memo: string | null;
@@ -45,6 +47,9 @@ export interface AnalysisSummary {
   entry_gap_pct: number | null;
   is_entry_near: boolean;
   entry_candidates: EntryCandidate[];
+  outcome: Outcome | null;
+  outcome_date: string | null;
+  outcome_price: number | null;
 }
 
 export interface Analysis extends AnalysisSummary {
@@ -87,6 +92,7 @@ export interface AnalysisFilters {
   q?: string;
   entry_gap_lte?: number;
   entry_candidate?: EntryCandidateFilter;
+  outcome?: Outcome;
 }
 
 export interface AnalysisPaginationParams {
