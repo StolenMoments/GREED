@@ -20,6 +20,11 @@ from pathlib import Path
 import FinanceDataReader as fdr
 import pandas as pd
 
+try:
+    from fdr_timeout import fetch_with_retries
+except ModuleNotFoundError:
+    from scripts.fdr_timeout import fetch_with_retries
+
 
 US_MARKETS = ("NASDAQ", "NYSE", "AMEX")
 
@@ -209,8 +214,20 @@ def resolve_stock_metadata(ticker: str) -> tuple[str, str]:
     ticker = normalize_ticker(ticker)
     for market in US_MARKETS:
         try:
-            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                listing = fdr.StockListing(market)
+            def load_listing() -> pd.DataFrame:
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                    result = fdr.StockListing(market)
+                if not isinstance(result, pd.DataFrame) or result.empty:
+                    raise ValueError(f"Invalid StockListing response for {market}")
+                columns = set(result.columns)
+                if (
+                    not columns.intersection({"Code", "Symbol", "ticker"})
+                    or not columns.intersection({"Name", "CompanyName", "name"})
+                ):
+                    raise ValueError(f"StockListing response missing ticker/name columns for {market}")
+                return result
+
+            listing = fetch_with_retries(load_listing)
         except Exception:
             continue
 

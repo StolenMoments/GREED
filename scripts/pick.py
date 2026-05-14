@@ -222,7 +222,19 @@ def resolve_stock_metadata(ticker: str) -> tuple[str, str]:
 
     for market in KOREAN_MARKETS:
         try:
-            listing = fdr.StockListing(market)
+            def load_listing() -> pd.DataFrame:
+                result = fdr.StockListing(market)
+                if not isinstance(result, pd.DataFrame) or result.empty:
+                    raise ValueError(f"Invalid StockListing response for {market}")
+                columns = set(result.columns)
+                if (
+                    not columns.intersection({"Code", "Symbol", "ticker"})
+                    or not columns.intersection({"Name", "CompanyName", "name"})
+                ):
+                    raise ValueError(f"StockListing response missing ticker/name columns for {market}")
+                return result
+
+            listing = fetch_with_retries(load_listing)
         except Exception:
             continue
 

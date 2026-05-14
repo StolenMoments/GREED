@@ -331,7 +331,7 @@ def test_run_analysis_pipeline_starts_model_process_and_keeps_job_pending(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", fake_pick)
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
@@ -383,7 +383,7 @@ def test_run_analysis_pipeline_reuses_today_root_csv(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", lambda *args: pick_calls.append(args))
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
@@ -420,7 +420,7 @@ def test_run_analysis_pipeline_reuses_today_chart_cache_csv(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", lambda *args: pick_calls.append(args))
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
@@ -429,6 +429,83 @@ def test_run_analysis_pipeline_reuses_today_chart_cache_csv(
     assert pick_calls == []
     assert (output_dir / cache_csv.name).exists()
     assert "78000" in str(captured["csv_text"])
+
+
+def test_run_analysis_pipeline_uses_db_stock_name_when_resolver_fails(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        db.add(KrxStock(code="129920", name="대성하이텍", name_initials="ㄷㅅㅎㅇㅌ", updated_at=seoul_now()))
+        db.commit()
+        run = crud.create_run(db, memo="pipeline db stock name")
+        job = crud.create_job(db, ticker="129920", run_id=run.id)
+
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    output_dir = tmp_path / "jobs" / str(job.id)
+    pick_calls: list[tuple[str, str, Path]] = []
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        pick_calls.append((ticker, stock_name, output_dir))
+        csv_path = output_dir / f"129920_{stock_name}_weekly_{today}.csv"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        csv_path.write_text(f"ticker,name,close\n129920,{stock_name},10540\n", encoding="utf-8-sig")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", lambda *args: FakeProcess())
+
+    run_analysis_pipeline(job.id)
+
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
+    assert pick_calls == [("129920", "대성하이텍", cache_dir)]
+    assert (output_dir / f"129920_대성하이텍_weekly_{today}.csv").exists()
+
+
+def test_run_analysis_pipeline_ignores_nameless_cache_when_db_name_exists(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        db.add(KrxStock(code="129920", name="대성하이텍", name_initials="ㄷㅅㅎㅇㅌ", updated_at=seoul_now()))
+        db.commit()
+        run = crud.create_run(db, memo="pipeline nameless cache")
+        job = crud.create_job(db, ticker="129920", run_id=run.id)
+
+    today = jobs.seoul_now().strftime("%Y%m%d")
+    cache_dir = tmp_path / jobs.CHART_CACHE_DIR_NAME / today
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / f"129920_weekly_{today}.csv").write_text(
+        "ticker,name,close\n129920,,10000\n",
+        encoding="utf-8-sig",
+    )
+    output_dir = tmp_path / "jobs" / str(job.id)
+    pick_calls: list[tuple[str, str, Path]] = []
+    runner_csv_texts: list[str] = []
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        pick_calls.append((ticker, stock_name, output_dir))
+        csv_path = output_dir / f"129920_{stock_name}_weekly_{today}.csv"
+        csv_path.write_text(f"ticker,name,close\n129920,{stock_name},10540\n", encoding="utf-8-sig")
+
+    def fake_runner(csv_text: str, *args: object) -> FakeProcess:
+        runner_csv_texts.append(csv_text)
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+
+    run_analysis_pipeline(job.id)
+
+    assert pick_calls == [("129920", "대성하이텍", cache_dir)]
+    assert (output_dir / f"129920_대성하이텍_weekly_{today}.csv").exists()
+    assert "대성하이텍" in runner_csv_texts[0]
+    assert "10000" not in runner_csv_texts[0]
 
 
 def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
@@ -455,7 +532,7 @@ def test_run_analysis_pipeline_runs_pick_when_today_root_csv_is_missing(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", fake_pick)
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
@@ -493,7 +570,7 @@ def test_run_analysis_pipeline_reuses_csv_created_by_previous_job(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", fake_pick)
     monkeypatch.setattr(jobs, "_run_claude", fake_runner)
 
@@ -527,7 +604,7 @@ def test_run_analysis_pipeline_ignores_yesterday_root_csv(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
     monkeypatch.setattr(jobs, "_run_pick", fake_pick)
     monkeypatch.setattr(jobs, "_run_claude", lambda *args: FakeProcess())
 
@@ -582,6 +659,40 @@ def test_get_job_finalizes_analysis_file(
         assert analysis.model == "claude-code"
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
+
+
+def test_get_job_finalizes_with_db_stock_name_when_csv_name_missing(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        db.add(KrxStock(code="129920", name="대성하이텍", name_initials="ㄷㅅㅎㅇㅌ", updated_at=seoul_now()))
+        db.commit()
+        run = crud.create_run(db, memo="finalize db stock name")
+        job = crud.create_job(db, ticker="129920", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    output_dir.mkdir(parents=True)
+    (output_dir / "129920_weekly_20260514.csv").write_text(
+        "ticker,name,close\n129920,,10540\n",
+        encoding="utf-8-sig",
+    )
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(VALID_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+
+    response = client.get(f"/api/jobs/{job.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "done"
+
+    with test_db() as db:
+        analysis = crud.get_analysis(db, body["analysis_id"])
+        assert analysis is not None
+        assert analysis.ticker == "129920"
+        assert analysis.name == "대성하이텍"
 
 
 def test_finalize_analysis_file_is_idempotent_across_stale_sessions(
@@ -916,7 +1027,7 @@ def test_run_analysis_pipeline_marks_pick_failure(
         job = crud.create_job(db, ticker="005930", run_id=run.id)
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
 
     def fail_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
         raise ValueError("종목 데이터 없음: 005930")
@@ -943,7 +1054,7 @@ def test_run_analysis_pipeline_marks_model_start_failure(
 
     monkeypatch.setattr(jobs, "SessionLocal", test_db)
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
 
     def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
         _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv")

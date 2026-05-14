@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 import subprocess
@@ -16,9 +17,11 @@ from backend.crud import (
     create_analysis,
     create_job,
     get_job,
+    get_krx_stock_by_code,
     get_krx_stock_by_exact_name,
     get_jobs,
     get_run,
+    get_us_stock_by_code,
     update_job_done,
     update_job_failed,
 )
@@ -292,13 +295,13 @@ def run_analysis_pipeline(job_id: int) -> None:
                 pass
 
         try:
-            stock_name = _resolve_stock_name(ticker)
+            stock_name = _resolve_stock_name(db, ticker)
             _prepare_job_csv(ticker, stock_name, job_output_dir)
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
 
-        csv_path = _latest_csv_path(ticker, job_output_dir)
+        csv_path = _latest_csv_path(ticker, job_output_dir, stock_name=stock_name)
         if csv_path is None:
             update_job_failed(db, job, "pick: CSV 파일 생성 안 됨")
             return
@@ -433,6 +436,8 @@ def _finalize_analysis_file(db: Session, job: AnalysisJob, analysis_path: Path) 
     ticker = normalize_ticker(job.ticker)
     csv_path = _latest_csv_path(ticker, _job_output_dir(job.id))
     stock_name = _stock_name_from_csv_filename(csv_path, ticker) if csv_path is not None else ""
+    if not stock_name:
+        stock_name = _stock_name_from_db(db, ticker)
 
     try:
         analysis = create_analysis(
@@ -464,14 +469,29 @@ def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
     run_pick(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
 
 
-def _resolve_stock_name(ticker: str) -> str:
-    if market_for_ticker(ticker) == "US":
+def _resolve_stock_name(db: Session, ticker: str) -> str:
+    db_stock_name = _stock_name_from_db(db, ticker)
+    if db_stock_name:
+        return db_stock_name
+
+    normalized = normalize_ticker(ticker)
+    if market_for_ticker(normalized) == "US":
         from scripts.pick_us import resolve_stock_name
 
-        return resolve_stock_name(ticker)
+        return resolve_stock_name(normalized)
 
     from scripts.pick import resolve_stock_name
-    return resolve_stock_name(ticker)
+    return resolve_stock_name(normalized)
+
+
+def _stock_name_from_db(db: Session, ticker: str) -> str:
+    normalized = normalize_ticker(ticker)
+    if market_for_ticker(normalized) == "US":
+        stock = get_us_stock_by_code(db, normalized)
+        return stock.name if stock is not None else ""
+
+    stock = get_krx_stock_by_code(db, normalized)
+    return stock.name if stock is not None else ""
 
 
 def _system_prompt_for_ticker(ticker: str) -> str:
@@ -655,7 +675,12 @@ def _weekly_csv_metadata(csv_path: Path) -> tuple[str, str, str] | None:
     return ticker, "_".join(name_parts).strip(), parts[-1]
 
 
-def _weekly_csv_paths_for_ticker(directory: Path, ticker: str, today_str: str | None = None) -> list[Path]:
+def _weekly_csv_paths_for_ticker(
+    directory: Path,
+    ticker: str,
+    today_str: str | None = None,
+    stock_name: str = "",
+) -> list[Path]:
     paths: list[Path] = []
     pattern = f"*_weekly_{today_str}.csv" if today_str else "*_weekly_*.csv"
     for path in directory.glob(pattern):
@@ -666,12 +691,45 @@ def _weekly_csv_paths_for_ticker(directory: Path, ticker: str, today_str: str | 
             continue
         file_ticker, _, file_date = metadata
         if file_ticker == ticker and (today_str is None or file_date == today_str):
+            if not _csv_matches_stock_name(path, stock_name):
+                continue
             paths.append(path)
     return paths
 
 
-def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
-    files = sorted(_weekly_csv_paths_for_ticker(output_dir, ticker), key=lambda path: path.stat().st_mtime)
+def _csv_matches_stock_name(path: Path, expected_stock_name: str = "") -> bool:
+    expected = expected_stock_name.strip()
+    if not expected:
+        return True
+
+    metadata = _weekly_csv_metadata(path)
+    if metadata is not None:
+        _, filename_stock_name, _ = metadata
+        filename_stock_name = filename_stock_name.strip()
+        if filename_stock_name == expected:
+            return True
+        if filename_stock_name:
+            return False
+
+    return _stock_name_from_csv_content(path) == expected
+
+
+def _stock_name_from_csv_content(path: Path) -> str:
+    try:
+        with path.open("r", encoding="utf-8-sig") as csv_file:
+            row = next(csv.DictReader(csv_file), None)
+    except OSError:
+        return ""
+    if row is None:
+        return ""
+    return (row.get("name") or "").strip()
+
+
+def _latest_csv_path(ticker: str, output_dir: Path, stock_name: str = "") -> Path | None:
+    files = sorted(
+        _weekly_csv_paths_for_ticker(output_dir, ticker, stock_name=stock_name),
+        key=lambda path: path.stat().st_mtime,
+    )
     if not files:
         return None
     return files[-1]
@@ -679,14 +737,14 @@ def _latest_csv_path(ticker: str, output_dir: Path) -> Path | None:
 
 def _prepare_job_csv(ticker: str, stock_name: str, job_output_dir: Path) -> Path:
     today_str = seoul_now().strftime("%Y%m%d")
-    reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str)
+    reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str, stock_name=stock_name)
     if reusable_csv_path is None:
         with _chart_csv_lock(ticker, today_str):
-            reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str)
+            reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str, stock_name=stock_name)
             if reusable_csv_path is None:
                 cache_dir = _chart_cache_dir(today_str)
                 _run_pick(ticker, stock_name, cache_dir)
-                reusable_csv_path = _latest_csv_path(ticker, cache_dir)
+                reusable_csv_path = _latest_csv_path(ticker, cache_dir, stock_name=stock_name)
                 if reusable_csv_path is None:
                     raise RuntimeError("CSV file was not created")
 
@@ -708,13 +766,18 @@ def _chart_cache_dir(today_str: str | None = None) -> Path:
     return PICK_OUTPUT_DIR / CHART_CACHE_DIR_NAME / (today_str or seoul_now().strftime("%Y%m%d"))
 
 
-def _today_reusable_csv_path(ticker: str, today_str: str | None = None) -> Path | None:
+def _today_reusable_csv_path(ticker: str, today_str: str | None = None, stock_name: str = "") -> Path | None:
     today_str = today_str or seoul_now().strftime("%Y%m%d")
-    cache_files = _weekly_csv_paths_for_ticker(_chart_cache_dir(today_str), ticker, today_str)
+    cache_files = _weekly_csv_paths_for_ticker(
+        _chart_cache_dir(today_str),
+        ticker,
+        today_str,
+        stock_name=stock_name,
+    )
     if cache_files:
         return sorted(cache_files, key=lambda path: path.stat().st_mtime)[-1]
 
-    files = _weekly_csv_paths_for_ticker(PICK_OUTPUT_DIR, ticker, today_str)
+    files = _weekly_csv_paths_for_ticker(PICK_OUTPUT_DIR, ticker, today_str, stock_name=stock_name)
     if not files:
         return None
     return sorted(files, key=lambda path: path.stat().st_mtime)[-1]
