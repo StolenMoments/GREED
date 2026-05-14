@@ -10,10 +10,12 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base
 from backend.models import Analysis, Run
 from backend.outcome import (
+    OUTCOME_NA,
     OUTCOME_ONGOING,
     OUTCOME_STOP,
     OUTCOME_TARGET,
     evaluate_outcome,
+    evaluate_single_outcome,
     run_evaluate_outcomes,
 )
 
@@ -118,7 +120,7 @@ def test_run_evaluate_outcomes_force_recalculates_existing_outcomes(monkeypatch)
 
         monkeypatch.setattr(
             "backend.outcome.fetch_daily_df",
-            lambda ticker, start: make_daily_df([("2026-05-14", 148900, 137600)]),
+            lambda ticker, start, db=None: make_daily_df([("2026-05-14", 148900, 137600)]),
         )
 
         result = run_evaluate_outcomes(session)
@@ -132,6 +134,159 @@ def test_run_evaluate_outcomes_force_recalculates_existing_outcomes(monkeypatch)
         assert analysis.outcome == OUTCOME_ONGOING
         assert analysis.outcome_date is None
         assert analysis.outcome_price is None
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_run_evaluate_outcomes_recalculates_ongoing_but_skips_terminal(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        run = Run(memo="outcome ongoing test")
+        session.add(run)
+        session.flush()
+
+        ongoing = make_analysis(
+            created_at=datetime(2026, 5, 13, 12, 23, 3),
+            outcome=OUTCOME_ONGOING,
+        )
+        ongoing.run_id = run.id
+        terminal = make_analysis(
+            created_at=datetime(2026, 5, 13, 12, 23, 3),
+            outcome=OUTCOME_NA,
+        )
+        terminal.run_id = run.id
+        session.add_all([ongoing, terminal])
+        session.commit()
+
+        monkeypatch.setattr(
+            "backend.outcome.fetch_daily_df",
+            lambda ticker, start, db=None: make_daily_df([("2026-05-14", 175500, 140000)]),
+        )
+
+        result = run_evaluate_outcomes(session)
+        session.refresh(ongoing)
+        session.refresh(terminal)
+
+        assert result == {"evaluated": 1, "skipped": 0}
+        assert ongoing.outcome == OUTCOME_TARGET
+        assert terminal.outcome == OUTCOME_NA
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_evaluate_single_outcome_uses_price_bar_cache_layer(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        run = Run(memo="single outcome cache test")
+        session.add(run)
+        session.flush()
+        analysis = make_analysis(created_at=datetime(2026, 5, 13, 12, 23, 3))
+        analysis.run_id = run.id
+        session.add(analysis)
+        session.commit()
+
+        calls: list[tuple[str, datetime.date]] = []
+
+        def fake_fetch_price_bars_df(db, ticker, start):
+            calls.append((ticker, start))
+            return make_daily_df([("2026-05-14", 175500, 140000)])
+
+        monkeypatch.setattr("backend.outcome.fetch_price_bars_df", fake_fetch_price_bars_df)
+
+        assert evaluate_single_outcome(session, analysis) is True
+        session.refresh(analysis)
+        assert calls == [("011790", datetime(2026, 5, 13).date())]
+        assert analysis.outcome == OUTCOME_TARGET
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_run_evaluate_outcomes_fetches_once_per_ticker(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        run = Run(memo="batch outcome cache test")
+        session.add(run)
+        session.flush()
+        older = make_analysis(created_at=datetime(2026, 5, 12, 12, 23, 3))
+        newer = make_analysis(created_at=datetime(2026, 5, 13, 12, 23, 3))
+        older.run_id = run.id
+        newer.run_id = run.id
+        session.add_all([older, newer])
+        session.commit()
+
+        calls: list[tuple[str, datetime.date]] = []
+
+        def fake_fetch_price_bars_df(db, ticker, start):
+            calls.append((ticker, start))
+            return make_daily_df([("2026-05-14", 175500, 140000)])
+
+        monkeypatch.setattr("backend.outcome.fetch_price_bars_df", fake_fetch_price_bars_df)
+
+        result = run_evaluate_outcomes(session)
+
+        assert result == {"evaluated": 2, "skipped": 0}
+        assert calls == [("011790", datetime(2026, 5, 12).date())]
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_run_evaluate_outcomes_skips_when_cache_fetch_returns_none(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        run = Run(memo="batch outcome fetch failure test")
+        session.add(run)
+        session.flush()
+        analysis = make_analysis(created_at=datetime(2026, 5, 13, 12, 23, 3))
+        analysis.run_id = run.id
+        session.add(analysis)
+        session.commit()
+
+        monkeypatch.setattr(
+            "backend.outcome.fetch_price_bars_df",
+            lambda db, ticker, start: None,
+        )
+
+        result = run_evaluate_outcomes(session)
+
+        assert result == {"evaluated": 0, "skipped": 1}
+        session.refresh(analysis)
+        assert analysis.outcome is None
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)

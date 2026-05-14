@@ -4,6 +4,7 @@ from collections.abc import Generator
 from datetime import date
 
 import pytest
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -20,6 +21,7 @@ from backend.crud import (
     upsert_stock_price,
 )
 from backend.database import Base, get_db
+from backend.outcome import OUTCOME_ONGOING, OUTCOME_TARGET
 from backend.routers.analyses import router
 from backend.schemas import AnalysisCreate
 
@@ -954,3 +956,90 @@ def test_evaluate_outcomes_endpoint_passes_force_flag(
     assert force_response.status_code == 200
     assert force_response.json() == {"evaluated": 1, "skipped": 0}
     assert calls == [False, True]
+
+
+def test_evaluate_single_outcome_endpoint_updates_ongoing_analysis(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = create_run(db_session, memo="single outcome run")
+    analysis = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            target_price=82000,
+            stop_loss=71500,
+        ),
+    )
+    analysis.outcome = OUTCOME_ONGOING
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "backend.outcome.fetch_daily_df",
+        lambda ticker, start, db=None: pd.DataFrame(
+            [{"High": 83000, "Low": 76000}],
+            index=pd.to_datetime(["2026-05-15"]),
+        ),
+    )
+
+    response = client.post(f"/api/analyses/{analysis.id}/evaluate-outcome")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == analysis.id
+    assert body["outcome"] == OUTCOME_TARGET
+    assert body["outcome_price"] == 83000
+
+
+def test_evaluate_single_outcome_endpoint_skips_terminal_analysis(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = create_run(db_session, memo="single terminal outcome run")
+    analysis = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung Electronics",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+            target_price=82000,
+            stop_loss=71500,
+        ),
+    )
+    analysis.outcome = OUTCOME_TARGET
+    analysis.outcome_price = 83000
+    db_session.commit()
+
+    def fail_fetch(ticker: str, start: date):
+        raise AssertionError("terminal outcomes should not fetch prices")
+
+    monkeypatch.setattr("backend.outcome.fetch_daily_df", fail_fetch)
+
+    response = client.post(f"/api/analyses/{analysis.id}/evaluate-outcome")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["outcome"] == OUTCOME_TARGET
+    assert body["outcome_price"] == 83000
+
+
+def test_evaluate_single_outcome_endpoint_returns_404_when_not_found(client: TestClient) -> None:
+    response = client.post("/api/analyses/99999/evaluate-outcome")
+
+    assert response.status_code == 404

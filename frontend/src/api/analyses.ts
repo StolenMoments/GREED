@@ -67,3 +67,10 @@ export async function evaluateOutcomes(force = false): Promise<{ evaluated: numb
   );
   return response.data;
 }
+
+export async function evaluateAnalysisOutcome(analysisId: number): Promise<Analysis> {
+  const response = await apiClient.post<Analysis>(
+    `/analyses/${analysisId}/evaluate-outcome`,
+  );
+  return response.data;
+}

@@ -7,6 +7,7 @@ import {
 import {
   createAnalysis,
   deleteAnalysis,
+  evaluateAnalysisOutcome,
   fetchAllAnalyses,
   fetchAnalyses,
   fetchAnalysis,
@@ -99,6 +100,19 @@ export function useDeleteAnalysis() {
       queryClient.invalidateQueries({ queryKey: runKeys.lists() });
       queryClient.invalidateQueries({ queryKey: runKeys.all });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+}
+
+export function useEvaluateAnalysisOutcome() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (analysisId: number) => evaluateAnalysisOutcome(analysisId),
+    onSuccess: (analysis) => {
+      queryClient.setQueryData(analysisKeys.detail(analysis.id), analysis);
+      queryClient.invalidateQueries({ queryKey: analysisKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: analysisKeys.history(analysis.id) });
     },
   });
 }

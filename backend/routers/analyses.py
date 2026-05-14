@@ -20,7 +20,7 @@ from backend.crud import (
 )
 from backend.database import get_db
 from backend.parser import parse_markdown
-from backend.outcome import run_evaluate_outcomes
+from backend.outcome import evaluate_single_outcome, run_evaluate_outcomes
 from backend.schemas import (
     AnalysisCreate,
     AnalysisPage,
@@ -117,6 +117,18 @@ def get_analysis_endpoint(
     analysis = get_analysis(db, analysis_id)
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    return analysis
+
+
+@router.post("/api/analyses/{analysis_id}/evaluate-outcome", response_model=AnalysisRead)
+def evaluate_single_outcome_endpoint(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+) -> AnalysisRead:
+    analysis = get_analysis(db, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    evaluate_single_outcome(db, analysis)
     return analysis
 
 

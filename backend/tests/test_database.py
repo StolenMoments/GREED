@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import inspect
 
 import backend.database as database
 from backend.database import build_engine_kwargs
@@ -107,3 +108,47 @@ def test_init_db_does_not_fallback_when_sqlite_initialization_fails(
         database.init_db()
 
     assert created_urls == []
+
+
+def test_migrate_sqlite_creates_price_bars_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_engine = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(database, "engine", sqlite_engine)
+
+    database.Base.metadata.create_all(bind=sqlite_engine)
+    database._migrate_sqlite()
+
+    inspector = inspect(sqlite_engine)
+    assert "price_bars" in inspector.get_table_names()
+    assert "ix_price_bars_lookup" in {
+        index["name"] for index in inspector.get_indexes("price_bars")
+    }
+
+    sqlite_engine.dispose()
+
+
+def test_migrate_mariadb_creates_price_bars_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    statements: list[str] = []
+
+    class FakeConnection:
+        def __enter__(self) -> "FakeConnection":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: object) -> None:
+            statements.append(str(statement))
+
+        def commit(self) -> None:
+            return None
+
+    class FakeEngine:
+        def connect(self) -> FakeConnection:
+            return FakeConnection()
+
+    monkeypatch.setattr(database, "engine", FakeEngine())
+
+    database._migrate_mariadb()
+
+    assert any("CREATE TABLE IF NOT EXISTS price_bars" in statement for statement in statements)
+    assert any("INDEX ix_price_bars_lookup" in statement for statement in statements)

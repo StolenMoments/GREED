@@ -9,7 +9,12 @@ import {
   outcomeStyles,
   signalStyles,
 } from '../constants/analysisStyles';
-import { useAnalysis, useDeleteAnalysis, useHistory } from '../hooks/useAnalyses';
+import {
+  useAnalysis,
+  useDeleteAnalysis,
+  useEvaluateAnalysisOutcome,
+  useHistory,
+} from '../hooks/useAnalyses';
 import { useRefreshStockPrice, useStockPrice } from '../hooks/useStockPrice';
 import { formatDate, formatDateOnly } from '../utils/formatDate';
 import { formatPriceByTicker } from '../utils/formatPrice';
@@ -151,11 +156,22 @@ function CopyTickerButton({ ticker }: { ticker: string }) {
   );
 }
 
-function OutcomePanel({ analysis }: { analysis: Analysis }) {
+function OutcomePanel({
+  analysis,
+  isEvaluating,
+  isEvaluateError,
+  onEvaluate,
+}: {
+  analysis: Analysis;
+  isEvaluating: boolean;
+  isEvaluateError: boolean;
+  onEvaluate: () => void;
+}) {
   const outcomePrice = formatPriceByTicker(
     analysis.outcome_price,
     analysis.ticker,
   );
+  const canEvaluate = analysis.outcome === null || analysis.outcome === '진행중';
 
   return (
     <aside className="rounded-lg border border-amber-100/10 bg-slate-950/55 p-6">
@@ -197,6 +213,20 @@ function OutcomePanel({ analysis }: { analysis: Analysis }) {
       <p className="mt-4 text-xs leading-5 text-slate-500">
         일봉 고가/저가 기준으로 저장된 목표가 또는 손절가 도달 정보입니다.
       </p>
+
+      <button
+        className="mt-5 h-9 w-full rounded-md border border-amber-200/20 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-600 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+        disabled={!canEvaluate || isEvaluating}
+        onClick={onEvaluate}
+        type="button"
+      >
+        {isEvaluating ? '판정 중…' : '판정 실행'}
+      </button>
+      {isEvaluateError ? (
+        <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-950/20 px-3 py-2 text-xs leading-5 text-rose-100">
+          판정을 실행하지 못했습니다.
+        </p>
+      ) : null}
     </aside>
   );
 }
@@ -307,6 +337,7 @@ function AnalysisDetailPage() {
   const { data: stockPrice } = useStockPrice(analysis?.ticker);
   const refreshStockPrice = useRefreshStockPrice(analysis?.ticker);
   const deleteAnalysisMutation = useDeleteAnalysis();
+  const evaluateOutcomeMutation = useEvaluateAnalysisOutcome();
   const parsed = useMemo(
     () => (analysis ? parseMarkdown(analysis.markdown) : undefined),
     [analysis],
@@ -425,7 +456,12 @@ function AnalysisDetailPage() {
       </article>
 
       <div className="flex flex-col gap-4">
-        <OutcomePanel analysis={analysis} />
+        <OutcomePanel
+          analysis={analysis}
+          isEvaluating={evaluateOutcomeMutation.isPending}
+          isEvaluateError={evaluateOutcomeMutation.isError}
+          onEvaluate={() => evaluateOutcomeMutation.mutate(analysis.id)}
+        />
         <PriceLevels
           ticker={analysis.ticker}
           currentPrice={stockPrice}

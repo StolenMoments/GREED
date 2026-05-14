@@ -96,6 +96,24 @@ class StockPrice(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class PriceBar(Base):
+    __tablename__ = "price_bars"
+    __table_args__ = (
+        Index("ix_price_bars_lookup", "ticker", "interval", "bar_date"),
+    )
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    interval: Mapped[str] = mapped_column(String(2), primary_key=True)
+    bar_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    open: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high: Mapped[float] = mapped_column(Float, nullable=False)
+    low: Mapped[float] = mapped_column(Float, nullable=False)
+    close: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trading_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class KrxStock(Base):
     __tablename__ = "krx_stocks"
     __table_args__ = (

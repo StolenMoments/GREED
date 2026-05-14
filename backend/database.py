@@ -138,6 +138,31 @@ def _migrate_sqlite() -> None:
         )
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_us_stocks_name ON us_stocks(name)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_us_stocks_market ON us_stocks(market)"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS price_bars (
+                    ticker VARCHAR(20) NOT NULL,
+                    interval VARCHAR(2) NOT NULL,
+                    bar_date DATE NOT NULL,
+                    open REAL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL,
+                    volume REAL,
+                    trading_value REAL,
+                    fetched_at DATETIME NOT NULL,
+                    PRIMARY KEY (ticker, interval, bar_date)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_price_bars_lookup "
+                "ON price_bars(ticker, interval, bar_date)"
+            )
+        )
         conn.commit()
 
         # Backfill price fields for analyses created before price extraction was added
@@ -152,6 +177,26 @@ def _migrate_mariadb() -> None:
             ("outcome_price", "FLOAT"),
         ]:
             conn.execute(text(f"ALTER TABLE analyses ADD COLUMN IF NOT EXISTS {col} {typedef}"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS price_bars (
+                    ticker VARCHAR(20) NOT NULL,
+                    interval VARCHAR(2) NOT NULL,
+                    bar_date DATE NOT NULL,
+                    open FLOAT NULL,
+                    high FLOAT NOT NULL,
+                    low FLOAT NOT NULL,
+                    close FLOAT NULL,
+                    volume FLOAT NULL,
+                    trading_value FLOAT NULL,
+                    fetched_at DATETIME NOT NULL,
+                    PRIMARY KEY (ticker, interval, bar_date),
+                    INDEX ix_price_bars_lookup (ticker, interval, bar_date)
+                )
+                """
+            )
+        )
         conn.commit()
 
 
