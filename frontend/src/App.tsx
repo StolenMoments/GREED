@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { DatabaseStatusBanner } from './components/DatabaseStatusBanner';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import AnalysisListPage from './pages/AnalysisListPage';
 import JobsPage from './pages/JobsPage';
@@ -45,6 +46,8 @@ function App() {
             ))}
           </nav>
         </header>
+
+        <DatabaseStatusBanner />
 
         <Routes>
           <Route element={<Navigate replace to="/runs" />} path="/" />
