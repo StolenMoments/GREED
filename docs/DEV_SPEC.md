@@ -1,7 +1,7 @@
 # greed 개발 명세서
 
 > 기준: 2026-05-07 현재 코드베이스 구현
-> 스택: FastAPI, SQLite, SQLAlchemy, React, TypeScript, Vite, Tailwind CSS
+> 스택: FastAPI, MariaDB, SQLAlchemy, React, TypeScript, Vite, Tailwind CSS
 > 배포 형태: 로컬 단일 머신
 
 ## 1. 시스템 개요
@@ -21,7 +21,7 @@ scripts/pick.py / scripts/pick_us.py
 
 FastAPI
   -> Run, Analysis, Job, StockPrice, Ticker 조회 API 제공
-  -> 마크다운 재파싱 후 SQLite 저장
+  -> 마크다운 재파싱 후 MariaDB 저장
   -> 모델 CLI 기반 비동기 분석 잡 실행 및 상태 확정
 
 React Web UI
@@ -67,13 +67,11 @@ greed/
 │   ├── pick.py
 │   ├── pick_us.py
 │   ├── refresh_tickers.py
-│   ├── merge_db.py
 │   └── fdr_timeout.py
 ├── skills/
 │   └── weekly-analysis/SKILL.md
 ├── pick_output/
 ├── docs/
-├── greed.db
 ├── package.json
 └── install.bat
 ```
@@ -91,8 +89,8 @@ greed/
 
 ### 3-2. 데이터베이스
 
-- DB 파일: `greed.db`
-- DB URL: 기본값 `sqlite:///greed.db`
+- DB: MariaDB
+- DB URL: 환경변수 `DATABASE_URL` 필수 (예: `mysql+pymysql://user:pass@host:3306/greed?charset=utf8mb4`)
 - SQLAlchemy ORM을 사용한다.
 - 생성 및 조회 시각은 `backend/timezone.py`의 `seoul_now()`를 통해 `Asia/Seoul` 기준으로 기록한다.
 
