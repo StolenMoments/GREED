@@ -34,18 +34,12 @@ Base = declarative_base()
 
 
 def init_db() -> None:
-    global engine
-
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL environment variable is required")
     if make_url(DATABASE_URL).get_backend_name() == "sqlite":
         raise RuntimeError(
             "SQLite is not supported; set DATABASE_URL to a MariaDB connection string"
         )
-
-    if engine is None:
-        engine = create_database_engine(DATABASE_URL)
-        SessionLocal.configure(bind=engine)
 
     from backend import models  # noqa: F401
 
@@ -78,7 +72,7 @@ def _migrate_mariadb() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS price_bars (
                     ticker VARCHAR(20) NOT NULL,
-                    interval VARCHAR(2) NOT NULL,
+                    `interval` VARCHAR(2) NOT NULL,
                     bar_date DATE NOT NULL,
                     open FLOAT NULL,
                     high FLOAT NOT NULL,
@@ -87,8 +81,8 @@ def _migrate_mariadb() -> None:
                     volume FLOAT NULL,
                     trading_value FLOAT NULL,
                     fetched_at DATETIME NOT NULL,
-                    PRIMARY KEY (ticker, interval, bar_date),
-                    INDEX ix_price_bars_lookup (ticker, interval, bar_date)
+                    PRIMARY KEY (ticker, `interval`, bar_date),
+                    INDEX ix_price_bars_lookup (ticker, `interval`, bar_date)
                 )
                 """
             )
