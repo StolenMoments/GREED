@@ -330,19 +330,18 @@ export function AnalysisTable({
               <span className="block truncate text-lg font-semibold text-slate-50">
                 {analysis.name}
               </span>
-              <span className="mt-1 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-                <span>{analysis.ticker}</span>
-                {showRunId ? (
-                  <>
-                    <span className="text-slate-700">/</span>
-                    <span>run #{analysis.run_id}</span>
-                  </>
-                ) : null}
+              <span className="mt-1 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span>{analysis.ticker}</span>
+                  {showRunId ? (
+                    <>
+                      <span className="text-slate-700">/</span>
+                      <span>run #{analysis.run_id}</span>
+                    </>
+                  ) : null}
+                </span>
                 {showEntryGap ? (
-                  <>
-                    <span className="text-slate-700">/</span>
-                    <span>{analysis.model}</span>
-                  </>
+                  <span className="mt-1 block truncate">{analysis.model}</span>
                 ) : null}
               </span>
               {showSignals ? <SignalMeta analysis={analysis} /> : null}
