@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import datetime
 import logging
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.exc import SQLAlchemyError  # noqa: F401 — re-exported for tests
+from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError  # noqa: F401 — re-exported for tests
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
+from backend.timezone import seoul_now
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +22,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+DATABASE_UNAVAILABLE_MESSAGE = "데이터베이스 연결이 끊겼습니다. 터널을 확인하고 잠시 후 다시 시도하세요."
+_INITIALIZE_LOCK = Lock()
+_is_initialized = False
 
 
 def build_engine_kwargs(database_url: str) -> dict[str, Any]:
@@ -34,6 +41,12 @@ Base = declarative_base()
 
 
 def init_db() -> None:
+    ensure_database_ready()
+
+
+def ensure_database_ready() -> None:
+    global engine, _is_initialized
+
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL environment variable is required")
     if make_url(DATABASE_URL).get_backend_name() == "sqlite":
@@ -41,9 +54,24 @@ def init_db() -> None:
             "SQLite is not supported; set DATABASE_URL to a MariaDB connection string"
         )
 
-    from backend import models  # noqa: F401
+    if engine is None:
+        engine = create_database_engine(DATABASE_URL)
+        SessionLocal.configure(bind=engine)
 
-    _initialize_active_engine()
+    if _is_initialized:
+        return
+
+    with _INITIALIZE_LOCK:
+        if _is_initialized:
+            return
+        try:
+            from backend import models  # noqa: F401
+
+            _initialize_active_engine()
+            _is_initialized = True
+        except (DBAPIError, OperationalError):
+            dispose_engine()
+            raise
 
 
 def _initialize_active_engine() -> None:
@@ -90,7 +118,52 @@ def _migrate_mariadb() -> None:
         conn.commit()
 
 
+def dispose_engine() -> None:
+    if engine is not None:
+        engine.dispose()
+
+
+def mark_database_unavailable(exc: BaseException) -> None:
+    logger.warning("Database connection unavailable: %s", exc)
+    dispose_engine()
+
+
+def is_database_unavailable_error(exc: BaseException) -> bool:
+    return isinstance(exc, OperationalError) or (
+        isinstance(exc, DBAPIError) and exc.connection_invalidated
+    )
+
+
+def get_database_health() -> dict[str, str]:
+    checked_at = _health_checked_at()
+    try:
+        ensure_database_ready()
+        assert engine is not None
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "up", "checked_at": checked_at}
+    except (DBAPIError, OperationalError) as exc:
+        mark_database_unavailable(exc)
+        return {"status": "down", "checked_at": checked_at}
+    except RuntimeError as exc:
+        logger.warning("Database health check failed: %s", exc)
+        return {"status": "down", "checked_at": checked_at}
+
+
+def _health_checked_at() -> str:
+    now = seoul_now()
+    if isinstance(now, datetime):
+        return now.isoformat()
+    return str(now)
+
+
 def get_db() -> Generator[Session, None, None]:
+    try:
+        ensure_database_ready()
+    except (DBAPIError, OperationalError) as exc:
+        mark_database_unavailable(exc)
+        raise
+
     db = SessionLocal()
     try:
         yield db

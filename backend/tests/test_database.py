@@ -13,11 +13,13 @@ def restore_database_state() -> Generator[None, None, None]:
     original_database_url = database.DATABASE_URL
     original_engine = database.engine
     original_bind = database.SessionLocal.kw.get("bind")
+    original_is_initialized = database._is_initialized
 
     yield
 
     database.DATABASE_URL = original_database_url
     database.engine = original_engine
+    database._is_initialized = original_is_initialized
     database.SessionLocal.configure(bind=original_bind)
 
 
