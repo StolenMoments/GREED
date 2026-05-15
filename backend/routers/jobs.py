@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from backend.database import SessionLocal, get_db
 from backend.models import AnalysisJob
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
+from backend.stock_price import fetch_and_store_latest_close
 from backend.tickers import market_for_ticker, normalize_ticker, is_korean_text
 from backend.timezone import seoul_now
 
@@ -207,6 +209,7 @@ _FINALIZE_LOCKS: dict[int, Lock] = {}
 _FINALIZE_LOCKS_GUARD = Lock()
 _CHART_CSV_LOCKS: dict[tuple[str, str], Lock] = {}
 _CHART_CSV_LOCKS_GUARD = Lock()
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 VALID_JOB_STATUSES = {"pending", "done", "failed"}
@@ -452,9 +455,18 @@ def _finalize_analysis_file(db: Session, job: AnalysisJob, analysis_path: Path) 
             ),
         )
         update_job_done(db, job, analysis.id, raw_markdown=raw)
+        _refresh_stock_price_after_analysis(db, ticker)
     except Exception as exc:
         db.rollback()
         update_job_failed(db, job, f"db: {exc}", raw_markdown=raw)
+
+
+def _refresh_stock_price_after_analysis(db: Session, ticker: str) -> None:
+    try:
+        fetch_and_store_latest_close(db, ticker)
+    except Exception:
+        db.rollback()
+        logger.warning("stock price refresh failed after analysis finalize: ticker=%s", ticker, exc_info=True)
 
 
 def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:

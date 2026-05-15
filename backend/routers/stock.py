@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from backend import crud
 from backend.database import get_db
 from backend.schemas import StockPriceRead
-from backend.stock_price import fetch_latest_close
+from backend.stock_price import fetch_and_store_latest_close, fetch_latest_close
 from backend.tickers import normalize_ticker
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
@@ -31,9 +31,8 @@ def refresh_stock_price(ticker: str, db: Session = Depends(get_db)) -> StockPric
 
 
 def _fetch_and_store_stock_price(db: Session, ticker: str) -> StockPriceRead:
-    result = fetch_latest_close(ticker)
-    if result is None:
+    stock_price = fetch_and_store_latest_close(db, ticker, fetcher=fetch_latest_close)
+    if stock_price is None:
         raise HTTPException(status_code=404, detail="가격 데이터를 가져올 수 없습니다.")
 
-    price_date, close_price = result
-    return crud.upsert_stock_price(db, ticker, price_date, close_price)  # type: ignore[return-value]
+    return stock_price  # type: ignore[return-value]

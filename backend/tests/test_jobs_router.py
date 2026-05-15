@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Generator
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -659,6 +659,93 @@ def test_get_job_finalizes_analysis_file(
         assert analysis.model == "claude-code"
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
+
+
+def test_get_job_refreshes_stock_price_after_finalizing_analysis(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="finalize refresh price")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(VALID_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    calls: list[str] = []
+
+    def fake_fetch_and_store_latest_close(db: Session, ticker: str) -> object:
+        calls.append(ticker)
+        return crud.upsert_stock_price(
+            db,
+            ticker=ticker,
+            price_date=date(2026, 5, 15),
+            close_price=71500,
+        )
+
+    monkeypatch.setattr(
+        jobs,
+        "fetch_and_store_latest_close",
+        fake_fetch_and_store_latest_close,
+        raising=False,
+    )
+
+    response = client.get(f"/api/jobs/{job.id}")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "done"
+    assert calls == ["005930"]
+
+    with test_db() as db:
+        stock_price = crud.get_stock_price(db, "005930")
+        assert stock_price is not None
+        assert stock_price.price_date == date(2026, 5, 15)
+        assert stock_price.close_price == 71500
+
+
+def test_get_job_keeps_done_when_price_refresh_fails(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="finalize price failure")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    _write_csv(output_dir, "005930_Samsung_weekly_20260421.csv")
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(VALID_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    calls: list[str] = []
+
+    def fail_fetch_and_store_latest_close(db: Session, ticker: str) -> object:
+        calls.append(ticker)
+        raise RuntimeError("price source unavailable")
+
+    monkeypatch.setattr(
+        jobs,
+        "fetch_and_store_latest_close",
+        fail_fetch_and_store_latest_close,
+        raising=False,
+    )
+
+    response = client.get(f"/api/jobs/{job.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "done"
+    assert body["analysis_id"] is not None
+    assert calls == ["005930"]
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "done"
+        assert saved_job.analysis_id == body["analysis_id"]
 
 
 def test_get_job_finalizes_with_db_stock_name_when_csv_name_missing(
