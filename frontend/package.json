@@ -2,6 +2,7 @@
   "name": "greed-frontend",
   "private": true,
   "version": "0.0.1",
+  "packageManager": "npm@11.14.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.5",
-    "axios": "^1.12.2",
+    "axios": "^1.16.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
@@ -28,4 +29,3 @@
     "vite": "^7.1.10"
   }
 }
-
