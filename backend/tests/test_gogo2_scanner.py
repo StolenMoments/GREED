@@ -28,11 +28,11 @@ def make_weekly(close: float = 96.0, volume: float = 1000.0, rows: int = 180) ->
     )
 
 
-def install_fake_indicators(monkeypatch):
+def install_fake_indicators(monkeypatch, weekday=0):
     class FakeDateTime:
         @classmethod
         def today(cls):
-            return SimpleNamespace(weekday=lambda: 0)
+            return SimpleNamespace(weekday=lambda: weekday)
 
     def fake_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
         df["span_a"] = 100.0
@@ -61,8 +61,8 @@ def install_fake_indicators(monkeypatch):
 def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly()
-    df.loc[df.index[-3], "Close"] = 99.0
-    df.loc[df.index[-2], "Close"] = 103.0
+    df.loc[df.index[-2], "Close"] = 99.0
+    df.loc[df.index[-1], "Close"] = 103.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
@@ -76,7 +76,7 @@ def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monke
 def test_near_cloud_top_stock_is_marked_pre_breakout(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=96.0)
-    df.loc[df.index[-2], "Close"] = 97.0
+    df.loc[df.index[-1], "Close"] = 97.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
@@ -86,8 +86,8 @@ def test_near_cloud_top_stock_is_marked_pre_breakout(monkeypatch):
 
 def test_stock_far_below_cloud_top_is_excluded(monkeypatch):
     install_fake_indicators(monkeypatch)
-    df = make_weekly(close=90.0)
-    df.loc[df.index[-2], "Close"] = 94.0
+    df = make_weekly(close=96.0)
+    df.loc[df.index[-1], "Close"] = 94.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
@@ -98,7 +98,19 @@ def test_stock_far_below_cloud_top_is_excluded(monkeypatch):
 def test_stock_below_cloud_bottom_is_excluded_even_when_near_cloud_top(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=96.0)
-    df.loc[df.index[-2], "Close"] = 89.0
+    df.loc[df.index[-1], "Close"] = 89.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is False
+    assert detail == {}
+
+
+def test_latest_weekly_candle_is_used_even_before_friday(monkeypatch):
+    install_fake_indicators(monkeypatch, weekday=0)
+    df = make_weekly(close=96.0)
+    df.loc[df.index[-2], "Close"] = 111.0
+    df.loc[df.index[-1], "Close"] = 89.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
@@ -118,7 +130,7 @@ def test_pullback_detects_recent_breakout_near_support_after_three_week_limit(mo
 
     assert hit is True
     assert detail["scan_type"] == "pullback"
-    assert detail["캔들구름돌파_N주전"] == 5
+    assert detail["캔들구름돌파_N주전"] == 6
 
 
 def test_result_columns_include_scanner_metadata():

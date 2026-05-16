@@ -106,8 +106,7 @@ def check_conditions(df,
     if len(df) < scan_candle_lookback + 2:
         return False, {}
 
-    today   = datetime.today().weekday()
-    end_idx = -1 if today == 4 else -2
+    end_idx = -1
     last    = df.iloc[end_idx]
     prev_last = df.iloc[end_idx - 1]
 
