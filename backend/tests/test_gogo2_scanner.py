@@ -95,6 +95,17 @@ def test_stock_far_below_cloud_top_is_excluded(monkeypatch):
     assert detail == {}
 
 
+def test_stock_below_cloud_bottom_is_excluded_even_when_near_cloud_top(monkeypatch):
+    install_fake_indicators(monkeypatch)
+    df = make_weekly(close=96.0)
+    df.loc[df.index[-2], "Close"] = 89.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is False
+    assert detail == {}
+
+
 def test_pullback_detects_recent_breakout_near_support_after_three_week_limit(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=96.0)

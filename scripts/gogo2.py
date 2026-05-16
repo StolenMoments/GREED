@@ -123,6 +123,9 @@ def check_conditions(df,
     current_cloud_bot = min(last['span_a'], last['span_b'])
     current_close = last['Close']
 
+    if current_close < current_cloud_bot:
+        return False, {}
+
     current_above_cloud = current_close >= current_cloud_top
     near_cloud_top = current_cloud_top * 0.95 <= current_close < current_cloud_top
 
