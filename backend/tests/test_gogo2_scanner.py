@@ -106,6 +106,28 @@ def test_stock_below_cloud_bottom_is_excluded_even_when_near_cloud_top(monkeypat
     assert detail == {}
 
 
+def test_stock_too_far_above_cloud_top_is_excluded(monkeypatch):
+    install_fake_indicators(monkeypatch)
+    df = make_weekly(close=126.0)
+    df.loc[df.index[-1], "Volume"] = 2000.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is False
+    assert detail == {}
+
+
+def test_stock_at_cloud_gap_limit_can_still_pass(monkeypatch):
+    install_fake_indicators(monkeypatch)
+    df = make_weekly(close=125.0)
+    df.loc[df.index[-1], "Volume"] = 2000.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is True
+    assert detail["scan_type"] == "trend_confirm"
+
+
 def test_latest_weekly_candle_is_used_even_before_friday(monkeypatch):
     install_fake_indicators(monkeypatch, weekday=0)
     df = make_weekly(close=96.0)

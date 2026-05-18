@@ -133,6 +133,10 @@ def check_conditions(df,
         return False, {}
 
     close_vs_cloud_top_pct = pct_gap(current_close, current_cloud_top)
+    over_max_gap = current_close > current_cloud_top * max_cloud_gap
+    if over_max_gap:
+        return False, {}
+
     cloud_thickness_pct = pct_gap(current_cloud_top, current_cloud_bot) if current_close == 0 else (
         (current_cloud_top - current_cloud_bot) / current_close * 100
     )
@@ -212,9 +216,8 @@ def check_conditions(df,
 
     gc_hit = hit_gc_60_120 or hit_gc_20_60
 
-    over_max_gap = current_close > current_cloud_top * max_cloud_gap
     recent_breakout = candle_break_idx is not None and candle_break_week <= scan_candle_lookback
-    breakout_type = recent_breakout and current_above_cloud and not over_max_gap
+    breakout_type = recent_breakout and current_above_cloud
 
     structure_count = sum([
         tenkan_above_kijun,
@@ -273,8 +276,6 @@ def check_conditions(df,
         score += 1
     if 0 <= close_vs_cloud_top_pct <= 12:
         score += 1
-    if over_max_gap:
-        score -= 2
 
     scan_type = None
     if pullback_type:
@@ -419,7 +420,8 @@ def clear_progress():
 def process_ticker(ticker, name, market, start, end,
                    candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
                    recent_volume_weeks=4,
-                   fetch_retries=DEFAULT_FETCH_RETRIES):
+                   fetch_retries=DEFAULT_FETCH_RETRIES,
+                   max_cloud_gap=1.25):
     try:
         df = fetch_with_retries(
             lambda: fdr.DataReader(ticker, start, end),
@@ -439,6 +441,7 @@ def process_ticker(ticker, name, market, start, end,
             candle_cloud_lookback = candle_cloud_lookback,
             ma_cloud_lookback     = ma_cloud_lookback,
             gc_lookback           = gc_lookback,
+            max_cloud_gap         = max_cloud_gap,
             recent_volume_weeks   = recent_volume_weeks,
         )
 
@@ -513,7 +516,8 @@ def screen_market(market, start, end,
                   batch_size=50, max_workers=8,
                   file_lock=None, print_lock=None,
                   recent_volume_weeks=4,
-                  fetch_retries=DEFAULT_FETCH_RETRIES):
+                  fetch_retries=DEFAULT_FETCH_RETRIES,
+                  max_cloud_gap=1.25):
     try:
         tickers, names = get_ticker_list(market)
     except Exception as e:
@@ -552,6 +556,7 @@ def screen_market(market, start, end,
                     candle_cloud_lookback, ma_cloud_lookback, gc_lookback,
                     recent_volume_weeks,
                     fetch_retries,
+                    max_cloud_gap,
                 )
                 futures_map[future] = ticker
 
@@ -624,7 +629,8 @@ def screen_all(markets=None,
                force_restart=False,
                recent_volume_weeks=4,
                request_timeout=DEFAULT_REQUEST_TIMEOUT,
-               fetch_retries=DEFAULT_FETCH_RETRIES):
+               fetch_retries=DEFAULT_FETCH_RETRIES,
+               max_cloud_gap=1.25):
     if markets is None:
         markets = ['KOSPI', 'KOSDAQ']
 
@@ -640,6 +646,7 @@ def screen_all(markets=None,
     print(f"조회 기간    : {start} ~ {end}")
     print(f"배치 단위    : {batch_size}개 | 스레드 수: {max_workers}")
     print(f"데이터 조회  : timeout {request_timeout}초 | 재시도 {fetch_retries}회")
+    print(f"구름 이격 제외: {((max_cloud_gap - 1) * 100):.1f}% 초과")
     if candle_override or ma_override or gc_override:
         print(f"파라미터 오버라이드 → "
               f"캔들: {candle_override}주 | 이평선: {ma_override}주 | GC: {gc_override}주")
@@ -666,6 +673,7 @@ def screen_all(markets=None,
             print_lock          = print_lock,
             recent_volume_weeks = recent_volume_weeks,
             fetch_retries       = fetch_retries,
+            max_cloud_gap       = max_cloud_gap,
         )
 
     if not all_results:
@@ -723,6 +731,8 @@ def parse_args():
                         help='당일 진행 상태 무시하고 처음부터 재실행')
     parser.add_argument('--recent-vol-weeks', type=int, default=4,
                         help='최근 N 주 모두 volume>0 이어야 통과 (거래정지 필터, 기본 4, 0=비활성)')
+    parser.add_argument('--max-cloud-gap-pct', type=float, default=25.0,
+                        help='현재가가 구름 상단보다 N%% 초과 높으면 제외 (기본: 25)')
     parser.add_argument('--request-timeout', type=int, default=DEFAULT_REQUEST_TIMEOUT,
                         help=f'외부 데이터 요청 timeout 초 (기본: {DEFAULT_REQUEST_TIMEOUT})')
     parser.add_argument('--retries', type=int, default=DEFAULT_FETCH_RETRIES,
@@ -734,6 +744,7 @@ def parse_args():
 # ────────────────────────────────────────
 if __name__ == "__main__":
     args = parse_args()
+    max_cloud_gap = 1 + max(args.max_cloud_gap_pct, 0) / 100
 
     result_df = screen_all(
         markets             = ['KOSPI', 'KOSDAQ'],
@@ -747,6 +758,7 @@ if __name__ == "__main__":
         recent_volume_weeks = args.recent_vol_weeks,
         request_timeout     = args.request_timeout,
         fetch_retries       = args.retries,
+        max_cloud_gap       = max_cloud_gap,
     )
 
     # ==========================================

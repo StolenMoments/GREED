@@ -1211,5 +1211,9 @@ def test_run_gemini_passes_yolo_flag(
     )
 
     payload = json.loads(captured["args"][3])
-    assert payload["cmd"][1] == "--yolo"
-    assert payload["cmd"][2:5] == ["-p", "", "--output-format"]
+    cmd = payload["cmd"]
+    model_idx = cmd.index("--model")
+    assert cmd[model_idx + 1] == "gemini-3.1-pro-preview"
+    yolo_idx = cmd.index("--yolo")
+    assert yolo_idx > model_idx
+    assert cmd[yolo_idx + 1 : yolo_idx + 4] == ["-p", "", "--output-format"]

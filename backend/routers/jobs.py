@@ -1001,7 +1001,7 @@ def _run_codex(
 
 
 def _gemini_cmd() -> list[str]:
-    base_args = ["--yolo", "-p", "", "--output-format", "text"]
+    base_args = ["--model", "gemini-3.1-pro-preview", "--yolo", "-p", "", "--output-format", "text"]
     if sys.platform != "win32":
         return ["gemini", *base_args]
     # gemini.cmd (batch wrapper) drops empty-string args, breaking the -p "" stdin trigger.
