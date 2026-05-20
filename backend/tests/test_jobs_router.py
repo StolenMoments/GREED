@@ -1011,12 +1011,12 @@ def test_get_job_marks_model_exit_when_process_finishes_without_analysis(
 ) -> None:
     with test_db() as db:
         run = crud.create_run(db, memo="model exit")
-        job = crud.create_job(db, ticker="005930", run_id=run.id, model="gemini")
+        job = crud.create_job(db, ticker="005930", run_id=run.id, model="agy")
 
     output_dir = tmp_path / "jobs" / str(job.id)
     output_dir.mkdir(parents=True)
     (output_dir / jobs.EXIT_CODE_FILENAME).write_text("1", encoding="utf-8")
-    (output_dir / jobs.STDERR_LOG_FILENAME).write_text("Gemini CLI update failed", encoding="utf-8")
+    (output_dir / jobs.STDERR_LOG_FILENAME).write_text("Agy CLI update failed", encoding="utf-8")
     monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
 
     response = client.get(f"/api/jobs/{job.id}")
@@ -1024,8 +1024,8 @@ def test_get_job_marks_model_exit_when_process_finishes_without_analysis(
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "failed"
-    assert body["error_message"].startswith("model_exit: gemini: exit_code=1")
-    assert "Gemini CLI update failed" in body["error_message"]
+    assert body["error_message"].startswith("model_exit: agy: exit_code=1")
+    assert "Agy CLI update failed" in body["error_message"]
 
 
 def test_get_job_marks_model_start_failure_when_pid_file_missing(
@@ -1036,7 +1036,7 @@ def test_get_job_marks_model_start_failure_when_pid_file_missing(
 ) -> None:
     with test_db() as db:
         run = crud.create_run(db, memo="missing pid")
-        job = crud.create_job(db, ticker="005930", run_id=run.id, model="gemini")
+        job = crud.create_job(db, ticker="005930", run_id=run.id, model="agy")
         job_id = job.id
         saved_job = crud.get_job(db, job_id)
         assert saved_job is not None
@@ -1053,7 +1053,7 @@ def test_get_job_marks_model_start_failure_when_pid_file_missing(
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "failed"
-    assert body["error_message"].startswith("model_start: gemini: pid file was not created")
+    assert body["error_message"].startswith("model_start: agy: pid file was not created")
 
 
 def test_get_job_saves_raw_markdown_on_parse_failure(
@@ -1273,7 +1273,7 @@ def test_run_codex_writes_full_csv_to_prompt(
     assert "005930,Samsung,299" in prompt
 
 
-def test_run_gemini_passes_yolo_flag(
+def test_run_agy_passes_skip_permissions_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1286,7 +1286,7 @@ def test_run_gemini_passes_yolo_flag(
 
     monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
 
-    jobs._run_gemini(
+    jobs._run_agy(
         "ticker,name,close\n005930,Samsung,75000\n",
         jobs.SYSTEM_PROMPT,
         tmp_path / "analysis.md",
@@ -1298,5 +1298,4 @@ def test_run_gemini_passes_yolo_flag(
     )
 
     payload = json.loads(captured["args"][3])
-    assert payload["cmd"][1] == "--yolo"
-    assert payload["cmd"][2:5] == ["-p", "", "--output-format"]
+    assert payload["cmd"] == ["agy", "--dangerously-skip-permissions", "--print", ""]

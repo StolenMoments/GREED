@@ -55,7 +55,7 @@ def _seed_source(path: Path) -> None:
                     ticker="AAPL",
                     name="Apple Inc",
                     name_initials="AI",
-                    model="gemini",
+                    model="agy",
                     markdown="analysis 2",
                     judgment="HOLD",
                     trend="SIDEWAYS",

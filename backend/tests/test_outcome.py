@@ -31,7 +31,7 @@ def make_analysis(
         run_id=1,
         ticker="011790",
         name="SKC",
-        model="gemini-cli",
+        model="agy",
         markdown="analysis",
         judgment="매수",
         trend="상승",
