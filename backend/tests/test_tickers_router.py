@@ -121,6 +121,34 @@ def test_search_tickers_keeps_korean_name_search(
     assert response.json()[0] == {"code": "005930", "name": "삼성전자", "market": "KR"}
 
 
+def test_search_tickers_normalizes_compound_korean_initial_query(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add_all(
+        [
+            KrxStock(
+                code="003070",
+                name="코오롱글로벌",
+                name_initials="ㅋㅇㄹㄱㄹㅂ",
+                updated_at=seoul_now(),
+            ),
+            KrxStock(
+                code="003075",
+                name="코오롱글로벌우",
+                name_initials="ㅋㅇㄹㄱㄹㅂㅇ",
+                updated_at=seoul_now(),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/tickers/search", params={"q": "ㅋㅇㄺ"})
+
+    assert response.status_code == 200
+    assert response.json()[0] == {"code": "003070", "name": "코오롱글로벌", "market": "KR"}
+
+
 def test_search_tickers_prioritizes_exact_name_match(
     client: TestClient,
     db_session: Session,

@@ -5,6 +5,19 @@ import type { StockSummary } from '../types';
 
 const PAGE_SIZE = 25;
 const KOREAN_INITIALS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const COMPOUND_KOREAN_INITIALS: Record<string, string> = {
+  'ㄳ': 'ㄱㅅ',
+  'ㄵ': 'ㄴㅈ',
+  'ㄶ': 'ㄴㅎ',
+  'ㄺ': 'ㄹㄱ',
+  'ㄻ': 'ㄹㅁ',
+  'ㄼ': 'ㄹㅂ',
+  'ㄽ': 'ㄹㅅ',
+  'ㄾ': 'ㄹㅌ',
+  'ㄿ': 'ㄹㅍ',
+  'ㅀ': 'ㄹㅎ',
+  'ㅄ': 'ㅂㅅ',
+};
 
 type SortKey =
   | 'name'
@@ -47,7 +60,12 @@ function formatShortDate(value: string) {
 }
 
 function isKoreanInitialQuery(value: string) {
-  return Boolean(value) && [...value].every((char) => KOREAN_INITIALS.includes(char));
+  const normalized = normalizeKoreanInitialQuery(value);
+  return Boolean(normalized) && [...normalized].every((char) => KOREAN_INITIALS.includes(char));
+}
+
+function normalizeKoreanInitialQuery(value: string) {
+  return [...value].map((char) => COMPOUND_KOREAN_INITIALS[char] ?? char).join('');
 }
 
 const COL =
@@ -380,12 +398,13 @@ function StockSummaryPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return stocks;
+    const normalizedInitialQuery = normalizeKoreanInitialQuery(q);
     const shouldSearchInitials = isKoreanInitialQuery(q);
     return stocks.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.ticker.toLowerCase().includes(q) ||
-        (shouldSearchInitials && s.name_initials.includes(q)),
+        (shouldSearchInitials && s.name_initials.includes(normalizedInitialQuery)),
     );
   }, [stocks, query]);
 

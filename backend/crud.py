@@ -6,7 +6,11 @@ from typing import Literal, NamedTuple
 from sqlalchemy import Select, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
-from backend.korean_search import extract_korean_initials, is_korean_initial_query
+from backend.korean_search import (
+    extract_korean_initials,
+    is_korean_initial_query,
+    normalize_korean_initial_query,
+)
 from backend.models import Analysis, AnalysisJob, KrxStock, Run, StockPrice, UsStock
 from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
@@ -210,7 +214,8 @@ def _analysis_filter_stmt(
                 Analysis.name.ilike(pattern, escape="\\"),
             ]
             if is_korean_initial_query(query):
-                filters.append(Analysis.name_initials.ilike(pattern, escape="\\"))
+                initial_pattern = f"%{_escape_like(normalize_korean_initial_query(query))}%"
+                filters.append(Analysis.name_initials.ilike(initial_pattern, escape="\\"))
             stmt = stmt.where(or_(*filters))
     return stmt
 
@@ -486,10 +491,11 @@ def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
             KrxStock.code.ilike(f"{pattern}%", escape="\\")
         ).order_by(KrxStock.code).limit(10).all()
     if is_korean_initial_query(q):
+        initial_pattern = _escape_like(normalize_korean_initial_query(q))
         return db.query(KrxStock).filter(
-            KrxStock.name_initials.ilike(f"{pattern}%", escape="\\")
+            KrxStock.name_initials.ilike(f"{initial_pattern}%", escape="\\")
         ).order_by(
-            case((KrxStock.name_initials.ilike(pattern, escape="\\"), 0), else_=1),
+            case((KrxStock.name_initials.ilike(initial_pattern, escape="\\"), 0), else_=1),
             KrxStock.name,
             KrxStock.code,
         ).limit(10).all()

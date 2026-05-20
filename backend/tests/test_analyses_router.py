@@ -551,6 +551,47 @@ def test_list_all_analyses_filters_by_korean_initials(client: TestClient, db_ses
     assert [item["id"] for item in page_items(response)] == [pjmetal.id]
 
 
+def test_list_all_analyses_normalizes_compound_korean_initial_query(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = create_run(db_session, memo="compound initial query filter")
+    kolon = create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="003070",
+            name="코오롱글로벌",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매수",
+            trend="상승",
+            cloud_position="구름 위",
+            ma_alignment="정배열",
+        ),
+    )
+    create_analysis(
+        db_session,
+        AnalysisCreate(
+            run_id=run.id,
+            ticker="005930",
+            name="삼성전자",
+            model="gpt-5.4",
+            markdown=VALID_MARKDOWN,
+            judgment="매도",
+            trend="하락",
+            cloud_position="구름 아래",
+            ma_alignment="역배열",
+        ),
+    )
+
+    response = client.get("/api/analyses", params={"q": "ㅋㅇㄺ"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert [item["id"] for item in page_items(response)] == [kolon.id]
+
+
 def test_list_all_analyses_filters_by_entry_gap(client: TestClient, db_session: Session) -> None:
     run = create_run(db_session, memo="entry gap filter")
     near = create_analysis(

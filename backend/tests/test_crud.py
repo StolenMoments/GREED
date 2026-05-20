@@ -25,7 +25,11 @@ from backend.crud import (
     upsert_stock_price,
 )
 from backend.database import Base
-from backend.korean_search import extract_korean_initials, is_korean_initial_query
+from backend.korean_search import (
+    extract_korean_initials,
+    is_korean_initial_query,
+    normalize_korean_initial_query,
+)
 from backend.schemas import AnalysisCreate
 from backend.timezone import seoul_now
 
@@ -187,8 +191,11 @@ def test_get_analyses_filters_by_ticker_or_name(db_session: Session) -> None:
 def test_extract_korean_initials() -> None:
     assert extract_korean_initials("피제이메탈") == "ㅍㅈㅇㅁㅌ"
     assert extract_korean_initials("삼성전자") == "ㅅㅅㅈㅈ"
+    assert extract_korean_initials("코오롱글로벌") == "ㅋㅇㄹㄱㄹㅂ"
     assert extract_korean_initials("SK Hynix 005930") == ""
+    assert normalize_korean_initial_query("ㅋㅇㄺ") == "ㅋㅇㄹㄱ"
     assert is_korean_initial_query("ㅈㅇㅁ")
+    assert is_korean_initial_query("ㅋㅇㄺ")
     assert not is_korean_initial_query("ㅈㅇㅁ메")
 
 
