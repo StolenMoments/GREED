@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 import pandas as pd
@@ -987,7 +987,7 @@ def test_evaluate_single_outcome_endpoint_updates_ongoing_analysis(
         "backend.outcome.fetch_daily_df",
         lambda ticker, start, db=None: pd.DataFrame(
             [{"High": 83000, "Low": 76000}],
-            index=pd.to_datetime(["2026-05-15"]),
+            index=pd.to_datetime([analysis.created_at.date() + timedelta(days=1)]),
         ),
     )
 

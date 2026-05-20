@@ -286,8 +286,7 @@ def run_analysis_pipeline(job_id: int) -> None:
         ticker = normalize_ticker(job.ticker)
         job_output_dir = _job_output_dir(job.id)
 
-        # Remove stale output files from a previous job that shared this ID
-        # (e.g. SQLite and MariaDB running independently with overlapping auto-increment IDs).
+        # Remove stale output files from a previous job that shared this ID.
         for stale in (
             _analysis_path(job.id),
             _exit_code_path(job.id),
@@ -829,14 +828,6 @@ def _stock_name_from_csv_filename(csv_path: Path, ticker: str) -> str:
     return name
 
 
-def _trim_csv(csv_text: str, max_data_rows: int) -> str:
-    lines = csv_text.strip().splitlines()
-    header, data_rows = lines[0], lines[1:]
-    future_rows, hist_rows = data_rows[-26:], data_rows[:-26]
-    trimmed = hist_rows[-max_data_rows:] if len(hist_rows) > max_data_rows else hist_rows
-    return "\n".join([header] + trimmed + future_rows)
-
-
 def _claude_cmd() -> list[str]:
     model_flag = ["--model", "sonnet"]
     if sys.platform != "win32":
@@ -1009,7 +1000,7 @@ def _run_codex(
     stderr_path = stderr_path or PICK_OUTPUT_DIR / STDERR_LOG_FILENAME
     pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
     exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
-    prompt = _build_file_output_prompt(system_prompt, _trim_csv(csv_text, 200), analysis_path)
+    prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
     return _spawn_model_process(_codex_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 

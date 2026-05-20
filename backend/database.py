@@ -48,9 +48,9 @@ def ensure_database_ready() -> None:
 
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL environment variable is required")
-    if make_url(DATABASE_URL).get_backend_name() == "sqlite":
+    if make_url(DATABASE_URL).get_backend_name() not in {"mysql", "mariadb"}:
         raise RuntimeError(
-            "SQLite is not supported; set DATABASE_URL to a MariaDB connection string"
+            "Unsupported database backend; set DATABASE_URL to a MariaDB connection string"
         )
 
     if engine is None:
