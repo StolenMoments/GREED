@@ -591,16 +591,16 @@ def _is_windows_process_running(pid: int) -> bool:
 def _runner_for_model(model: str) -> Callable[..., subprocess.Popen]:
     if model == "codex":
         return _run_codex
-    if model == "gemini":
-        return _run_gemini
+    if model == "agy":
+        return _run_agy
     return _run_claude
 
 
 def _analysis_model_for_model(model: str | None) -> str:
     if model == "codex":
         return "codex-cli"
-    if model == "gemini":
-        return "gemini-cli"
+    if model == "agy":
+        return "agy"
     return "claude-code"
 
 
@@ -1012,23 +1012,11 @@ def _run_codex(
     return _spawn_model_process(_codex_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 
-def _gemini_cmd() -> list[str]:
-    base_args = ["--model", "gemini-3.1-pro-preview", "--yolo", "-p", "", "--output-format", "text"]
-    if sys.platform != "win32":
-        return ["gemini", *base_args]
-    # gemini.cmd (batch wrapper) drops empty-string args, breaking the -p "" stdin trigger.
-    # Call node + gemini.js directly so stdin is forwarded correctly.
-    gemini_js = (
-        Path.home()
-        / "AppData" / "Roaming" / "npm" / "node_modules"
-        / "@google" / "gemini-cli" / "bundle" / "gemini.js"
-    )
-    if gemini_js.exists():
-        return ["node", str(gemini_js), *base_args]
-    return ["gemini.cmd", *base_args]
+def _agy_cmd() -> list[str]:
+    return ["agy", "--dangerously-skip-permissions", "--print", ""]
 
 
-def _run_gemini(
+def _run_agy(
     csv_text: str,
     system_prompt: str = SYSTEM_PROMPT,
     analysis_path: Path | None = None,
@@ -1045,4 +1033,4 @@ def _run_gemini(
     pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
     exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
     prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
-    return _spawn_model_process(_gemini_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+    return _spawn_model_process(_agy_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)

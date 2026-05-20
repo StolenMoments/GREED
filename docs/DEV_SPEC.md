@@ -363,12 +363,12 @@ Base URL: `http://localhost:8000/api`
 }
 ```
 
-- `model` 허용 UI 값은 `claude`, `codex`, `gemini`이며 백엔드 기본값은 `claude`이다.
+- `model` 허용 UI 값은 `claude`, `codex`, `agy`이며 백엔드 기본값은 `claude`이다.
 - `ticker`는 코드, 미국 티커, 한국 종목명/초성 검색 결과를 받을 수 있다.
 - 성공 응답은 `202 Accepted`이며 `status`는 최초 `pending`이다.
 - 한국 종목은 `scripts/pick.py`, 미국 종목은 `scripts/pick_us.py`로 주봉 CSV를 만든다.
 - 당일 동일 티커 CSV는 `pick_output/chart_cache/{YYYYMMDD}/`에서 재사용하고, job별 산출물은 `pick_output/jobs/{job_id}/`에 복사한다.
-- 모델별 실행기는 `claude-code`, `codex-cli`, `gemini-cli` 분석 결과를 `analysis.md` 파일에 저장하도록 프롬프트를 만든다.
+- 모델별 실행기는 `claude-code`, `codex-cli`, `agy` 분석 결과를 `analysis.md` 파일에 저장하도록 프롬프트를 만든다.
 - Windows에서는 가능한 경우 배치 래퍼 대신 실제 실행 파일 또는 node 엔트리포인트를 호출해 stdin/exit code 문제를 줄인다.
 
 job 산출물:
@@ -545,4 +545,4 @@ npm run build
 
 - `skills/weekly-analysis/SKILL.md`는 `scripts/pick_output/` 경로를 안내하지만, 스크립트 구현 기준 기본 산출물 위치는 프로젝트 루트의 `pick_output/`이다.
 - 수동 입력 모달은 ticker와 name을 마크다운에서 자동 추출하지 않고 사용자가 직접 입력한다.
-- 수동 입력 모달의 모델 표기는 `GPT`, `Gemini`, `Claude`이고, 비동기 분석 잡의 모델 값은 `claude`, `codex`, `gemini`이다.
+- 수동 입력 모달의 모델 표기는 `GPT`, `Antigravity`, `Claude`이고, 비동기 분석 잡의 모델 값은 `claude`, `codex`, `agy`이다.
