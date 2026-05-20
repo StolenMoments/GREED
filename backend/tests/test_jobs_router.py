@@ -1298,4 +1298,35 @@ def test_run_agy_passes_skip_permissions_flag(
     )
 
     payload = json.loads(captured["args"][3])
-    assert payload["cmd"] == ["agy", "--dangerously-skip-permissions", "--print", ""]
+    assert payload["cmd"][1:] == ["--dangerously-skip-permissions", "--print", ""]
+
+
+def test_agy_cmd_uses_windows_exe_path_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agy_exe = tmp_path / "agy.exe"
+    agy_exe.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(jobs.sys, "platform", "win32")
+    monkeypatch.setattr(jobs, "_agy_windows_candidates", lambda: [agy_exe])
+
+    assert jobs._agy_cmd() == [str(agy_exe), "--dangerously-skip-permissions", "--print", ""]
+
+
+def test_agy_cmd_falls_back_to_windows_exe_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(jobs.sys, "platform", "win32")
+    monkeypatch.setattr(jobs, "_agy_windows_candidates", lambda: [tmp_path / "missing" / "agy.exe"])
+
+    assert jobs._agy_cmd() == ["agy.exe", "--dangerously-skip-permissions", "--print", ""]
+
+
+def test_agy_cmd_keeps_bare_command_off_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(jobs.sys, "platform", "linux")
+
+    assert jobs._agy_cmd() == ["agy", "--dangerously-skip-permissions", "--print", ""]

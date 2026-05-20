@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -1012,8 +1013,23 @@ def _run_codex(
     return _spawn_model_process(_codex_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 
+def _agy_windows_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "agy" / "bin" / "agy.exe")
+    candidates.append(Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe")
+    return candidates
+
+
 def _agy_cmd() -> list[str]:
-    return ["agy", "--dangerously-skip-permissions", "--print", ""]
+    args = ["--dangerously-skip-permissions", "--print", ""]
+    if sys.platform != "win32":
+        return ["agy", *args]
+    for exe in _agy_windows_candidates():
+        if exe.exists():
+            return [str(exe), *args]
+    return ["agy.exe", *args]
 
 
 def _run_agy(
