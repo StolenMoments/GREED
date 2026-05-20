@@ -50,7 +50,7 @@ app.include_router(tickers_router)
 @app.exception_handler(DBAPIError)
 async def database_exception_handler(request: Request, exc: DBAPIError) -> JSONResponse:
     if not is_database_unavailable_error(exc):
-        raise exc
+        raise
 
     mark_database_unavailable(exc)
     return JSONResponse(

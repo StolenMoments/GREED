@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from datetime import datetime
 import logging
 import os
 from pathlib import Path
@@ -135,26 +134,22 @@ def is_database_unavailable_error(exc: BaseException) -> bool:
 
 
 def get_database_health() -> dict[str, str]:
-    checked_at = _health_checked_at()
     try:
         ensure_database_ready()
         assert engine is not None
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        return {"status": "up", "checked_at": checked_at}
+        return {"status": "up", "checked_at": _health_checked_at()}
     except (DBAPIError, OperationalError) as exc:
         mark_database_unavailable(exc)
-        return {"status": "down", "checked_at": checked_at}
+        return {"status": "down", "checked_at": _health_checked_at()}
     except RuntimeError as exc:
         logger.warning("Database health check failed: %s", exc)
-        return {"status": "down", "checked_at": checked_at}
+        return {"status": "down", "checked_at": _health_checked_at()}
 
 
 def _health_checked_at() -> str:
-    now = seoul_now()
-    if isinstance(now, datetime):
-        return now.isoformat()
-    return str(now)
+    return seoul_now().isoformat()
 
 
 def get_db() -> Generator[Session, None, None]:
