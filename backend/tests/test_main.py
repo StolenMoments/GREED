@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from backend.database import get_db
-from backend.main import app
+from backend.main import UvicornAccessLogFilter, app
 
 
 def test_app_registers_expected_routes() -> None:
@@ -40,6 +42,40 @@ def test_cors_allows_localhost_5173() -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_uvicorn_access_log_filter_suppresses_success_statuses() -> None:
+    access_filter = UvicornAccessLogFilter()
+
+    for status_code in (200, 201, 202, 204):
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=0,
+            msg='%s - "%s %s HTTP/%s" %d',
+            args=("127.0.0.1:12345", "GET", "/api/health", "1.1", status_code),
+            exc_info=None,
+        )
+
+        assert access_filter.filter(record) is False
+
+
+def test_uvicorn_access_log_filter_keeps_non_success_statuses() -> None:
+    access_filter = UvicornAccessLogFilter()
+
+    for status_code in (302, 400, 404, 422, 500):
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=0,
+            msg='%s - "%s %s HTTP/%s" %d',
+            args=("127.0.0.1:12345", "GET", "/api/health", "1.1", status_code),
+            exc_info=None,
+        )
+
+        assert access_filter.filter(record) is True
 
 
 def test_health_reports_database_up(monkeypatch) -> None:

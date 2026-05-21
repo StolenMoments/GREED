@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
+from logging import LogRecord
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
@@ -19,6 +21,30 @@ from backend.database import (
 from backend.routers import analyses_router, jobs_router, runs_router, stock_router, stocks_router, tickers_router
 
 
+class UvicornAccessLogFilter(logging.Filter):
+    def filter(self, record: LogRecord) -> bool:
+        status_code = self._get_status_code(record)
+        return status_code is None or not 200 <= status_code < 300
+
+    @staticmethod
+    def _get_status_code(record: LogRecord) -> int | None:
+        if not isinstance(record.args, tuple) or not record.args:
+            return None
+
+        try:
+            return int(record.args[-1])
+        except (TypeError, ValueError):
+            return None
+
+
+def configure_access_log_filter() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if any(isinstance(log_filter, UvicornAccessLogFilter) for log_filter in access_logger.filters):
+        return
+
+    access_logger.addFilter(UvicornAccessLogFilter())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
@@ -29,6 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 _cors_origin = os.getenv("CORS_ORIGIN", "http://localhost:5173")
+configure_access_log_filter()
 
 app = FastAPI(title="Greed API", lifespan=lifespan)
 app.add_middleware(
