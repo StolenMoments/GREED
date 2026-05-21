@@ -19,7 +19,6 @@ logs/
 .claude/
 node_modules/
 package-lock.json
-!mobile/package-lock.json
 pick_output/
 screening_*.csv
 screening_progress.json

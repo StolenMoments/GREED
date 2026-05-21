@@ -1,10 +1,6 @@
 {
   "scripts": {
     "back":"python.exe -m uvicorn backend.main:app --reload",
-    "front": "cd frontend && node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173",
-    "mobile-back": "cd backend-mobile && python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8001",
-    "mobile-front": "cd mobile && node node_modules/expo/bin/cli start --android",
-    "mobile-build:apk": "cd mobile && npm run build:apk",
-    "mobile-build:apk:debug": "cd mobile && npm run build:apk:debug"
+    "front": "cd frontend && node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173"
   }
 }
