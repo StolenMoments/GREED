@@ -20,12 +20,11 @@ FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
     "ma_alignment": re.compile(r"\*{0,2}MA 배열\*{0,2}\s*:\s*\*{0,2}\s*(정배열|역배열|혼조)"),
 }
 
-# 3컬럼 테이블(구분|조건|가격대) 구조를 가정. 진입 행은 눌림/돌파 2개 행도 허용한다.
-ENTRY_PRICE_PATTERN = re.compile(r"^\|\s*[^|\n]*진입[^|\n]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE)
 PRICE_PATTERNS: dict[str, re.Pattern[str]] = {
     "target_price": re.compile(r"^\|\s*1차\s*목표[^|]*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
     "stop_loss": re.compile(r"^\|\s*손절 기준\s*\|.*?\|\s*([^|\n]+)\|?\s*$", re.MULTILINE),
 }
+ENTRY_LABEL_PRIORITY = {"눌림": 0, "진입": 1, "돌파": 2}
 
 JUDGMENT_BOLD_PATTERN = re.compile(r"\*\*\[?\s*(매수|홀드|매도)\s*\]?\*\*")
 JUDGMENT_FALLBACK_PATTERN = re.compile(
@@ -65,18 +64,24 @@ def parse_markdown(markdown: str) -> ParseResult:
             continue
         data[field_name] = match.group(1).strip()
 
-    entry_values = ENTRY_PRICE_PATTERN.findall(markdown)
-    price_min, price_max = _parse_price_values(entry_values)
-    data["entry_price"] = price_min
-    data["entry_price_max"] = price_max
-
     for field_name, pattern in PRICE_PATTERNS.items():
         match = pattern.search(markdown)
         price_min, price_max = _parse_price(match.group(1)) if match is not None else (None, None)
         data[field_name] = price_min
         data[f"{field_name}_max"] = price_max
 
-    if _has_price_consistency_error(data):
+    entry_candidates = parse_entry_candidates(markdown)
+    selected_entry = _select_representative_entry_candidate(
+        candidates=entry_candidates,
+        data=data,
+    )
+    if selected_entry is None and entry_candidates:
+        selected_entry = _preferred_entry_candidate(entry_candidates)
+
+    data["entry_price"] = selected_entry.price if selected_entry is not None else None
+    data["entry_price_max"] = selected_entry.price_max if selected_entry is not None else None
+
+    if _has_price_consistency_error(data, entry_candidates):
         failed.append("price_consistency")
 
     return ParseResult(
@@ -130,6 +135,50 @@ def _normalize_entry_label(raw_label: str) -> str:
     return "진입"
 
 
+def _select_representative_entry_candidate(
+    candidates: list[EntryCandidate],
+    data: dict[str, str | float | None],
+) -> EntryCandidate | None:
+    if not candidates:
+        return None
+
+    if data.get("judgment") not in {"매수", "홀드"}:
+        return _preferred_entry_candidate(candidates)
+
+    for candidate in sorted(candidates, key=_entry_candidate_sort_key):
+        if _is_price_consistent_for_entry(candidate, data):
+            return candidate
+
+    return None
+
+
+def _preferred_entry_candidate(candidates: list[EntryCandidate]) -> EntryCandidate:
+    return sorted(candidates, key=_entry_candidate_sort_key)[0]
+
+
+def _entry_candidate_sort_key(candidate: EntryCandidate) -> tuple[int, float]:
+    return (ENTRY_LABEL_PRIORITY.get(candidate.label, ENTRY_LABEL_PRIORITY["진입"]), candidate.price)
+
+
+def _is_price_consistent_for_entry(
+    candidate: EntryCandidate,
+    data: dict[str, str | float | None],
+) -> bool:
+    entry_low = min(candidate.price, candidate.price_max) if candidate.price_max is not None else candidate.price
+    entry_high = max(candidate.price, candidate.price_max) if candidate.price_max is not None else candidate.price
+
+    target_min = _as_float(data.get("target_price"))
+    target_max = _as_float(data.get("target_price_max")) or target_min
+    if target_max is not None and target_max < entry_high:
+        return False
+
+    stop_min = _as_float(data.get("stop_loss"))
+    if stop_min is not None and stop_min > entry_low:
+        return False
+
+    return True
+
+
 def _parse_price_values(raw_values: list[str]) -> tuple[float | None, float | None]:
     values: list[float] = []
     for raw_value in raw_values:
@@ -146,10 +195,18 @@ def _parse_price_values(raw_values: list[str]) -> tuple[float | None, float | No
     return lo, (hi if hi != lo else None)
 
 
-def _has_price_consistency_error(data: dict[str, str | float | None]) -> bool:
+def _has_price_consistency_error(
+    data: dict[str, str | float | None],
+    entry_candidates: list[EntryCandidate],
+) -> bool:
     # 매도는 보유분 정리/진입 회피 의미로 쓰이므로 롱 포지션 가격 관계를 강제하지 않는다.
     if data.get("judgment") not in {"매수", "홀드"}:
         return False
+
+    if entry_candidates and not any(
+        _is_price_consistent_for_entry(candidate, data) for candidate in entry_candidates
+    ):
+        return True
 
     entry_min = _as_float(data.get("entry_price"))
     if entry_min is None:

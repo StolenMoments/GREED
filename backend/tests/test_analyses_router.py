@@ -60,10 +60,31 @@ INVALID_PRICE_MARKDOWN = """
 ### 5. 진입/청산 시나리오
 | 구분 | 조건 | 가격대 |
 |------|------|--------|
-| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,980원 |
 | 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
 | 1차 목표 | 2차 저항 도달 | 1,963원 |
 | 손절 기준 | 2차 지지 이탈 | 1,626원 |
+"""
+
+
+MIXED_ENTRY_MARKDOWN = """
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 정배열
+
+### 4. 매매 판정
+**매수**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 전환선 부근 조정 시 기준선 지지 확인 | 9,600~9,775원 |
+| 돌파 진입 | 직전 고가 종가 기준 돌파 확인 | 12,000원 이상 |
+| 1차 목표 | 직전 주 고가 저항 도달 | 11,920원 |
+| 손절 기준 | 기준선 종가 하향 이탈 | 9,600원 아래 종가 |
 """
 
 
@@ -189,6 +210,33 @@ def test_create_analysis_returns_422_when_price_scenario_is_inconsistent(
     body = response.json()
     assert body["detail"] == "파싱 실패"
     assert body["failed_fields"] == ["price_consistency"]
+
+
+def test_create_analysis_accepts_valid_pullback_when_breakout_is_above_target(
+    client: TestClient, db_session: Session
+) -> None:
+    run = create_run(db_session, memo="mixed entry analysis run")
+
+    response = client.post(
+        "/api/analyses",
+        json={
+            "run_id": run.id,
+            "ticker": "001540",
+            "name": "안국약품",
+            "model": "gpt-5.4",
+            "markdown": MIXED_ENTRY_MARKDOWN,
+            "judgment": "보류",
+            "trend": "보류",
+            "cloud_position": "보류",
+            "ma_alignment": "보류",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["entry_price"] == 9600.0
+    assert body["entry_price_max"] == 9775.0
+    assert body["target_price"] == 11920.0
 
 
 def test_list_analyses_by_run_filters_by_judgment(client: TestClient, db_session: Session) -> None:

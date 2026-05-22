@@ -147,7 +147,7 @@ def test_parse_markdown_preserves_decimal_price_values() -> None:
 
     assert result.success is True
     assert result.data["entry_price"] == 266.17
-    assert result.data["entry_price_max"] == 272.50
+    assert result.data["entry_price_max"] is None
     assert result.data["target_price"] == 285.75
     assert result.data["stop_loss"] == 259.40
 
@@ -176,7 +176,7 @@ def test_parse_markdown_captures_two_entry_scenarios() -> None:
     assert result.success is True
     assert result.failed == []
     assert result.data["entry_price"] == 1659.0
-    assert result.data["entry_price_max"] == 1998.0
+    assert result.data["entry_price_max"] is None
     assert result.data["target_price"] == 2150.0
     assert result.data["stop_loss"] == 1626.0
 
@@ -197,7 +197,36 @@ def test_parse_entry_candidates_keeps_pullback_and_breakout_separate() -> None:
     ]
 
 
-def test_parse_markdown_rejects_long_target_below_highest_entry() -> None:
+def test_parse_markdown_accepts_pullback_when_breakout_is_above_target() -> None:
+    markdown = """
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 정배열
+
+### 4. 매매 판정
+**매수**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 전환선 부근 조정 시 기준선 지지 확인 | 9,600~9,775원 |
+| 돌파 진입 | 직전 고가 종가 기준 돌파 확인 | 12,000원 이상 |
+| 1차 목표 | 직전 주 고가 저항 도달 | 11,920원 |
+| 손절 기준 | 기준선 종가 하향 이탈 | 9,600원 아래 종가 |
+"""
+
+    result = parse_markdown(markdown)
+
+    assert result.success is True
+    assert result.failed == []
+    assert result.data["entry_price"] == 9600.0
+    assert result.data["entry_price_max"] == 9775.0
+    assert result.data["target_price"] == 11920.0
+    assert result.data["stop_loss"] == 9600.0
+
+
+def test_parse_markdown_rejects_when_all_long_entries_are_above_target() -> None:
     markdown = """
 ### 1. 현재 구조 요약
 - 추세: 상승
@@ -210,7 +239,7 @@ def test_parse_markdown_rejects_long_target_below_highest_entry() -> None:
 ### 5. 진입/청산 시나리오
 | 구분 | 조건 | 가격대 |
 |------|------|--------|
-| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,980원 |
 | 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
 | 1차 목표 | 2차 저항 도달 | 1,963원 |
 | 손절 기준 | 1차 지지 이탈 | 1,626원 |
@@ -220,8 +249,8 @@ def test_parse_markdown_rejects_long_target_below_highest_entry() -> None:
 
     assert result.success is False
     assert "price_consistency" in result.failed
-    assert result.data["entry_price"] == 1659.0
-    assert result.data["entry_price_max"] == 1998.0
+    assert result.data["entry_price"] == 1980.0
+    assert result.data["entry_price_max"] is None
     assert result.data["target_price"] == 1963.0
 
 

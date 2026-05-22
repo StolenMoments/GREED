@@ -56,10 +56,31 @@ INVALID_PRICE_MARKDOWN = """
 ### 5. 진입/청산 시나리오
 | 구분 | 조건 | 가격대 |
 |------|------|--------|
-| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,659원 |
+| 눌림 진입 | 1차 지지선 부근 조정 확인 | 1,980원 |
 | 돌파 진입 | 1차 저항 주봉 종가 돌파 확인 | 1,998원 |
 | 1차 목표 | 2차 저항 도달 | 1,963원 |
 | 손절 기준 | 2차 지지 이탈 | 1,626원 |
+"""
+
+
+MIXED_ENTRY_MARKDOWN = """
+## 종목 분석 결과
+
+### 1. 현재 구조 요약
+- 추세: 상승
+- 구름대 위치: 구름 위
+- MA 배열: 정배열
+
+### 4. 매매 판정
+**매수**
+
+### 5. 진입/청산 시나리오
+| 구분 | 조건 | 가격대 |
+|------|------|--------|
+| 눌림 진입 | 전환선 부근 조정 시 기준선 지지 확인 | 9,600~9,775원 |
+| 돌파 진입 | 직전 고가 종가 기준 돌파 확인 | 12,000원 이상 |
+| 1차 목표 | 직전 주 고가 저항 도달 | 11,920원 |
+| 손절 기준 | 기준선 종가 하향 이탈 | 9,600원 아래 종가 |
 """
 
 
@@ -667,6 +688,36 @@ def test_get_job_finalizes_analysis_file(
         assert analysis.model == "claude-code"
         assert analysis.judgment == "매수"
         assert analysis.entry_price == 75000.0
+
+
+def test_get_job_finalizes_when_pullback_is_valid_and_breakout_is_above_target(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="finalize mixed entry")
+        job = crud.create_job(db, ticker="001540", run_id=run.id)
+
+    output_dir = tmp_path / "jobs" / str(job.id)
+    _write_csv(output_dir, "001540_AnGuk_weekly_20260522.csv", close="10730")
+    (output_dir / jobs.ANALYSIS_FILENAME).write_text(MIXED_ENTRY_MARKDOWN, encoding="utf-8")
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+
+    response = client.get(f"/api/jobs/{job.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "done"
+    assert body["analysis_id"] is not None
+
+    with test_db() as db:
+        analysis = crud.get_analysis(db, body["analysis_id"])
+        assert analysis is not None
+        assert analysis.entry_price == 9600.0
+        assert analysis.entry_price_max == 9775.0
+        assert analysis.target_price == 11920.0
 
 
 def test_get_job_refreshes_stock_price_after_finalizing_analysis(
