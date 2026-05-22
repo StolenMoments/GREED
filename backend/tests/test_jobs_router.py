@@ -1281,6 +1281,30 @@ def test_run_codex_writes_full_csv_to_prompt(
     assert "005930,Samsung,299" in prompt
 
 
+def test_file_output_prompt_identifies_last_real_week_before_future_cloud_rows(
+    tmp_path: Path,
+) -> None:
+    csv_text = "\n".join(
+        [
+            "date,ticker,name,open,high,low,close,volume,ma20,ma60,ma120,ichi_conv,ichi_base,cloud_top,cloud_bottom",
+            "2026-05-11,003010,혜인,7330,7350,6170,6230,1899763,5776,5422,5373,7015,6830,5484,5225",
+            "2026-05-18,003010,혜인,6120,6180,5530,6040,1294957,5810,5443,5377,7015,6830,5427,5225",
+            "2026-05-25,003010,혜인,,,,,,,,,,,,5427,5225",
+        ]
+    )
+
+    prompt = jobs._build_file_output_prompt(
+        jobs.SYSTEM_PROMPT,
+        csv_text,
+        tmp_path / "analysis.md",
+    )
+
+    assert "분석 기준 행: 2026-05-18" in prompt
+    assert "close=6040" in prompt
+    assert "ma20=5810" in prompt
+    assert "미래 구름 행(OHLC 빈 행)을 현재가 분석 기준으로 사용하지 마세요." in prompt
+
+
 def test_run_agy_passes_skip_permissions_flag(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

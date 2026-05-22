@@ -9,6 +9,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from io import StringIO
 from pathlib import Path
 from threading import Lock
 
@@ -851,6 +852,7 @@ def _claude_cmd() -> list[str]:
 
 
 def _build_file_output_prompt(system_prompt: str, csv_text: str, analysis_path: Path) -> str:
+    current_week_context = _current_week_context(csv_text)
     return f"""{system_prompt}
 
 추가 지시:
@@ -858,9 +860,64 @@ def _build_file_output_prompt(system_prompt: str, csv_text: str, analysis_path: 
 - 저장 경로: {analysis_path.resolve()}
 - UTF-8 텍스트 파일로 저장하세요.
 - 파일 내용은 위 출력 형식의 마크다운만 포함해야 하며, 코드블록/설명/요약 문장을 추가하지 마세요.
+- 현재 구조/현재가/지지/저항/목표/손절은 반드시 아래 '분석 기준 행'을 기준으로 판단하세요.
+- 미래 구름 행(OHLC 빈 행)을 현재가 분석 기준으로 사용하지 마세요.
+
+{current_week_context}
 
 CSV:
 {csv_text}"""
+
+
+def _current_week_context(csv_text: str) -> str:
+    row = _last_real_week_row(csv_text)
+    if row is None:
+        return "분석 기준 행: 확인 불가"
+
+    fields = [
+        "date",
+        "ticker",
+        "name",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "volume_ratio_20",
+        "ma20",
+        "ma60",
+        "ma120",
+        "atr14",
+        "atr14_pct",
+        "rsi14",
+        "macd",
+        "macd_signal",
+        "macd_hist",
+        "ichi_conv",
+        "ichi_base",
+        "cloud_top",
+        "cloud_bottom",
+        "cloud_thickness",
+        "close_vs_cloud_top_pct",
+        "conv_base_gap_pct",
+    ]
+    values = [f"{field}={row[field].strip()}" for field in fields if row.get(field, "").strip()]
+    date_value = row.get("date", "").strip() or "확인 불가"
+    return "분석 기준 행: " + date_value + "\n" + ", ".join(values)
+
+
+def _last_real_week_row(csv_text: str) -> dict[str, str] | None:
+    try:
+        rows = csv.DictReader(StringIO(csv_text))
+        real_rows = [
+            row
+            for row in rows
+            if all(row.get(field, "").strip() for field in ("open", "high", "low", "close"))
+        ]
+    except csv.Error:
+        return None
+
+    return real_rows[-1] if real_rows else None
 
 
 def _spawn_model_process(
