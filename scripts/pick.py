@@ -1,11 +1,11 @@
 """
 weekly_stock.py
-종목코드를 입력받아 5년치 주봉 데이터를 CSV로 추출합니다.
+종목코드를 입력받아 3년치 주봉 데이터를 CSV로 추출합니다.
 포함 지표: MA20/60/120, ATR14, RSI14, MACD, 교차/다이버전스 신호, 일목균형표 (전환/기준/선행A,B/후행)
 
 사용법:
     python pick.py 005930
-    python pick.py 005930 --years 5 --output ./output
+    python pick.py 005930 --years 3 --output ./output
 """
 
 import argparse
@@ -507,7 +507,7 @@ def print_summary(df: pd.DataFrame, ticker: str, stock_name: str, filepath: Path
 
 def run_pick(
     ticker: str,
-    years: int = 5,
+    years: int = 3,
     output_dir: str = "./output",
     no_future_cloud: bool = False,
     stock_name: str = None,
@@ -557,7 +557,7 @@ def run_pick(
 def main():
     parser = argparse.ArgumentParser(description="주봉 데이터 CSV 추출기")
     parser.add_argument("ticker",              help="종목코드 (예: 005930)")
-    parser.add_argument("--years",   type=int, default=5,        help="조회 기간 (기본: 5년)")
+    parser.add_argument("--years",   type=int, default=3,        help="조회 기간 (기본: 3년)")
     parser.add_argument("--output",            default="./output", help="출력 디렉토리 (기본: ./output)")
     parser.add_argument("--no-future-cloud",   action="store_true", help="미래 구름 행 제외")
     parser.add_argument("--market",            default=None, help="Market label for filename (e.g. KOSPI, KOSDAQ)")

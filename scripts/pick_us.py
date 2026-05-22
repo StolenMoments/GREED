@@ -6,7 +6,7 @@ MA20/60/120, ATR14, RSI14, MACD, cross/divergence signals, and Ichimoku indicato
 
 Usage:
     python scripts/pick_us.py AAPL
-    python scripts/pick_us.py NVDA --years 5 --output ./pick_output
+    python scripts/pick_us.py NVDA --years 3 --output ./pick_output
 """
 
 import argparse
@@ -449,7 +449,7 @@ def print_summary(df: pd.DataFrame, ticker: str, stock_name: str, filepath: Path
 
 def run_pick_us(
     ticker: str,
-    years: int = 5,
+    years: int = 3,
     output_dir: str = "./output",
     no_future_cloud: bool = False,
     stock_name: str | None = None,
@@ -489,7 +489,7 @@ def run_pick_us(
 def main() -> None:
     parser = argparse.ArgumentParser(description="US weekly stock CSV exporter")
     parser.add_argument("ticker", help="US ticker symbol (e.g. AAPL, MSFT, NVDA)")
-    parser.add_argument("--years", type=int, default=5, help="Lookup period in years (default: 5)")
+    parser.add_argument("--years", type=int, default=3, help="Lookup period in years (default: 3)")
     parser.add_argument("--output", default="./output", help="Output directory (default: ./output)")
     parser.add_argument("--no-future-cloud", action="store_true", help="Exclude future cloud rows")
     parser.add_argument("--market", default=None, help="Market label for filename (e.g. NASDAQ, NYSE, AMEX)")
