@@ -423,12 +423,12 @@ python scripts/gogo2.py --candle 10 --ma 5 --gc 5 --workers 10 --batch 50 --week
 - KOSPI, KOSDAQ을 대상으로 스크리닝한다.
 - 기본 조회 기간은 160주이다.
 - 결과와 진행 상태는 `pick_output/`에 저장한다.
-- 조건 충족 종목은 자동으로 `pick.run_pick()`에 전달되어 5년치 주봉 CSV가 생성된다.
+- 조건 충족 종목은 자동으로 `pick.run_pick()`에 전달되어 3년치 주봉 CSV가 생성된다.
 
 ### 7-2. pick.py
 
 ```bash
-python scripts/pick.py 005930 --years 5 --output ./pick_output
+python scripts/pick.py 005930 --years 3 --output ./pick_output
 ```
 
 - 한국 단일 종목의 주봉 데이터를 추출한다.
@@ -439,7 +439,7 @@ python scripts/pick.py 005930 --years 5 --output ./pick_output
 
 ```bash
 python scripts/pick_us.py AAPL
-python scripts/pick_us.py NVDA --years 5 --output ./pick_output
+python scripts/pick_us.py NVDA --years 3 --output ./pick_output
 ```
 
 - 미국 단일 종목의 주봉 데이터를 추출한다.

@@ -765,10 +765,10 @@ if __name__ == "__main__":
     # ★ 추가된 부분: 스크리닝 결과 종목들을 pick.py로 추출
     # ==========================================
     if result_df is not None and not result_df.empty:
-        output_folder = OUTPUT_DIR # 5년치 주봉 CSV가 저장될 폴더 이름
+        output_folder = OUTPUT_DIR # 3년치 주봉 CSV가 저장될 폴더 이름
         
         print(f"\n{'='*60}")
-        print(f"🚀 스크리닝된 {len(result_df)}개 종목에 대해 5년치 주봉 데이터 추출을 시작합니다.")
+        print(f"🚀 스크리닝된 {len(result_df)}개 종목에 대해 3년치 주봉 데이터 추출을 시작합니다.")
         print(f"{'='*60}\n")
 
         success_count = 0
@@ -781,7 +781,7 @@ if __name__ == "__main__":
                 # pick.py 의 run_pick 함수 호출
                 pick.run_pick(
                     ticker=ticker, 
-                    years=5, 
+                    years=3, 
                     output_dir=output_folder, 
                     stock_name=name, # 종목명을 바로 넘겨주어 속도 최적화
                     market=market,

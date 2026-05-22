@@ -183,7 +183,7 @@ NaN 처리: NaN 구간 지표는 판단에서 제외하고 명시.
 수치 근거 없는 추상적 표현 사용 금지.
 기술적 분석 외 펀더멘털, 뉴스, 경제 이슈 언급 금지.
 
-CSV는 5년치 주봉 데이터입니다. 마지막 26행은 선행스팬 전용 미래 구름 행입니다.
+CSV는 3년치 주봉 데이터입니다. 마지막 26행은 선행스팬 전용 미래 구름 행입니다.
 기술적 분석을 수행하고 매수/홀드/매도 판정을 내려주세요."""
 
 SYSTEM_PROMPT = KR_SYSTEM_PROMPT
@@ -478,12 +478,12 @@ def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
     if market_for_ticker(ticker) == "US":
         from scripts.pick_us import run_pick_us
 
-        run_pick_us(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
+        run_pick_us(ticker, years=3, output_dir=str(output_dir), stock_name=stock_name)
         return
 
     from scripts.pick import run_pick
 
-    run_pick(ticker, years=5, output_dir=str(output_dir), stock_name=stock_name)
+    run_pick(ticker, years=3, output_dir=str(output_dir), stock_name=stock_name)
 
 
 def _resolve_stock_name(db: Session, ticker: str) -> str:
