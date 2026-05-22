@@ -102,7 +102,7 @@ export interface AnalysisPaginationParams {
 
 export type JobStatus = 'pending' | 'done' | 'failed';
 
-export type AnalysisModel = 'claude' | 'codex' | 'agy';
+export type AnalysisModel = 'claude' | 'codex' | 'gemini';
 
 export interface Job {
   id: number;
