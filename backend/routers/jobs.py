@@ -1019,7 +1019,7 @@ def _agy_windows_candidates() -> list[Path]:
 
 
 def _agy_cmd() -> list[str]:
-    args = ["--dangerously-skip-permissions", "--print", ""]
+    args = ["--dangerously-skip-permissions", "--print", "-"]
     if sys.platform != "win32":
         return ["agy", *args]
     for exe in _agy_windows_candidates():
