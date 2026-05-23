@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base, get_db
 from backend.models import Analysis, Run
 from backend.outcome import OUTCOME_ONGOING, OUTCOME_STOP, OUTCOME_TARGET
-from backend.routers.stats import router
+from backend.routers.stats import normalize_model, router
 
 
 @pytest.fixture()
@@ -229,97 +229,42 @@ def test_by_model_multiple_models(client: TestClient, db_session: Session) -> No
     assert sorted(models) == ["claude", "gemini", "rule"]
 
 
-# ---------------------------------------------------------------------------
-# head-to-head
-# ---------------------------------------------------------------------------
-
-def test_head_to_head_no_run_id(client: TestClient) -> None:
-    """run_id 없으면 빈 응답."""
-    resp = client.get("/api/stats/head-to-head")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["tickers"] == 0
-    assert data["matrix"] == []
-    assert data["agreement"] == {}
-
-
-def test_head_to_head_empty_run(client: TestClient, db_session: Session) -> None:
-    """분석이 0건인 run → 빈 응답."""
+def test_by_model_groups_model_variants(client: TestClient, db_session: Session) -> None:
+    """claude + claude-code → 'claude' 단일 항목, gemini-cli + AGY → 'gemini' 단일 항목."""
     run = _make_run(db_session)
+    _make_analysis(db_session, run.id, "claude", "매수")
+    _make_analysis(db_session, run.id, "claude-code", "홀드")
+    _make_analysis(db_session, run.id, "gemini-cli", "매수")
+    _make_analysis(db_session, run.id, "AGY", "매도")
     db_session.commit()
 
-    resp = client.get(f"/api/stats/head-to-head?run_id={run.id}")
+    resp = client.get("/api/stats/by-model")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["run_id"] == run.id
-    assert data["tickers"] == 0
-    assert data["matrix"] == []
-    assert data["agreement"] == {}
+    models = {s["model"]: s for s in resp.json()}
+    assert "claude" in models
+    assert "claude-code" not in models
+    assert models["claude"]["total"] == 2
+    assert "gemini" in models
+    assert "gemini-cli" not in models
+    assert "AGY" not in models
+    assert models["gemini"]["total"] == 2
 
 
-def test_head_to_head_two_models(client: TestClient, db_session: Session) -> None:
-    """
-    rule: AAAA=매수(목표달성, e=100 t=120 s=90), BBBB=매수(손절, e=100 t=120 s=90)
-    claude: AAAA=매수(목표달성, e=100 t=120 s=90), BBBB=홀드
-
-    손계산:
-      공통 ticker: 2 (AAAA, BBBB)
-      rule — buy=2, hits=1, stops=1, win_rate=0.5, expectancy=5.0
-      claude — buy=1, hits=1, stops=0, win_rate=1.0, expectancy=20.0
-      agreement: claude_and_rule=1 (AAAA), rule_only=1 (BBBB)
-    """
-    run = _make_run(db_session)
-    t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    odate = date(2025, 2, 5)
-
-    _make_analysis(db_session, run.id, "rule", "매수", ticker="AAAA",
-                   outcome=OUTCOME_TARGET, outcome_date=odate,
-                   entry_price=100, target_price=120, stop_loss=90, created_at=t0)
-    _make_analysis(db_session, run.id, "rule", "매수", ticker="BBBB",
-                   outcome=OUTCOME_STOP, outcome_date=odate,
-                   entry_price=100, target_price=120, stop_loss=90, created_at=t0)
-    _make_analysis(db_session, run.id, "claude", "매수", ticker="AAAA",
-                   outcome=OUTCOME_TARGET, outcome_date=odate,
-                   entry_price=100, target_price=120, stop_loss=90, created_at=t0)
-    _make_analysis(db_session, run.id, "claude", "홀드", ticker="BBBB")
-    db_session.commit()
-
-    resp = client.get(f"/api/stats/head-to-head?run_id={run.id}")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["run_id"] == run.id
-    assert data["tickers"] == 2
-
-    matrix = {row["model"]: row for row in data["matrix"]}
-    assert matrix["rule"]["buy"] == 2
-    assert matrix["rule"]["hits"] == 1
-    assert matrix["rule"]["stops"] == 1
-    assert matrix["rule"]["expectancy_pct"] == pytest.approx(5.0)
-
-    assert matrix["claude"]["buy"] == 1
-    assert matrix["claude"]["hits"] == 1
-    assert matrix["claude"]["stops"] == 0
-    assert matrix["claude"]["expectancy_pct"] == pytest.approx(20.0)
-
-    agreement = data["agreement"]
-    assert agreement.get("claude_and_rule") == 1
-    assert agreement.get("rule_only") == 1
-
-
-def test_head_to_head_single_model(client: TestClient, db_session: Session) -> None:
-    """모델이 1개면 교집합 = 해당 모델 전체 ticker."""
-    run = _make_run(db_session)
-    _make_analysis(db_session, run.id, "rule", "매수", ticker="AAAA")
-    _make_analysis(db_session, run.id, "rule", "홀드", ticker="BBBB")
-    db_session.commit()
-
-    resp = client.get(f"/api/stats/head-to-head?run_id={run.id}")
-    data = resp.json()
-    assert data["tickers"] == 2
-    assert len(data["matrix"]) == 1
-    assert data["matrix"][0]["model"] == "rule"
-    assert data["matrix"][0]["buy"] == 1
-    assert data["agreement"] == {"rule_only": 1}
+def test_normalize_model() -> None:
+    """normalize_model 단위 테스트."""
+    assert normalize_model("claude") == "claude"
+    assert normalize_model("claude-code") == "claude"
+    assert normalize_model("claude-sonnet-4-5") == "claude"
+    assert normalize_model("CLAUDE") == "claude"
+    assert normalize_model("gpt-4o") == "gpt"
+    assert normalize_model("GPT-4") == "gpt"
+    assert normalize_model("codex") == "gpt"
+    assert normalize_model("gemini") == "gemini"
+    assert normalize_model("gemini-cli") == "gemini"
+    assert normalize_model("GEMINI-CLI") == "gemini"
+    assert normalize_model("AGY") == "gemini"
+    assert normalize_model("agy") == "gemini"
+    assert normalize_model("rule") == "rule"
 
 
 # ---------------------------------------------------------------------------
@@ -388,3 +333,25 @@ def test_by_signal_empty_model(client: TestClient, db_session: Session) -> None:
     data = resp.json()
     assert data["model"] == "unknown"
     assert data["cells"] == []
+
+
+def test_by_signal_groups_model_variants(client: TestClient, db_session: Session) -> None:
+    """?model=claude 로 요청하면 claude-code 분석도 포함된다."""
+    run = _make_run(db_session)
+    t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    odate = date(2025, 2, 5)
+    _make_analysis(
+        db_session, run.id, "claude-code", "매수",
+        cloud_position="구름 위", ma_alignment="정배열",
+        outcome=OUTCOME_TARGET, outcome_date=odate,
+        entry_price=100, target_price=120, stop_loss=90, created_at=t0,
+    )
+    db_session.commit()
+
+    resp = client.get("/api/stats/by-signal?model=claude")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["model"] == "claude"
+    assert len(data["cells"]) > 0
+    cell = data["cells"][0]
+    assert cell["count"] == 1

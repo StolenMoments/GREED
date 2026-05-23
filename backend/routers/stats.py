@@ -8,9 +8,20 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import Analysis
 from backend.outcome import OUTCOME_STOP, OUTCOME_TARGET, TERMINAL_OUTCOMES
-from backend.schemas import HeadToHeadModelRow, HeadToHeadStat, ModelStat, SignalCell, SignalMatrixStat
+from backend.schemas import ModelStat, SignalCell, SignalMatrixStat
 
 router = APIRouter(tags=["stats"])
+
+
+def normalize_model(name: str) -> str:
+    lower = name.lower()
+    if "claude" in lower:
+        return "claude"
+    if "gpt" in lower or "codex" in lower:
+        return "gpt"
+    if "gemini" in lower or "agy" in lower:
+        return "gemini"
+    return lower
 
 
 @router.get("/api/stats/by-model", response_model=list[ModelStat])
@@ -19,7 +30,7 @@ def get_stats_by_model(db: Session = Depends(get_db)) -> list[ModelStat]:
 
     by_model: dict[str, list[Analysis]] = defaultdict(list)
     for a in analyses:
-        by_model[a.model].append(a)
+        by_model[normalize_model(a.model)].append(a)
 
     results = []
     for model_name, items in sorted(by_model.items()):
@@ -122,72 +133,11 @@ def _buy_terminal(analyses: list[Analysis]) -> list[Analysis]:
     ]
 
 
-@router.get("/api/stats/head-to-head", response_model=HeadToHeadStat)
-def get_head_to_head(run_id: int | None = None, db: Session = Depends(get_db)) -> HeadToHeadStat:
-    _empty = HeadToHeadStat(run_id=run_id, tickers=0, matrix=[], agreement={})
-    if run_id is None:
-        return _empty
-
-    analyses = db.query(Analysis).filter(Analysis.run_id == run_id).all()
-    if not analyses:
-        return _empty
-
-    # Group by model → ticker → analysis
-    by_model: dict[str, dict[str, Analysis]] = defaultdict(dict)
-    for a in analyses:
-        by_model[a.model][a.ticker] = a
-
-    if not by_model:
-        return _empty
-
-    # Intersection of tickers across all models
-    ticker_sets = [set(td.keys()) for td in by_model.values()]
-    common_tickers: set[str] = ticker_sets[0].intersection(*ticker_sets[1:])
-
-    # Matrix: per-model stats on common tickers only
-    matrix: list[HeadToHeadModelRow] = []
-    for model_name in sorted(by_model.keys()):
-        items = [by_model[model_name][t] for t in common_tickers if t in by_model[model_name]]
-        buy_items = [a for a in items if a.judgment == "매수"]
-        terminal = _buy_terminal(buy_items)
-        hits = sum(1 for a in terminal if a.outcome == OUTCOME_TARGET)
-        stops = sum(1 for a in terminal if a.outcome == OUTCOME_STOP)
-        _, expectancy_pct = _expectancy(terminal)
-        matrix.append(HeadToHeadModelRow(
-            model=model_name,
-            buy=len(buy_items),
-            hits=hits,
-            stops=stops,
-            expectancy_pct=expectancy_pct,
-        ))
-
-    # Agreement: per-ticker, which models flagged as 매수
-    all_tickers: set[str] = set()
-    for td in by_model.values():
-        all_tickers.update(td.keys())
-
-    agreement: dict[str, int] = defaultdict(int)
-    for ticker in all_tickers:
-        buy_models = sorted(
-            m for m, td in by_model.items()
-            if td.get(ticker) is not None and td[ticker].judgment == "매수"
-        )
-        if not buy_models:
-            continue
-        key = "_and_".join(buy_models) if len(buy_models) > 1 else f"{buy_models[0]}_only"
-        agreement[key] += 1
-
-    return HeadToHeadStat(
-        run_id=run_id,
-        tickers=len(common_tickers),
-        matrix=matrix,
-        agreement=dict(agreement),
-    )
-
 
 @router.get("/api/stats/by-signal", response_model=SignalMatrixStat)
 def get_stats_by_signal(model: str, db: Session = Depends(get_db)) -> SignalMatrixStat:
-    analyses = db.query(Analysis).filter(Analysis.model == model).all()
+    all_analyses = db.query(Analysis).all()
+    analyses = [a for a in all_analyses if normalize_model(a.model) == model]
     if not analyses:
         return SignalMatrixStat(model=model, cells=[])
 

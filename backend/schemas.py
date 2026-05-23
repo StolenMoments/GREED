@@ -173,20 +173,6 @@ class ModelStat(BaseModel):
     avg_holding_weeks: float | None
 
 
-class HeadToHeadModelRow(BaseModel):
-    model: str
-    buy: int
-    hits: int
-    stops: int
-    expectancy_pct: float | None
-
-
-class HeadToHeadStat(BaseModel):
-    run_id: int | None
-    tickers: int
-    matrix: list[HeadToHeadModelRow]
-    agreement: dict[str, int]
-
 
 class SignalCell(BaseModel):
     cloud_position: str

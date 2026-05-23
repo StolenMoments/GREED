@@ -10,21 +10,6 @@ export interface ModelStat {
   avg_holding_weeks: number | null;
 }
 
-export interface HeadToHeadModelRow {
-  model: string;
-  buy: number;
-  hits: number;
-  stops: number;
-  expectancy_pct: number | null;
-}
-
-export interface HeadToHeadStat {
-  run_id: number | null;
-  tickers: number;
-  matrix: HeadToHeadModelRow[];
-  agreement: Record<string, number>;
-}
-
 export interface SignalCell {
   cloud_position: string;
   ma_alignment: string;
@@ -40,13 +25,6 @@ export interface SignalMatrixStat {
 
 export async function fetchStatsByModel(): Promise<ModelStat[]> {
   const response = await apiClient.get<ModelStat[]>('/stats/by-model');
-  return response.data;
-}
-
-export async function fetchHeadToHead(runId: number): Promise<HeadToHeadStat> {
-  const response = await apiClient.get<HeadToHeadStat>('/stats/head-to-head', {
-    params: { run_id: runId },
-  });
   return response.data;
 }
 
