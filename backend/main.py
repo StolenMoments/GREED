@@ -18,7 +18,7 @@ from backend.database import (
     is_database_unavailable_error,
     mark_database_unavailable,
 )
-from backend.routers import analyses_router, jobs_router, runs_router, stock_router, stocks_router, tickers_router
+from backend.routers import analyses_router, jobs_router, runs_router, stats_router, stock_router, stocks_router, tickers_router
 
 
 class UvicornAccessLogFilter(logging.Filter):
@@ -67,6 +67,7 @@ app.add_middleware(
 )
 app.include_router(runs_router)
 app.include_router(analyses_router)
+app.include_router(stats_router)
 app.include_router(stock_router)
 app.include_router(stocks_router)
 app.include_router(jobs_router)

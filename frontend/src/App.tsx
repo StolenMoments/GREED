@@ -4,12 +4,14 @@ import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import AnalysisListPage from './pages/AnalysisListPage';
 import JobsPage from './pages/JobsPage';
 import RunListPage from './pages/RunListPage';
+import StatsPage from './pages/StatsPage';
 import StockListPage from './pages/StockListPage';
 import StockSummaryPage from './pages/StockSummaryPage';
 
 const navItems = [
   { to: '/runs', label: 'Runs' },
   { to: '/analyses', label: 'Analyses' },
+  { to: '/stats', label: 'Stats' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/stocks', label: 'Stocks' },
 ];
@@ -58,6 +60,7 @@ function App() {
             element={<AnalysisDetailPage />}
             path="/analyses/:id"
           />
+          <Route element={<StatsPage />} path="/stats" />
           <Route element={<JobsPage />} path="/jobs" />
           <Route element={<StockSummaryPage />} path="/stocks" />
           <Route element={<Navigate replace to="/runs" />} path="*" />

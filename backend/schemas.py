@@ -161,3 +161,13 @@ class TickerSearchResult(BaseModel):
     code: str
     name: str
     market: Literal["KR", "US"] = "KR"
+
+
+class ModelStat(BaseModel):
+    model: str
+    total: int
+    judgments: dict[str, int]
+    outcomes: dict[str, int]
+    win_rate: float | None
+    expectancy_pct: float | None
+    avg_holding_weeks: float | None
