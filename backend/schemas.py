@@ -171,3 +171,31 @@ class ModelStat(BaseModel):
     win_rate: float | None
     expectancy_pct: float | None
     avg_holding_weeks: float | None
+
+
+class HeadToHeadModelRow(BaseModel):
+    model: str
+    buy: int
+    hits: int
+    stops: int
+    expectancy_pct: float | None
+
+
+class HeadToHeadStat(BaseModel):
+    run_id: int | None
+    tickers: int
+    matrix: list[HeadToHeadModelRow]
+    agreement: dict[str, int]
+
+
+class SignalCell(BaseModel):
+    cloud_position: str
+    ma_alignment: str
+    count: int
+    win_rate: float | None
+    expectancy_pct: float | None
+
+
+class SignalMatrixStat(BaseModel):
+    model: str
+    cells: list[SignalCell]

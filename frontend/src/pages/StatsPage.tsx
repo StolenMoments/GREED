@@ -1,5 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchStatsByModel, type ModelStat } from '../api/stats';
+import { useEffect, useState } from 'react';
+import { fetchRuns } from '../api/runs';
+import {
+  fetchBySignal,
+  fetchHeadToHead,
+  fetchStatsByModel,
+  type HeadToHeadStat,
+  type ModelStat,
+  type SignalCell,
+  type SignalMatrixStat,
+} from '../api/stats';
+import type { Run } from '../types';
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
 
 function useStatsByModel() {
   return useQuery({
@@ -7,6 +22,26 @@ function useStatsByModel() {
     queryFn: fetchStatsByModel,
   });
 }
+
+function useHeadToHead(runId: number | undefined) {
+  return useQuery({
+    queryKey: ['stats', 'head-to-head', runId],
+    queryFn: () => fetchHeadToHead(runId as number),
+    enabled: runId !== undefined,
+  });
+}
+
+function useBySignal(model: string) {
+  return useQuery({
+    queryKey: ['stats', 'by-signal', model],
+    queryFn: () => fetchBySignal(model),
+    enabled: !!model,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
 
 const JUDGMENT_COLORS: Record<string, string> = {
   매수: 'bg-emerald-500',
@@ -35,6 +70,17 @@ function weeks(value: number | null): string {
   if (value === null) return '—';
   return `${value.toFixed(1)}주`;
 }
+
+/** HSL background color for a win_rate in [0, 1]. Null → gray. */
+function cellBg(winRate: number | null): string {
+  if (winRate === null) return 'hsl(220, 10%, 12%)';
+  const hue = Math.round(winRate * 120);
+  return `hsl(${hue}, 55%, 18%)`;
+}
+
+// ---------------------------------------------------------------------------
+// Section 1 — by-model cards
+// ---------------------------------------------------------------------------
 
 function MiniBar({
   data,
@@ -154,54 +200,388 @@ function LoadingGrid() {
   );
 }
 
-function StatsPage() {
-  const { data: stats = [], isError, isLoading, refetch } = useStatsByModel();
+// ---------------------------------------------------------------------------
+// Section 2 — head-to-head
+// ---------------------------------------------------------------------------
 
+function RunSelector({
+  runs,
+  value,
+  onChange,
+}: {
+  runs: Run[];
+  value: number | undefined;
+  onChange: (id: number) => void;
+}) {
   return (
-    <section className="flex flex-col gap-6">
+    <select
+      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-400/60"
+      value={value ?? ''}
+      onChange={(e) => onChange(Number(e.target.value))}
+    >
+      {runs.map((r) => (
+        <option key={r.id} value={r.id}>
+          Run #{r.id}
+          {r.memo ? ` — ${r.memo}` : ''}
+          {` (${r.analysis_count}개)`}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function HeadToHeadSection({
+  runs,
+  selectedRunId,
+  onSelectRun,
+  data,
+  isLoading,
+}: {
+  runs: Run[];
+  selectedRunId: number | undefined;
+  onSelectRun: (id: number) => void;
+  data: HeadToHeadStat | undefined;
+  isLoading: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
       <div className="border-b border-amber-100/10 pb-4">
         <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
-          performance stats
+          head-to-head
         </p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
-          모델별 통계
+          Run별 모델 비교
         </h2>
       </div>
 
-      {isError ? (
-        <div className="rounded-lg border border-rose-200/20 bg-rose-950/20 px-6 py-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-rose-100">통계를 불러오지 못했습니다.</p>
-              <p className="mt-1 text-sm text-rose-100/70">
-                백엔드 응답 상태를 확인한 뒤 다시 시도하세요.
-              </p>
-            </div>
-            <button
-              className="rounded-md border border-rose-100/25 px-4 py-2 text-sm font-semibold text-rose-50 transition hover:bg-rose-100/10"
-              onClick={() => void refetch()}
-              type="button"
-            >
-              다시 시도
-            </button>
-          </div>
-        </div>
-      ) : isLoading ? (
-        <LoadingGrid />
-      ) : stats.length === 0 ? (
-        <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-12 text-center">
-          <p className="text-sm font-semibold text-slate-100">아직 분석 데이터가 없습니다.</p>
-          <p className="mt-2 text-sm text-slate-400">
-            룰 스코어러나 LLM 분석을 실행한 뒤 다시 확인하세요.
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-slate-400">Run 선택</span>
+        {runs.length > 0 ? (
+          <RunSelector onChange={onSelectRun} runs={runs} value={selectedRunId} />
+        ) : (
+          <span className="text-sm text-slate-600">Run 없음</span>
+        )}
+        {data && (
+          <span className="ml-2 rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-400">
+            공통 종목 <span className="font-semibold text-slate-200">{data.tickers}</span>개
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="h-32 animate-pulse rounded-xl border border-amber-100/10 bg-slate-950/60" />
+      ) : !data || data.matrix.length === 0 ? (
+        <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-10 text-center">
+          <p className="text-sm text-slate-500">
+            {selectedRunId === undefined
+              ? 'Run을 선택해 주세요.'
+              : '이 Run에 분석 데이터가 없습니다.'}
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {stats.map((stat) => (
-            <StatCard key={stat.model} stat={stat} />
-          ))}
+        <div className="flex flex-col gap-5">
+          {/* Matrix table */}
+          <div className="overflow-x-auto rounded-xl border border-amber-100/10">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 bg-slate-950/80 text-left text-xs text-slate-500">
+                  <th className="px-5 py-3 font-semibold">모델</th>
+                  <th className="px-5 py-3 text-right font-semibold">매수</th>
+                  <th className="px-5 py-3 text-right font-semibold">목표달성</th>
+                  <th className="px-5 py-3 text-right font-semibold">손절</th>
+                  <th className="px-5 py-3 text-right font-semibold">기대값</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.matrix.map((row, i) => (
+                  <tr
+                    className={`border-b border-slate-800/60 ${i % 2 === 0 ? 'bg-slate-950/40' : 'bg-slate-950/20'}`}
+                    key={row.model}
+                  >
+                    <td className="px-5 py-3 font-semibold uppercase tracking-wider text-amber-300">
+                      {row.model}
+                    </td>
+                    <td className="px-5 py-3 text-right text-slate-200">{row.buy}</td>
+                    <td className="px-5 py-3 text-right text-emerald-400">{row.hits}</td>
+                    <td className="px-5 py-3 text-right text-rose-400">{row.stops}</td>
+                    <td
+                      className={`px-5 py-3 text-right font-semibold ${
+                        row.expectancy_pct === null
+                          ? 'text-slate-500'
+                          : row.expectancy_pct >= 0
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                      }`}
+                    >
+                      {pct(row.expectancy_pct)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Agreement */}
+          {Object.keys(data.agreement).length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                매수 판정 겹침
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(data.agreement)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([key, count]) => (
+                    <span
+                      className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300"
+                      key={key}
+                    >
+                      <span className="font-mono text-amber-300">{key}</span>
+                      <span className="ml-2 font-semibold text-slate-200">{count}</span>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section 3 — signal matrix heatmap
+// ---------------------------------------------------------------------------
+
+const CLOUD_POSITIONS = ['구름 위', '구름 안', '구름 아래'] as const;
+const MA_ALIGNMENTS = ['정배열', '혼조', '역배열'] as const;
+
+function HeatmapCell({ cell }: { cell: SignalCell | undefined }) {
+  if (!cell) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center rounded-lg p-4 text-center"
+        style={{ background: 'hsl(220, 10%, 10%)' }}
+      >
+        <span className="text-xs text-slate-700">—</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-1 rounded-lg p-4 text-center transition-all"
+      style={{ background: cellBg(cell.win_rate) }}
+    >
+      <span className="text-xs text-slate-400">
+        n=<span className="font-semibold text-slate-200">{cell.count}</span>
+      </span>
+      <span className="text-sm font-semibold text-slate-50">{ratio(cell.win_rate)}</span>
+      <span
+        className={`text-xs font-semibold ${
+          cell.expectancy_pct === null
+            ? 'text-slate-500'
+            : cell.expectancy_pct >= 0
+              ? 'text-emerald-300'
+              : 'text-rose-300'
+        }`}
+      >
+        EV {pct(cell.expectancy_pct)}
+      </span>
+    </div>
+  );
+}
+
+function SignalMatrixSection({
+  models,
+  selectedModel,
+  onSelectModel,
+  data,
+  isLoading,
+}: {
+  models: string[];
+  selectedModel: string;
+  onSelectModel: (m: string) => void;
+  data: SignalMatrixStat | undefined;
+  isLoading: boolean;
+}) {
+  const cellMap = new Map<string, SignalCell>();
+  if (data) {
+    for (const c of data.cells) {
+      cellMap.set(`${c.cloud_position}|${c.ma_alignment}`, c);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="border-b border-amber-100/10 pb-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          signal matrix
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
+          신호 매트릭스
+        </h2>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-slate-400">모델 선택</span>
+        {models.length > 0 ? (
+          <select
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-400/60"
+            value={selectedModel}
+            onChange={(e) => onSelectModel(e.target.value)}
+          >
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-sm text-slate-600">모델 없음</span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="h-48 animate-pulse rounded-xl border border-amber-100/10 bg-slate-950/60" />
+      ) : !data || data.cells.length === 0 ? (
+        <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-10 text-center">
+          <p className="text-sm text-slate-500">
+            {!selectedModel ? '모델을 선택해 주세요.' : '분석 데이터가 없습니다.'}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="min-w-[480px]">
+            {/* Column headers — ma_alignment */}
+            <div className="mb-2 grid grid-cols-4 gap-2">
+              <div /> {/* row header spacer */}
+              {MA_ALIGNMENTS.map((ma) => (
+                <div className="text-center text-xs font-semibold text-slate-400" key={ma}>
+                  {ma}
+                </div>
+              ))}
+            </div>
+            {/* Rows — cloud_position */}
+            {CLOUD_POSITIONS.map((cp) => (
+              <div className="mb-2 grid grid-cols-4 gap-2" key={cp}>
+                <div className="flex items-center text-xs font-semibold text-slate-400">{cp}</div>
+                {MA_ALIGNMENTS.map((ma) => (
+                  <HeatmapCell cell={cellMap.get(`${cp}|${ma}`)} key={ma} />
+                ))}
+              </div>
+            ))}
+            {/* Legend */}
+            <div className="mt-3 flex items-center gap-3 text-xs text-slate-600">
+              <div
+                className="h-3 w-16 rounded-sm"
+                style={{
+                  background:
+                    'linear-gradient(to right, hsl(0,55%,18%), hsl(40,55%,18%), hsl(120,55%,18%))',
+                }}
+              />
+              <span>낮은 승률 → 높은 승률</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
+function StatsPage() {
+  const { data: stats = [], isError, isLoading, refetch } = useStatsByModel();
+  const { data: runs = [] } = useQuery({ queryKey: ['runs', 'list'], queryFn: fetchRuns });
+
+  const [selectedRunId, setSelectedRunId] = useState<number | undefined>();
+  const [selectedModel, setSelectedModel] = useState<string>('');
+
+  // Auto-select defaults once data loads
+  useEffect(() => {
+    if (runs.length > 0 && selectedRunId === undefined) {
+      setSelectedRunId(runs[0].id);
+    }
+  }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    if (stats.length > 0 && !selectedModel) {
+      setSelectedModel(stats[0].model);
+    }
+  }, [stats, selectedModel]);
+
+  const { data: h2hData, isLoading: h2hLoading } = useHeadToHead(selectedRunId);
+  const { data: signalData, isLoading: signalLoading } = useBySignal(selectedModel);
+
+  const modelNames = stats.map((s) => s.model);
+
+  return (
+    <section className="flex flex-col gap-12">
+      {/* Section 1: by-model */}
+      <div className="flex flex-col gap-6">
+        <div className="border-b border-amber-100/10 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+            performance stats
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
+            모델별 통계
+          </h2>
+        </div>
+
+        {isError ? (
+          <div className="rounded-lg border border-rose-200/20 bg-rose-950/20 px-6 py-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-rose-100">통계를 불러오지 못했습니다.</p>
+                <p className="mt-1 text-sm text-rose-100/70">
+                  백엔드 응답 상태를 확인한 뒤 다시 시도하세요.
+                </p>
+              </div>
+              <button
+                className="rounded-md border border-rose-100/25 px-4 py-2 text-sm font-semibold text-rose-50 transition hover:bg-rose-100/10"
+                onClick={() => void refetch()}
+                type="button"
+              >
+                다시 시도
+              </button>
+            </div>
+          </div>
+        ) : isLoading ? (
+          <LoadingGrid />
+        ) : stats.length === 0 ? (
+          <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-12 text-center">
+            <p className="text-sm font-semibold text-slate-100">아직 분석 데이터가 없습니다.</p>
+            <p className="mt-2 text-sm text-slate-400">
+              룰 스코어러나 LLM 분석을 실행한 뒤 다시 확인하세요.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {stats.map((stat) => (
+              <StatCard key={stat.model} stat={stat} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Section 2: head-to-head */}
+      <HeadToHeadSection
+        data={h2hData}
+        isLoading={h2hLoading}
+        onSelectRun={setSelectedRunId}
+        runs={runs}
+        selectedRunId={selectedRunId}
+      />
+
+      {/* Section 3: signal matrix */}
+      <SignalMatrixSection
+        data={signalData}
+        isLoading={signalLoading}
+        models={modelNames}
+        onSelectModel={setSelectedModel}
+        selectedModel={selectedModel}
+      />
     </section>
   );
 }
