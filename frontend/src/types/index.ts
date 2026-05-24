@@ -102,6 +102,23 @@ export interface AnalysisPaginationParams {
 
 export type JobStatus = 'pending' | 'done' | 'failed';
 
+export type AnalysisBacktestJobStatus = 'pending' | 'running' | 'done' | 'failed';
+
+export interface AnalysisBacktestJob {
+  id: number;
+  analysis_id: number;
+  status: AnalysisBacktestJobStatus;
+  similarity_threshold: number;
+  backtest_run_id: number | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface AnalysisBacktestJobCreate {
+  similarity_threshold: 8 | 9 | 10 | 11;
+}
+
 export type AnalysisModel = 'claude' | 'codex' | 'gemini';
 
 export interface Job {
