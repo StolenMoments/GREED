@@ -150,7 +150,7 @@ class EvaluateOutcomesResult(BaseModel):
 
 
 class AnalysisBacktestJobCreate(BaseModel):
-    similarity_threshold: Literal[8, 9, 10, 11] = 9
+    pass
 
 
 class AnalysisBacktestJobRead(BaseModel):

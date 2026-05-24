@@ -119,9 +119,7 @@ export interface AnalysisBacktestJob {
   completed_at: string | null;
 }
 
-export interface AnalysisBacktestJobCreate {
-  similarity_threshold: 8 | 9 | 10 | 11;
-}
+export type AnalysisBacktestJobCreate = Record<string, never>;
 
 export type AnalysisModel = 'claude' | 'codex' | 'gemini';
 

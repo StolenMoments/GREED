@@ -11,7 +11,7 @@ import {
 
 const HORIZONS = [4, 8, 12, 26] as const;
 const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
-const SIMILARITY_BUCKETS = ['8-9', '10-11', '12+'] as const;
+const SIMILARITY_BUCKETS = ['10-11', '12+'] as const;
 
 function ratio(value: number | null, digits = 1): string {
   if (value === null) return '--';
@@ -159,7 +159,12 @@ function RunSelector({
 
 function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
   const allStats = detail.stats.filter((stat) => stat.score_bucket === 'ALL');
-  const signalCount = Math.max(...allStats.map((stat) => stat.count), detail.signal_count, 0);
+  const namedH4 = detail.stats.filter(
+    (stat) => stat.horizon === 4 && stat.score_bucket !== 'ALL' && stat.score_bucket !== '8-9',
+  );
+  const signalCount = namedH4.length > 0
+    ? namedH4.reduce((sum, stat) => sum + stat.count, 0)
+    : Math.max(...allStats.map((stat) => stat.count), detail.signal_count, 0);
   const bestMean = allStats.reduce<BacktestStat | undefined>((best, stat) => {
     if (stat.mean === null) return best;
     if (!best || best.mean === null || stat.mean > best.mean) return stat;
@@ -245,7 +250,7 @@ function HorizonTable({ stats }: { stats: BacktestStat[] }) {
 
 function scoreBuckets(stats: BacktestStat[]): string[] {
   const buckets = new Set(stats.map((stat) => stat.score_bucket));
-  if (buckets.has('12+') || buckets.has('10-11') || buckets.has('8-9')) {
+  if (buckets.has('12+') || buckets.has('10-11')) {
     return [...SIMILARITY_BUCKETS];
   }
   if (buckets.has('8+') || buckets.has('6-7') || buckets.has('4-5')) {

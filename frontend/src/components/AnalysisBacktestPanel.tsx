@@ -1,12 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
 import {
   useAnalysisBacktestJobs,
   useTriggerAnalysisBacktest,
 } from '../hooks/useAnalysisBacktests';
-import type { AnalysisBacktestJob, AnalysisBacktestJobCreate } from '../types';
-
-const THRESHOLDS = [8, 9, 10, 11] as const;
+import type { AnalysisBacktestJob } from '../types';
 
 function isActive(job: AnalysisBacktestJob | undefined): boolean {
   return job?.status === 'pending' || job?.status === 'running';
@@ -38,8 +35,6 @@ export default function AnalysisBacktestPanel({
 }: {
   analysisId: number;
 }) {
-  const [threshold, setThreshold] =
-    useState<AnalysisBacktestJobCreate['similarity_threshold']>(9);
   const jobsQuery = useAnalysisBacktestJobs(analysisId);
   const trigger = useTriggerAnalysisBacktest(analysisId);
   const jobs = jobsQuery.data ?? [];
@@ -48,7 +43,7 @@ export default function AnalysisBacktestPanel({
 
   async function handleRun() {
     try {
-      await trigger.mutateAsync({ similarity_threshold: threshold });
+      await trigger.mutateAsync({});
     } catch {
       // The mutation state renders the failure message below.
     }
@@ -70,29 +65,6 @@ export default function AnalysisBacktestPanel({
         >
           {statusLabel(latest)}
         </span>
-      </div>
-
-      <div className="mt-5">
-        <p className="text-xs font-medium text-slate-500">
-          유사도 임계값
-        </p>
-        <div className="mt-2 grid grid-cols-4 gap-2">
-          {THRESHOLDS.map((value) => (
-            <button
-              className={[
-                'h-9 rounded-md border text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70',
-                threshold === value
-                  ? 'border-amber-300 bg-amber-300 text-slate-950'
-                  : 'border-slate-800 text-slate-300 hover:bg-slate-900',
-              ].join(' ')}
-              key={value}
-              onClick={() => setThreshold(value)}
-              type="button"
-            >
-              {value}
-            </button>
-          ))}
-        </div>
       </div>
 
       <button
@@ -151,7 +123,7 @@ export default function AnalysisBacktestPanel({
                 key={job.id}
               >
                 <span className="min-w-0 truncate">
-                  #{job.id} · 임계값 {job.similarity_threshold}
+                  #{job.id}
                 </span>
                 {job.backtest_run_id ? (
                   <Link

@@ -27,6 +27,22 @@ _RET_COLUMN = {
 }
 
 
+def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:
+    """H4 기준 8-9 버킷 제외한 신호 수를 run_id별로 반환."""
+    if not run_ids:
+        return {}
+    rows = db.execute(
+        select(BacktestStat.run_id, func.sum(BacktestStat.count))
+        .where(
+            BacktestStat.run_id.in_(run_ids),
+            BacktestStat.horizon == 4,
+            BacktestStat.score_bucket.not_in(["ALL", "8-9"]),
+        )
+        .group_by(BacktestStat.run_id)
+    ).all()
+    return {row[0]: int(row[1]) for row in rows}
+
+
 @router.get("/runs", response_model=list[BacktestRunSummary])
 def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
     runs = list(
@@ -36,9 +52,12 @@ def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
             .order_by(BacktestRun.id.desc())
         ).all()
     )
+    adj = _adj_signal_counts(db, [run.id for run in runs])
     result = []
     for run in runs:
         summary = BacktestRunSummary.model_validate(run)
+        if run.id in adj:
+            summary.signal_count = adj[run.id]
         if run.source_analysis is not None:
             summary.source_ticker = run.source_analysis.ticker
             summary.source_name = run.source_analysis.name
@@ -64,6 +83,9 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
         ).all()
     )
     summary = BacktestRunSummary.model_validate(run)
+    adj = _adj_signal_counts(db, [run_id])
+    if run_id in adj:
+        summary.signal_count = adj[run_id]
     if run.source_analysis is not None:
         summary.source_ticker = run.source_analysis.ticker
         summary.source_name = run.source_analysis.name

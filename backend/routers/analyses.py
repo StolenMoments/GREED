@@ -145,7 +145,7 @@ def create_analysis_backtest_job_endpoint(
     job = create_analysis_backtest_job(
         db,
         analysis_id=analysis_id,
-        similarity_threshold=payload.similarity_threshold,
+        similarity_threshold=10,
     )
     background_tasks.add_task(run_analysis_backtest_pipeline, job.id)
     return job

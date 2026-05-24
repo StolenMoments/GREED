@@ -55,8 +55,8 @@ def test_bucket_helpers() -> None:
 
 
 def test_analysis_score_bucket() -> None:
-    assert analysis_score_bucket(8) == "8-9"
     assert analysis_score_bucket(10) == "10-11"
+    assert analysis_score_bucket(11) == "10-11"
     assert analysis_score_bucket(12) == "12+"
 
 
@@ -102,9 +102,9 @@ def test_run_similarity_ticker_emits_records() -> None:
     combined = _combined_frame()
     base, _score, _judgment = profile_from_features(extract_features_asof(combined, 120))
 
-    records = run_similarity_ticker(combined, base_profile=base, threshold=9, warmup=120)
+    records = run_similarity_ticker(combined, base_profile=base, threshold=10, warmup=120)
 
     assert records
-    assert records[0].score >= 9
-    assert records[0].score_bucket in {"8-9", "10-11", "12+"}
+    assert records[0].score >= 10
+    assert records[0].score_bucket in {"10-11", "12+"}
     assert 4 in records[0].returns

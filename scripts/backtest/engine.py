@@ -152,11 +152,13 @@ def aggregate(
     horizons: tuple[int, ...] = HORIZONS,
     buckets: tuple[str, ...] = BUCKETS,
 ) -> list[StatRow]:
+    named = {b for b in buckets if b != "ALL"}
     rows: list[StatRow] = []
     for horizon in horizons:
         for bucket in buckets:
-            bucket_records = records if bucket == "ALL" else [
-                record for record in records if record.score_bucket == bucket
-            ]
+            if bucket == "ALL":
+                bucket_records = [r for r in records if r.score_bucket in named]
+            else:
+                bucket_records = [r for r in records if r.score_bucket == bucket]
             rows.append(_stat_row(horizon, bucket, bucket_records))
     return rows

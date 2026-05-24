@@ -23,8 +23,8 @@ from scripts.rule_scorer.features import Features, extract_features_asof
 from scripts.rule_scorer.score import score_features
 
 
-SIMILARITY_THRESHOLDS = (8, 9, 10, 11)
-SIMILARITY_BUCKETS = ("8-9", "10-11", "12+", "ALL")
+SIMILARITY_THRESHOLDS = (10, 11, 12)
+SIMILARITY_BUCKETS = ("10-11", "12+", "ALL")
 SIMILARITY_WEIGHTS = {
     "cloud_position": 3,
     "ma_alignment": 3,
@@ -132,9 +132,7 @@ def similarity_score(base: SimilarityProfile, candidate: SimilarityProfile) -> i
 def analysis_score_bucket(score: int) -> str:
     if score >= 12:
         return "12+"
-    if score >= 10:
-        return "10-11"
-    return "8-9"
+    return "10-11"
 
 
 def analysis_asof_index(combined: pd.DataFrame, analysis_created_at) -> int:

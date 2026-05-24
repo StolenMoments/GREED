@@ -93,14 +93,14 @@ def test_create_analysis_backtest_job(
 
     response = client.post(
         f"/api/analyses/{analysis_id}/backtest-jobs",
-        json={"similarity_threshold": 9},
+        json={},
     )
 
     assert response.status_code == 202
     body = response.json()
     assert body["analysis_id"] == analysis_id
     assert body["status"] == "pending"
-    assert body["similarity_threshold"] == 9
+    assert body["similarity_threshold"] == 10
     assert body["backtest_run_id"] is None
     assert scheduled == [body["id"]]
 
@@ -108,24 +108,10 @@ def test_create_analysis_backtest_job(
 def test_create_analysis_backtest_job_rejects_missing_analysis(client: TestClient) -> None:
     response = client.post(
         "/api/analyses/999999/backtest-jobs",
-        json={"similarity_threshold": 9},
+        json={},
     )
 
     assert response.status_code == 404
-
-
-def test_create_analysis_backtest_job_rejects_bad_threshold(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    analysis_id = _seed_analysis(db_session)
-
-    response = client.post(
-        f"/api/analyses/{analysis_id}/backtest-jobs",
-        json={"similarity_threshold": 7},
-    )
-
-    assert response.status_code == 422
 
 
 def test_list_analysis_backtest_jobs(client: TestClient, db_session: Session) -> None:
@@ -197,7 +183,7 @@ def test_analysis_backtest_pipeline_marks_failure(
     job = AnalysisBacktestJob(
         analysis_id=analysis_id,
         status="pending",
-        similarity_threshold=9,
+        similarity_threshold=10,
     )
     db_session.add(job)
     db_session.commit()
@@ -231,7 +217,7 @@ def test_analysis_backtest_pipeline_rolls_back_before_marking_failure(
     job = AnalysisBacktestJob(
         analysis_id=analysis_id,
         status="pending",
-        similarity_threshold=9,
+        similarity_threshold=10,
     )
     db_session.add(job)
     db_session.commit()
@@ -274,7 +260,7 @@ def test_delete_analysis_cleans_backtest_references(client: TestClient, db_sessi
     analysis_id = _seed_analysis(db_session)
     run = BacktestRun(
         universe="KOSPI200",
-        buy_threshold=9,
+        buy_threshold=10,
         horizons="4,8,12,26",
         warmup_weeks=120,
         data_start=None,
@@ -284,12 +270,12 @@ def test_delete_analysis_cleans_backtest_references(client: TestClient, db_sessi
         notes=None,
         source_analysis_id=analysis_id,
         strategy_kind="analysis_similarity",
-        similarity_threshold=9,
+        similarity_threshold=10,
     )
     job = AnalysisBacktestJob(
         analysis_id=analysis_id,
         status="done",
-        similarity_threshold=9,
+        similarity_threshold=10,
     )
     db_session.add_all([run, job])
     db_session.commit()
