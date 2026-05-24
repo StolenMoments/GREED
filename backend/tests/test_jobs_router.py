@@ -1302,6 +1302,38 @@ def test_run_codex_passes_yolo_flag(
     assert payload["cmd"][1:4] == ["exec", "--yolo", "-"]
 
 
+def test_codex_cmd_prefers_current_windows_native_exe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    npm_root = (
+        tmp_path
+        / "AppData"
+        / "Roaming"
+        / "npm"
+        / "node_modules"
+        / "@openai"
+        / "codex"
+        / "node_modules"
+        / "@openai"
+    )
+    native_exe = (
+        npm_root
+        / "codex-win32-x64"
+        / "vendor"
+        / "x86_64-pc-windows-msvc"
+        / "bin"
+        / "codex.exe"
+    )
+    native_exe.parent.mkdir(parents=True)
+    native_exe.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(jobs.sys, "platform", "win32")
+    monkeypatch.setattr(jobs.Path, "home", lambda: tmp_path)
+
+    assert jobs._codex_cmd() == [str(native_exe), "exec", "--yolo", "-"]
+
+
 def test_run_codex_writes_full_csv_to_prompt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
