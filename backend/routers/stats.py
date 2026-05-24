@@ -43,37 +43,8 @@ def get_stats_by_model(db: Session = Depends(get_db)) -> list[ModelStat]:
             if a.outcome:
                 outcomes[a.outcome] += 1
 
-        # win_rate & expectancy: 매수 only, entry/target/stop all non-null, terminal outcome
-        buy_terminal = [
-            a for a in items
-            if a.judgment == "매수"
-            and a.entry_price is not None
-            and a.target_price is not None
-            and a.stop_loss is not None
-            and a.outcome in (OUTCOME_TARGET, OUTCOME_STOP)
-        ]
-
-        win_count = sum(1 for a in buy_terminal if a.outcome == OUTCOME_TARGET)
-        loss_count = sum(1 for a in buy_terminal if a.outcome == OUTCOME_STOP)
-        denom = win_count + loss_count
-
-        win_rate = win_count / denom if denom > 0 else None
-
-        if win_rate is not None:
-            wins = [a for a in buy_terminal if a.outcome == OUTCOME_TARGET]
-            losses = [a for a in buy_terminal if a.outcome == OUTCOME_STOP]
-
-            avg_gain = (
-                sum((a.target_price - a.entry_price) / a.entry_price * 100 for a in wins) / len(wins)
-                if wins else 0.0
-            )
-            avg_loss = (
-                sum((a.entry_price - a.stop_loss) / a.entry_price * 100 for a in losses) / len(losses)
-                if losses else 0.0
-            )
-            expectancy_pct = win_rate * avg_gain - (1 - win_rate) * avg_loss
-        else:
-            expectancy_pct = None
+        win_rate = _win_rate(_buy_analyses(items))
+        expectancy_pct = _expectancy(_buy_terminal(items))
 
         # avg_holding_weeks: terminal outcomes with outcome_date set
         terminated = [
@@ -103,13 +74,20 @@ def get_stats_by_model(db: Session = Depends(get_db)) -> list[ModelStat]:
     return results
 
 
-def _expectancy(buy_terminal: list[Analysis]) -> tuple[float | None, float | None]:
-    """Returns (win_rate, expectancy_pct) from a list of terminal buy analyses."""
+def _win_rate(buy_analyses: list[Analysis]) -> float | None:
+    if not buy_analyses:
+        return None
+    hits = sum(1 for a in buy_analyses if a.outcome == OUTCOME_TARGET)
+    return hits / len(buy_analyses)
+
+
+def _expectancy(buy_terminal: list[Analysis]) -> float | None:
+    """Returns expectancy from terminal buy analyses with complete price levels."""
     hits = [a for a in buy_terminal if a.outcome == OUTCOME_TARGET]
     stops = [a for a in buy_terminal if a.outcome == OUTCOME_STOP]
     denom = len(hits) + len(stops)
     if denom == 0:
-        return None, None
+        return None
     win_rate = len(hits) / denom
     avg_gain = (
         sum((a.target_price - a.entry_price) / a.entry_price * 100 for a in hits) / len(hits)
@@ -119,7 +97,11 @@ def _expectancy(buy_terminal: list[Analysis]) -> tuple[float | None, float | Non
         sum((a.entry_price - a.stop_loss) / a.entry_price * 100 for a in stops) / len(stops)
         if stops else 0.0
     )
-    return win_rate, win_rate * avg_gain - (1 - win_rate) * avg_loss
+    return win_rate * avg_gain - (1 - win_rate) * avg_loss
+
+
+def _buy_analyses(analyses: list[Analysis]) -> list[Analysis]:
+    return [a for a in analyses if a.judgment == "매수"]
 
 
 def _buy_terminal(analyses: list[Analysis]) -> list[Analysis]:
@@ -147,8 +129,8 @@ def get_stats_by_signal(model: str, db: Session = Depends(get_db)) -> SignalMatr
 
     cells: list[SignalCell] = []
     for (cloud_pos, ma_align), items in sorted(grid.items()):
-        terminal = _buy_terminal(items)
-        win_rate, expectancy_pct = _expectancy(terminal)
+        win_rate = _win_rate(_buy_analyses(items))
+        expectancy_pct = _expectancy(_buy_terminal(items))
         cells.append(SignalCell(
             cloud_position=cloud_pos,
             ma_alignment=ma_align,

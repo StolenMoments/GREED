@@ -113,10 +113,11 @@ def test_by_model_win_rate_and_expectancy(client: TestClient, db_session: Sessio
     rule 모델:
       매수+목표달성: entry=100, target=120, stop=90  → gain=20%, loss=10%
       매수+손절:    entry=100, target=120, stop=90  → gain=20%, loss=10%
+      매수+진행중:  승률 분모에는 포함, 기대값 계산에서는 제외
       매도 (prices absent): 집계 무관
 
     손계산:
-      win_rate = 1/(1+1) = 0.5
+      win_rate = 1/3
       avg_gain = 20.0
       avg_loss = 10.0
       expectancy = 0.5*20 - 0.5*10 = 5.0
@@ -138,6 +139,12 @@ def test_by_model_win_rate_and_expectancy(client: TestClient, db_session: Sessio
         created_at=t0,
     )
     _make_analysis(
+        db_session, run.id, "rule", "매수",
+        outcome=OUTCOME_ONGOING,
+        entry_price=100, target_price=120, stop_loss=90,
+        created_at=t0,
+    )
+    _make_analysis(
         db_session, run.id, "rule", "매도",
         outcome=None,
     )
@@ -150,19 +157,19 @@ def test_by_model_win_rate_and_expectancy(client: TestClient, db_session: Sessio
 
     stat = data[0]
     assert stat["model"] == "rule"
-    assert stat["total"] == 3
-    assert stat["judgments"] == {"매수": 2, "매도": 1}
-    assert stat["outcomes"] == {OUTCOME_TARGET: 1, OUTCOME_STOP: 1}
+    assert stat["total"] == 4
+    assert stat["judgments"] == {"매수": 3, "매도": 1}
+    assert stat["outcomes"] == {OUTCOME_TARGET: 1, OUTCOME_STOP: 1, OUTCOME_ONGOING: 1}
 
-    assert stat["win_rate"] == pytest.approx(0.5)
+    assert stat["win_rate"] == pytest.approx(1 / 3)
     assert stat["expectancy_pct"] == pytest.approx(5.0)
     assert stat["avg_holding_weeks"] == pytest.approx(35 / 7)
 
 
-def test_by_model_no_terminal_outcomes_returns_null_win_rate(
+def test_by_model_no_terminal_outcomes_returns_zero_win_rate(
     client: TestClient, db_session: Session
 ) -> None:
-    """매수이지만 outcome이 진행중이면 win_rate는 null."""
+    """매수이지만 outcome이 진행중이면 win_rate는 0, 기대값은 null."""
     run = _make_run(db_session)
     _make_analysis(
         db_session, run.id, "claude", "매수",
@@ -173,14 +180,14 @@ def test_by_model_no_terminal_outcomes_returns_null_win_rate(
 
     resp = client.get("/api/stats/by-model")
     stat = resp.json()[0]
-    assert stat["win_rate"] is None
+    assert stat["win_rate"] == pytest.approx(0.0)
     assert stat["expectancy_pct"] is None
 
 
 def test_by_model_null_prices_excluded_from_expectancy(
     client: TestClient, db_session: Session
 ) -> None:
-    """entry/target/stop 중 하나라도 null이면 해당 분석은 집계 제외."""
+    """entry/target/stop 중 하나라도 null이어도 승률에는 포함하고 기대값에서는 제외."""
     run = _make_run(db_session)
     t0 = datetime(2025, 1, 1, tzinfo=timezone.utc)
     outcome_dt = date(2025, 2, 5)
@@ -192,10 +199,10 @@ def test_by_model_null_prices_excluded_from_expectancy(
         entry_price=100, target_price=120, stop_loss=90,
         created_at=t0,
     )
-    # target_price=None → excluded from win_rate calc
+    # target_price=None → included in win_rate, excluded from expectancy
     _make_analysis(
         db_session, run.id, "rule", "매수",
-        outcome=OUTCOME_TARGET, outcome_date=outcome_dt,
+        outcome=OUTCOME_STOP, outcome_date=outcome_dt,
         entry_price=100, target_price=None, stop_loss=90,
         created_at=t0,
     )
@@ -203,8 +210,8 @@ def test_by_model_null_prices_excluded_from_expectancy(
 
     resp = client.get("/api/stats/by-model")
     stat = resp.json()[0]
-    # only 1 valid analysis counted → denom=1, win_rate=1.0
-    assert stat["win_rate"] == pytest.approx(1.0)
+    assert stat["win_rate"] == pytest.approx(0.5)
+    assert stat["expectancy_pct"] == pytest.approx(20.0)
     assert stat["total"] == 2
 
 
@@ -273,7 +280,7 @@ def test_normalize_model() -> None:
 
 def test_by_signal_basic(client: TestClient, db_session: Session) -> None:
     """
-    (구름 위, 정배열) × 2 — 1 목표달성 + 1 손절 → win_rate=0.5, expectancy=5.0
+    (구름 위, 정배열) × 3 — 1 목표달성 + 1 손절 + 1 진행중 → win_rate=1/3, expectancy=5.0
     (구름 아래, 역배열) × 1 — 1 목표달성 → win_rate=1.0, expectancy=20.0
     """
     run = _make_run(db_session)
@@ -285,6 +292,10 @@ def test_by_signal_basic(client: TestClient, db_session: Session) -> None:
                        cloud_position="구름 위", ma_alignment="정배열",
                        outcome=outcome, outcome_date=odate,
                        entry_price=100, target_price=120, stop_loss=90, created_at=t0)
+    _make_analysis(db_session, run.id, "rule", "매수",
+                   cloud_position="구름 위", ma_alignment="정배열",
+                   outcome=OUTCOME_ONGOING,
+                   entry_price=100, target_price=120, stop_loss=90, created_at=t0)
     _make_analysis(db_session, run.id, "rule", "매수",
                    cloud_position="구름 아래", ma_alignment="역배열",
                    outcome=OUTCOME_TARGET, outcome_date=odate,
@@ -299,8 +310,8 @@ def test_by_signal_basic(client: TestClient, db_session: Session) -> None:
     cells = {(c["cloud_position"], c["ma_alignment"]): c for c in data["cells"]}
 
     top = cells[("구름 위", "정배열")]
-    assert top["count"] == 2
-    assert top["win_rate"] == pytest.approx(0.5)
+    assert top["count"] == 3
+    assert top["win_rate"] == pytest.approx(1 / 3)
     assert top["expectancy_pct"] == pytest.approx(5.0)
 
     bottom = cells[("구름 아래", "역배열")]
@@ -310,7 +321,7 @@ def test_by_signal_basic(client: TestClient, db_session: Session) -> None:
 
 
 def test_by_signal_no_terminal_outcomes(client: TestClient, db_session: Session) -> None:
-    """매수이지만 진행중이면 win_rate=null."""
+    """매수이지만 진행중이면 win_rate는 0, 기대값은 null."""
     run = _make_run(db_session)
     _make_analysis(db_session, run.id, "claude", "매수",
                    cloud_position="구름 위", ma_alignment="정배열",
@@ -322,7 +333,7 @@ def test_by_signal_no_terminal_outcomes(client: TestClient, db_session: Session)
     cells = {(c["cloud_position"], c["ma_alignment"]): c for c in data["cells"]}
     cell = cells[("구름 위", "정배열")]
     assert cell["count"] == 1
-    assert cell["win_rate"] is None
+    assert cell["win_rate"] == pytest.approx(0.0)
     assert cell["expectancy_pct"] is None
 
 
