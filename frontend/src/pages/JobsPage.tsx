@@ -1,18 +1,20 @@
 import { Link } from 'react-router-dom';
 import { useJobs } from '../hooks/useJobs';
-import type { Job, JobStatus } from '../types';
+import type { JobOverview, JobOverviewStatus } from '../types';
 import { formatDate } from '../utils/formatDate';
 
-const visibleStatuses: JobStatus[] = ['pending', 'failed'];
+const visibleStatuses: JobOverviewStatus[] = ['pending', 'running', 'failed'];
 
-const statusStyles: Record<JobStatus, string> = {
+const statusStyles: Record<JobOverviewStatus, string> = {
   pending: 'border-sky-200/25 bg-sky-400/10 text-sky-100',
+  running: 'border-sky-200/25 bg-sky-400/10 text-sky-100',
   done: 'border-emerald-200/25 bg-emerald-400/10 text-emerald-100',
   failed: 'border-rose-200/25 bg-rose-400/10 text-rose-100',
 };
 
-const statusLabels: Record<JobStatus, string> = {
+const statusLabels: Record<JobOverviewStatus, string> = {
   pending: '실행 중',
+  running: '실행 중',
   done: '완료',
   failed: '실패',
 };
@@ -44,13 +46,13 @@ function EmptyState() {
         실행 중이거나 실패한 Job이 없습니다.
       </p>
       <p className="mt-2 text-sm text-slate-400">
-        새 분석을 시작하면 이 목록에서 진행 상태를 확인할 수 있습니다.
+        분석이나 백테스트를 시작하면 이 목록에서 진행 상태를 확인할 수 있습니다.
       </p>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: JobStatus }) {
+function StatusBadge({ status }: { status: JobOverviewStatus }) {
   return (
     <span
       className={[
@@ -63,14 +65,61 @@ function StatusBadge({ status }: { status: JobStatus }) {
   );
 }
 
-function JobRow({ job }: { job: Job }) {
+function jobIdLabel(job: JobOverview): string {
+  return job.kind === 'analysis_backtest' ? `BT #${job.id}` : `#${job.id}`;
+}
+
+function modelLabel(job: JobOverview): string {
+  if (job.kind === 'analysis_backtest') {
+    return job.similarity_threshold === null
+      ? 'backtest'
+      : `similarity >= ${job.similarity_threshold}`;
+  }
+  return job.model;
+}
+
+function JobDetail({ job }: { job: JobOverview }) {
+  if (job.kind === 'analysis_backtest' && job.backtest_run_id !== null) {
+    return (
+      <Link
+        className="mt-1 inline-flex rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 lg:mt-0"
+        to={`/backtest?runId=${job.backtest_run_id}`}
+      >
+        Backtest #{job.backtest_run_id}
+      </Link>
+    );
+  }
+
+  if (job.error_message) {
+    return (
+      <p className="mt-1 max-h-16 overflow-hidden break-words text-sm leading-5 text-rose-100/85 lg:mt-0">
+        {job.error_message}
+      </p>
+    );
+  }
+
+  if (job.analysis_id) {
+    return (
+      <Link
+        className="mt-1 inline-flex rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 lg:mt-0"
+        to={`/analyses/${job.analysis_id}`}
+      >
+        분석 보기
+      </Link>
+    );
+  }
+
+  return <p className="mt-1 text-sm text-slate-500 lg:mt-0">-</p>;
+}
+
+function JobRow({ job }: { job: JobOverview }) {
   return (
     <div className="grid gap-4 px-5 py-5 text-sm lg:grid-cols-[5rem_7rem_6rem_7rem_8rem_11rem_minmax(0,1fr)] lg:items-center">
       <div>
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 lg:hidden">
           job
         </span>
-        <p className="mt-1 font-semibold text-slate-100 lg:mt-0">#{job.id}</p>
+        <p className="mt-1 font-semibold text-slate-100 lg:mt-0">{jobIdLabel(job)}</p>
       </div>
 
       <div>
@@ -96,7 +145,7 @@ function JobRow({ job }: { job: Job }) {
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 lg:hidden">
           model
         </span>
-        <p className="mt-1 text-slate-300 lg:mt-0">{job.model}</p>
+        <p className="mt-1 text-slate-300 lg:mt-0">{modelLabel(job)}</p>
       </div>
 
       <div>
@@ -121,20 +170,7 @@ function JobRow({ job }: { job: Job }) {
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 lg:hidden">
           detail
         </span>
-        {job.analysis_id ? (
-          <Link
-            className="mt-1 inline-flex rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 lg:mt-0"
-            to={`/analyses/${job.analysis_id}`}
-          >
-            분석 보기
-          </Link>
-        ) : job.error_message ? (
-          <p className="mt-1 max-h-16 overflow-hidden break-words text-sm leading-5 text-rose-100/85 lg:mt-0">
-            {job.error_message}
-          </p>
-        ) : (
-          <p className="mt-1 text-sm text-slate-500 lg:mt-0">-</p>
-        )}
+        <JobDetail job={job} />
       </div>
     </div>
   );
@@ -142,7 +178,7 @@ function JobRow({ job }: { job: Job }) {
 
 function JobsPage() {
   const { data: jobs = [], isError, isLoading, refetch } = useJobs(visibleStatuses);
-  const pendingCount = jobs.filter((job) => job.status === 'pending').length;
+  const pendingCount = jobs.filter((job) => job.status === 'pending' || job.status === 'running').length;
   const failedCount = jobs.filter((job) => job.status === 'failed').length;
 
   return (
@@ -204,7 +240,7 @@ function JobsPage() {
           </div>
           <div className="divide-y divide-amber-100/10">
             {jobs.map((job) => (
-              <JobRow job={job} key={job.id} />
+              <JobRow job={job} key={`${job.kind}-${job.id}`} />
             ))}
           </div>
         </div>

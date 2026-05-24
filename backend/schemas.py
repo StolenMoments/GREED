@@ -130,6 +130,20 @@ class JobRead(BaseModel):
     created_at: datetime
 
 
+class JobOverviewRead(BaseModel):
+    kind: Literal["analysis", "analysis_backtest"]
+    id: int
+    ticker: str
+    run_id: int
+    model: str
+    status: str
+    error_message: str | None
+    analysis_id: int | None
+    backtest_run_id: int | None = None
+    similarity_threshold: int | None = None
+    created_at: datetime
+
+
 class EvaluateOutcomesResult(BaseModel):
     evaluated: int
     skipped: int

@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.models import KrxStock
+from backend.models import Analysis, AnalysisBacktestJob, KrxStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -303,6 +303,115 @@ def test_list_jobs_rejects_invalid_status(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Invalid job status: running"}
+
+
+def test_job_overview_includes_analysis_and_backtest_jobs(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="overview")
+        analysis_job = crud.create_job(db, ticker="000660", run_id=run.id, model="codex")
+        analysis = Analysis(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung",
+            name_initials="SS",
+            model="rule",
+            markdown="body",
+            judgment="buy",
+            trend="up",
+            cloud_position="above",
+            ma_alignment="bullish",
+            created_at=seoul_now(),
+        )
+        db.add(analysis)
+        db.flush()
+        backtest_job = AnalysisBacktestJob(
+            analysis_id=analysis.id,
+            status="running",
+            similarity_threshold=9,
+            error_message=None,
+            created_at=seoul_now(),
+        )
+        db.add(backtest_job)
+        db.commit()
+        analysis_job_id = analysis_job.id
+        backtest_job_id = backtest_job.id
+        analysis_id = analysis.id
+        run_id = run.id
+
+    response = client.get("/api/jobs/overview?status=pending&status=running&status=failed")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [(job["kind"], job["id"]) for job in body] == [
+        ("analysis_backtest", backtest_job_id),
+        ("analysis", analysis_job_id),
+    ]
+    assert body[0] == {
+        "kind": "analysis_backtest",
+        "id": backtest_job_id,
+        "ticker": "005930",
+        "run_id": run_id,
+        "model": "analysis_similarity",
+        "status": "running",
+        "error_message": None,
+        "analysis_id": analysis_id,
+        "backtest_run_id": None,
+        "similarity_threshold": 9,
+        "created_at": body[0]["created_at"],
+    }
+
+
+def test_job_overview_filters_backtest_failed_status(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="overview failed")
+        analysis = Analysis(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung",
+            name_initials="SS",
+            model="rule",
+            markdown="body",
+            judgment="buy",
+            trend="up",
+            cloud_position="above",
+            ma_alignment="bullish",
+            created_at=seoul_now(),
+        )
+        db.add(analysis)
+        db.flush()
+        failed_job = AnalysisBacktestJob(
+            analysis_id=analysis.id,
+            status="failed",
+            similarity_threshold=10,
+            error_message="price cache unavailable",
+            created_at=seoul_now(),
+        )
+        done_job = AnalysisBacktestJob(
+            analysis_id=analysis.id,
+            status="done",
+            similarity_threshold=9,
+            backtest_run_id=123,
+            created_at=seoul_now(),
+        )
+        db.add_all([failed_job, done_job])
+        db.commit()
+        failed_job_id = failed_job.id
+        done_job_id = done_job.id
+
+    response = client.get("/api/jobs/overview?status=failed")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [job["id"] for job in body] == [failed_job_id]
+    assert done_job_id not in [job["id"] for job in body]
+    assert body[0]["kind"] == "analysis_backtest"
+    assert body[0]["error_message"] == "price cache unavailable"
 
 
 def test_list_jobs_returns_404_when_run_missing(client: TestClient) -> None:

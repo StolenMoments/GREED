@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchJob, fetchJobs, triggerAnalysis } from '../api/jobs';
-import type { Job, JobStatus, JobTriggerRequest } from '../types';
+import { fetchJob, fetchJobOverview, fetchJobs, triggerAnalysis } from '../api/jobs';
+import type {
+  Job,
+  JobOverviewStatus,
+  JobStatus,
+  JobTriggerRequest,
+} from '../types';
 import { analysisKeys } from './useAnalyses';
 import { runKeys } from './useRuns';
 
@@ -11,6 +16,8 @@ export const jobKeys = {
   list: (runId: number) => [...jobKeys.lists(), 'run', runId] as const,
   filteredList: (runId: number | undefined, statuses: JobStatus[]) =>
     [...jobKeys.lists(), 'filtered', runId ?? 'all', statuses.join(',')] as const,
+  overview: (statuses: JobOverviewStatus[]) =>
+    [...jobKeys.all, 'overview', statuses.join(',')] as const,
   detail: (jobId: number) => [...jobKeys.all, 'detail', jobId] as const,
 };
 
@@ -34,13 +41,13 @@ export function useRunJobs(runId: number | undefined) {
   });
 }
 
-export function useJobs(statuses: JobStatus[] = []) {
+export function useJobs(statuses: JobOverviewStatus[] = []) {
   return useQuery({
-    queryKey: jobKeys.filteredList(undefined, statuses),
-    queryFn: () => fetchJobs(undefined, statuses),
+    queryKey: jobKeys.overview(statuses),
+    queryFn: () => fetchJobOverview(statuses),
     refetchInterval: (query) => {
       const jobs = query.state.data;
-      return jobs?.some((job) => job.status === 'pending') ? 2000 : false;
+      return jobs?.some((job) => job.status === 'pending' || job.status === 'running') ? 2000 : false;
     },
   });
 }

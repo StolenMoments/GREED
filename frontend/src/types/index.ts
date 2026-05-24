@@ -104,6 +104,10 @@ export type JobStatus = 'pending' | 'done' | 'failed';
 
 export type AnalysisBacktestJobStatus = 'pending' | 'running' | 'done' | 'failed';
 
+export type JobOverviewStatus = JobStatus | 'running';
+
+export type JobKind = 'analysis' | 'analysis_backtest';
+
 export interface AnalysisBacktestJob {
   id: number;
   analysis_id: number;
@@ -129,6 +133,20 @@ export interface Job {
   status: JobStatus;
   error_message: string | null;
   analysis_id: number | null;
+  created_at: string;
+}
+
+export interface JobOverview {
+  kind: JobKind;
+  id: number;
+  ticker: string;
+  run_id: number;
+  model: string;
+  status: JobOverviewStatus;
+  error_message: string | null;
+  analysis_id: number | null;
+  backtest_run_id: number | null;
+  similarity_threshold: number | null;
   created_at: string;
 }
 

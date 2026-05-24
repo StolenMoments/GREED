@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.crud import (
@@ -28,9 +29,9 @@ from backend.crud import (
     update_job_failed,
 )
 from backend.database import SessionLocal, get_db
-from backend.models import AnalysisJob
+from backend.models import Analysis, AnalysisBacktestJob, AnalysisJob
 from backend.parser import parse_markdown
-from backend.schemas import AnalysisCreate, JobRead, JobTriggerRequest
+from backend.schemas import AnalysisCreate, JobOverviewRead, JobRead, JobTriggerRequest
 from backend.stock_price import fetch_and_store_latest_close
 from backend.tickers import market_for_ticker, normalize_ticker, is_korean_text
 from backend.timezone import seoul_now
@@ -219,6 +220,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 VALID_JOB_STATUSES = {"pending", "done", "failed"}
+VALID_JOB_OVERVIEW_STATUSES = {"pending", "running", "done", "failed"}
 
 
 @router.post("/trigger-analysis", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
@@ -271,6 +273,70 @@ def list_jobs_endpoint(
 
     allowed_statuses = set(status_filter)
     return [job for job in finalized_jobs if job.status in allowed_statuses]
+
+
+@router.get("/overview", response_model=list[JobOverviewRead])
+def list_job_overview_endpoint(
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+) -> list[JobOverviewRead]:
+    if status_filter:
+        invalid_statuses = sorted(set(status_filter) - VALID_JOB_OVERVIEW_STATUSES)
+        if invalid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid job status: {', '.join(invalid_statuses)}",
+            )
+
+    allowed_statuses = set(status_filter or [])
+    analysis_jobs = [
+        _finalize_pending_job_if_ready(db, job)
+        for job in get_jobs(db)
+    ]
+    if allowed_statuses:
+        analysis_jobs = [job for job in analysis_jobs if job.status in allowed_statuses]
+
+    rows: list[JobOverviewRead] = [
+        JobOverviewRead(
+            kind="analysis",
+            id=job.id,
+            ticker=job.ticker,
+            run_id=job.run_id,
+            model=job.model,
+            status=job.status,
+            error_message=job.error_message,
+            analysis_id=job.analysis_id,
+            created_at=job.created_at,
+        )
+        for job in analysis_jobs
+    ]
+
+    backtest_stmt = (
+        select(AnalysisBacktestJob, Analysis)
+        .join(Analysis, Analysis.id == AnalysisBacktestJob.analysis_id)
+        .order_by(AnalysisBacktestJob.id.desc())
+    )
+    if allowed_statuses:
+        backtest_stmt = backtest_stmt.where(AnalysisBacktestJob.status.in_(allowed_statuses))
+
+    for job, analysis in db.execute(backtest_stmt).all():
+        rows.append(
+            JobOverviewRead(
+                kind="analysis_backtest",
+                id=job.id,
+                ticker=analysis.ticker,
+                run_id=analysis.run_id,
+                model="analysis_similarity",
+                status=job.status,
+                error_message=job.error_message,
+                analysis_id=job.analysis_id,
+                backtest_run_id=job.backtest_run_id,
+                similarity_threshold=job.similarity_threshold,
+                created_at=job.created_at,
+            )
+        )
+
+    return sorted(rows, key=lambda row: row.created_at, reverse=True)
 
 
 @router.get("/{job_id}", response_model=JobRead)
