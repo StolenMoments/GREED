@@ -156,6 +156,30 @@ class BacktestRun(Base):
     ticker_count: Mapped[int] = mapped_column(Integer, nullable=False)
     signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
+    strategy_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    similarity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AnalysisBacktestJob(Base):
+    __tablename__ = "analysis_backtest_jobs"
+    __table_args__ = (
+        Index("ix_analysis_backtest_jobs_analysis_created", "analysis_id", "created_at"),
+        Index("ix_analysis_backtest_jobs_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    similarity_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    backtest_run_id: Mapped[int | None] = mapped_column(ForeignKey("backtest_runs.id"), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BacktestSignal(Base):

@@ -5,6 +5,8 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy import select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from backend.models import PriceBar
@@ -49,7 +51,7 @@ def upsert_price_bars(db: Session, ticker: str, interval: str, df: pd.DataFrame)
         return 0
 
     now = seoul_now()
-    count = 0
+    rows: list[dict[str, Any]] = []
     for ts, row in df.iterrows():
         bar_date = ts.date() if hasattr(ts, "date") else ts
         high = _float_or_none(row, "High")
@@ -60,23 +62,53 @@ def upsert_price_bars(db: Session, ticker: str, interval: str, df: pd.DataFrame)
         close = _float_or_none(row, "Close")
         volume = _float_or_none(row, "Volume")
         trading_value = _trading_value(row, close, volume)
-        db.merge(
-            PriceBar(
-                ticker=ticker,
-                interval=interval,
-                bar_date=bar_date,
-                open=_float_or_none(row, "Open"),
-                high=high,
-                low=low,
-                close=close,
-                volume=volume,
-                trading_value=trading_value,
-                fetched_at=now,
-            )
+        rows.append(
+            {
+                "ticker": ticker,
+                "interval": interval,
+                "bar_date": bar_date,
+                "open": _float_or_none(row, "Open"),
+                "high": high,
+                "low": low,
+                "close": close,
+                "volume": volume,
+                "trading_value": trading_value,
+                "fetched_at": now,
+            }
         )
-        count += 1
+
+    if not rows:
+        return 0
+
+    table = PriceBar.__table__
+    dialect = db.get_bind().dialect.name
+    update_columns = (
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "trading_value",
+        "fetched_at",
+    )
+
+    if dialect in {"mysql", "mariadb"}:
+        stmt = mysql_insert(table).values(rows)
+        stmt = stmt.on_duplicate_key_update(
+            **{column: getattr(stmt.inserted, column) for column in update_columns}
+        )
+    elif dialect == "sqlite":
+        stmt = sqlite_insert(table).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["ticker", "interval", "bar_date"],
+            set_={column: getattr(stmt.excluded, column) for column in update_columns},
+        )
+    else:
+        raise RuntimeError(f"Unsupported price bar upsert dialect: {dialect}")
+
+    db.execute(stmt)
     db.commit()
-    return count
+    return len(rows)
 
 
 def _load_cached_df(

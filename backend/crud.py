@@ -11,7 +11,16 @@ from backend.korean_search import (
     is_korean_initial_query,
     normalize_korean_initial_query,
 )
-from backend.models import Analysis, AnalysisJob, KrxStock, Run, StockPrice, UsStock
+from backend.models import (
+    Analysis,
+    AnalysisBacktestJob,
+    AnalysisJob,
+    BacktestRun,
+    KrxStock,
+    Run,
+    StockPrice,
+    UsStock,
+)
 from backend.parser import parse_entry_candidates
 from backend.schemas import AnalysisCreate
 from backend.tickers import fetch_us_listing, normalize_ticker
@@ -397,6 +406,13 @@ def delete_analysis(db: Session, analysis_id: int) -> bool:
         {"analysis_id": None},
         synchronize_session=False,
     )
+    db.query(BacktestRun).filter(BacktestRun.source_analysis_id == analysis_id).update(
+        {"source_analysis_id": None},
+        synchronize_session=False,
+    )
+    db.query(AnalysisBacktestJob).filter(AnalysisBacktestJob.analysis_id == analysis_id).delete(
+        synchronize_session=False,
+    )
     db.delete(analysis)
     db.commit()
     return True
@@ -405,6 +421,70 @@ def delete_analysis(db: Session, analysis_id: int) -> bool:
 def get_analysis_history(db: Session, ticker: str) -> list[Analysis]:
     stmt = select(Analysis).where(Analysis.ticker == ticker).order_by(*ANALYSIS_ORDER_BY)
     return list(db.scalars(stmt).all())
+
+
+def create_analysis_backtest_job(
+    db: Session,
+    *,
+    analysis_id: int,
+    similarity_threshold: int,
+) -> AnalysisBacktestJob:
+    job = AnalysisBacktestJob(
+        analysis_id=analysis_id,
+        similarity_threshold=similarity_threshold,
+        status="pending",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_analysis_backtest_job(db: Session, job_id: int) -> AnalysisBacktestJob | None:
+    return db.get(AnalysisBacktestJob, job_id)
+
+
+def get_analysis_backtest_jobs(db: Session, analysis_id: int) -> list[AnalysisBacktestJob]:
+    stmt = (
+        select(AnalysisBacktestJob)
+        .where(AnalysisBacktestJob.analysis_id == analysis_id)
+        .order_by(AnalysisBacktestJob.id.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
+def mark_analysis_backtest_job_running(db: Session, job: AnalysisBacktestJob) -> None:
+    job.status = "running"
+    job.error_message = None
+    db.commit()
+    db.refresh(job)
+
+
+def mark_analysis_backtest_job_done(
+    db: Session,
+    job: AnalysisBacktestJob,
+    *,
+    backtest_run_id: int,
+) -> None:
+    job.status = "done"
+    job.backtest_run_id = backtest_run_id
+    job.error_message = None
+    job.completed_at = seoul_now()
+    db.commit()
+    db.refresh(job)
+
+
+def mark_analysis_backtest_job_failed(
+    db: Session,
+    job: AnalysisBacktestJob,
+    *,
+    error_message: str,
+) -> None:
+    job.status = "failed"
+    job.error_message = error_message[:2000]
+    job.completed_at = seoul_now()
+    db.commit()
+    db.refresh(job)
 
 
 def create_job(db: Session, ticker: str, run_id: int, model: str = "claude") -> AnalysisJob:

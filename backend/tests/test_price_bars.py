@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.database import Base
 from backend.models import PriceBar
-from backend.price_bars import DAILY_INTERVAL, fetch_price_bars_df, upsert_price_bars
+from backend.price_bars import DAILY_INTERVAL, WEEKLY_INTERVAL, fetch_price_bars_df, upsert_price_bars
 
 
 @pytest.fixture()
@@ -38,17 +38,46 @@ def make_bars(rows: list[tuple[str, int, int, int, int, int]]) -> pd.DataFrame:
 
 def test_upsert_price_bars_computes_trading_value_and_updates_existing_row(
     db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = make_bars([("2026-05-13", 70000, 76000, 69000, 75000, 10)])
     second = make_bars([("2026-05-13", 71000, 77000, 70000, 76000, 20)])
 
     assert upsert_price_bars(db_session, "005930", DAILY_INTERVAL, first) == 1
+
+    def fail_merge(*args, **kwargs):
+        raise AssertionError("price bar upsert must not use ORM merge")
+
+    monkeypatch.setattr(db_session, "merge", fail_merge)
+
     assert upsert_price_bars(db_session, "005930", DAILY_INTERVAL, second) == 1
 
     rows = db_session.scalars(select(PriceBar)).all()
     assert len(rows) == 1
     assert rows[0].high == 77000
     assert rows[0].trading_value == 76000 * 20
+
+
+def test_upsert_price_bars_updates_existing_weekly_row_without_merge(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = make_bars([("2026-05-13", 70000, 76000, 69000, 75000, 10)])
+    second = make_bars([("2026-05-13", 71000, 77000, 70000, 76000, 20)])
+
+    assert upsert_price_bars(db_session, "005930", WEEKLY_INTERVAL, first) == 1
+
+    def fail_merge(*args, **kwargs):
+        raise AssertionError("weekly price bar upsert must not use ORM merge")
+
+    monkeypatch.setattr(db_session, "merge", fail_merge)
+
+    assert upsert_price_bars(db_session, "005930", WEEKLY_INTERVAL, second) == 1
+
+    rows = db_session.scalars(select(PriceBar)).all()
+    assert len(rows) == 1
+    assert rows[0].interval == WEEKLY_INTERVAL
+    assert rows[0].high == 77000
 
 
 def test_fetch_price_bars_df_reuses_complete_past_cache(

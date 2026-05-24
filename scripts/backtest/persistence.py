@@ -26,6 +26,9 @@ def persist_run(
     data_start: date | None,
     data_end: date | None,
     notes: str | None = None,
+    source_analysis_id: int | None = None,
+    strategy_kind: str | None = None,
+    similarity_threshold: int | None = None,
 ) -> int:
     run = BacktestRun(
         universe="KOSPI200",
@@ -37,6 +40,9 @@ def persist_run(
         ticker_count=ticker_count,
         signal_count=len(records),
         notes=notes,
+        source_analysis_id=source_analysis_id,
+        strategy_kind=strategy_kind,
+        similarity_threshold=similarity_threshold,
     )
     db.add(run)
     db.flush()  # run.id 확보

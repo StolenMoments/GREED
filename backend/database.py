@@ -134,6 +134,12 @@ def _migrate_mariadb() -> None:
                 """
             )
         )
+        for col, typedef in [
+            ("source_analysis_id", "INTEGER NULL"),
+            ("strategy_kind", "VARCHAR(50) NULL"),
+            ("similarity_threshold", "INTEGER NULL"),
+        ]:
+            conn.execute(text(f"ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS {col} {typedef}"))
         conn.execute(
             text(
                 """
@@ -176,6 +182,25 @@ def _migrate_mariadb() -> None:
                     min FLOAT NULL,
                     max FLOAT NULL,
                     PRIMARY KEY (run_id, horizon, score_bucket)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS analysis_backtest_jobs (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    analysis_id INTEGER NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    similarity_threshold INTEGER NOT NULL,
+                    backtest_run_id INTEGER NULL,
+                    error_message TEXT NULL,
+                    created_at DATETIME NOT NULL,
+                    completed_at DATETIME NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_analysis_backtest_jobs_analysis_created (analysis_id, created_at),
+                    INDEX ix_analysis_backtest_jobs_status_created (status, created_at)
                 )
                 """
             )

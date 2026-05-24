@@ -150,10 +150,11 @@ def aggregate(
     records: list[SignalRecord],
     *,
     horizons: tuple[int, ...] = HORIZONS,
+    buckets: tuple[str, ...] = BUCKETS,
 ) -> list[StatRow]:
     rows: list[StatRow] = []
     for horizon in horizons:
-        for bucket in BUCKETS:
+        for bucket in buckets:
             bucket_records = records if bucket == "ALL" else [
                 record for record in records if record.score_bucket == bucket
             ]

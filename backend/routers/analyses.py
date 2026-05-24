@@ -2,26 +2,34 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.crud import (
+    create_analysis_backtest_job,
     create_analysis,
     delete_analysis,
     get_analyses,
     get_analyses_by_run,
     get_analyses_page,
     get_analysis,
+    get_analysis_backtest_job,
+    get_analysis_backtest_jobs,
     get_analysis_history,
     get_run,
     get_stock_price,
+    mark_analysis_backtest_job_done,
+    mark_analysis_backtest_job_failed,
+    mark_analysis_backtest_job_running,
     upsert_stock_price,
 )
-from backend.database import get_db
+from backend.database import SessionLocal, get_db
 from backend.parser import parse_markdown
 from backend.outcome import evaluate_single_outcome, run_evaluate_outcomes
 from backend.schemas import (
+    AnalysisBacktestJobCreate,
+    AnalysisBacktestJobRead,
     AnalysisCreate,
     AnalysisPage,
     AnalysisRead,
@@ -120,6 +128,57 @@ def get_analysis_endpoint(
     return analysis
 
 
+@router.post(
+    "/api/analyses/{analysis_id}/backtest-jobs",
+    response_model=AnalysisBacktestJobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_analysis_backtest_job_endpoint(
+    analysis_id: int,
+    payload: AnalysisBacktestJobCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> AnalysisBacktestJobRead:
+    if get_analysis(db, analysis_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+
+    job = create_analysis_backtest_job(
+        db,
+        analysis_id=analysis_id,
+        similarity_threshold=payload.similarity_threshold,
+    )
+    background_tasks.add_task(run_analysis_backtest_pipeline, job.id)
+    return job
+
+
+@router.get(
+    "/api/analyses/{analysis_id}/backtest-jobs",
+    response_model=list[AnalysisBacktestJobRead],
+)
+def list_analysis_backtest_jobs_endpoint(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+) -> list[AnalysisBacktestJobRead]:
+    if get_analysis(db, analysis_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    return get_analysis_backtest_jobs(db, analysis_id)
+
+
+@router.get(
+    "/api/analyses/{analysis_id}/backtest-jobs/{job_id}",
+    response_model=AnalysisBacktestJobRead,
+)
+def get_analysis_backtest_job_endpoint(
+    analysis_id: int,
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> AnalysisBacktestJobRead:
+    job = get_analysis_backtest_job(db, job_id)
+    if job is None or job.analysis_id != analysis_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest job not found")
+    return job
+
+
 @router.post("/api/analyses/{analysis_id}/evaluate-outcome", response_model=AnalysisRead)
 def evaluate_single_outcome_endpoint(
     analysis_id: int,
@@ -181,3 +240,54 @@ def _refresh_candidate_stock_prices(
 
         price_date, close_price = result
         upsert_stock_price(db, ticker=ticker, price_date=price_date, close_price=close_price)
+
+
+def run_analysis_backtest_pipeline(job_id: int) -> None:
+    db = SessionLocal()
+    try:
+        job = get_analysis_backtest_job(db, job_id)
+        if job is None:
+            return
+
+        analysis = get_analysis(db, job.analysis_id)
+        if analysis is None:
+            mark_analysis_backtest_job_failed(db, job, error_message="Analysis not found")
+            return
+
+        try:
+            mark_analysis_backtest_job_running(db, job)
+            from scripts.backtest.analysis_similarity import run_analysis_similarity_backtest
+            from scripts.backtest.engine import WARMUP_WEEKS
+            from scripts.backtest.persistence import persist_run
+
+            result = run_analysis_similarity_backtest(
+                db,
+                analysis,
+                threshold=job.similarity_threshold,
+            )
+            run_id = persist_run(
+                db,
+                buy_threshold=job.similarity_threshold,
+                warmup_weeks=WARMUP_WEEKS,
+                ticker_count=result.ticker_count,
+                records=result.records,
+                stats=result.stats,
+                data_start=result.data_start,
+                data_end=result.data_end,
+                notes=(
+                    f"analysis_similarity source_analysis_id={analysis.id}; "
+                    f"base_score={result.base_score}; base_judgment={result.base_judgment}"
+                ),
+                source_analysis_id=analysis.id,
+                strategy_kind="analysis_similarity",
+                similarity_threshold=job.similarity_threshold,
+            )
+            mark_analysis_backtest_job_done(db, job, backtest_run_id=run_id)
+        except Exception as exc:
+            error_message = str(exc)
+            db.rollback()
+            failed_job = get_analysis_backtest_job(db, job_id)
+            if failed_job is not None:
+                mark_analysis_backtest_job_failed(db, failed_job, error_message=error_message)
+    finally:
+        db.close()

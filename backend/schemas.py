@@ -135,6 +135,23 @@ class EvaluateOutcomesResult(BaseModel):
     skipped: int
 
 
+class AnalysisBacktestJobCreate(BaseModel):
+    similarity_threshold: Literal[8, 9, 10, 11] = 9
+
+
+class AnalysisBacktestJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    analysis_id: int
+    status: str
+    similarity_threshold: int
+    backtest_run_id: int | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
 class StockPriceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -218,6 +235,9 @@ class BacktestRunSummary(BaseModel):
     ticker_count: int
     signal_count: int
     notes: str | None
+    source_analysis_id: int | None = None
+    strategy_kind: str | None = None
+    similarity_threshold: int | None = None
 
 
 class BacktestRunDetail(BacktestRunSummary):
