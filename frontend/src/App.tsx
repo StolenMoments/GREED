@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { DatabaseStatusBanner } from './components/DatabaseStatusBanner';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import AnalysisListPage from './pages/AnalysisListPage';
+import BacktestPage from './pages/BacktestPage';
 import JobsPage from './pages/JobsPage';
 import RunListPage from './pages/RunListPage';
 import StatsPage from './pages/StatsPage';
@@ -12,6 +13,7 @@ const navItems = [
   { to: '/runs', label: 'Runs' },
   { to: '/analyses', label: 'Analyses' },
   { to: '/stats', label: 'Stats' },
+  { to: '/backtest', label: 'Backtest' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/stocks', label: 'Stocks' },
 ];
@@ -61,6 +63,7 @@ function App() {
             path="/analyses/:id"
           />
           <Route element={<StatsPage />} path="/stats" />
+          <Route element={<BacktestPage />} path="/backtest" />
           <Route element={<JobsPage />} path="/jobs" />
           <Route element={<StockSummaryPage />} path="/stocks" />
           <Route element={<Navigate replace to="/runs" />} path="*" />
