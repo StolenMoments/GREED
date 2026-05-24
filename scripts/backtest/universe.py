@@ -17,9 +17,13 @@ def load_universe(path: Path | str = DEFAULT_UNIVERSE_PATH) -> list[tuple[str, s
 
     rows: list[tuple[str, str]] = []
     with p.open(encoding="utf-8-sig", newline="") as f:
-        for row in csv.DictReader(f):
-            code = str(row.get("code", "")).strip().zfill(6)
-            name = str(row.get("name", "")).strip()
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        for row in reader:
+            if len(row) < 2:
+                continue
+            code = row[0].strip().zfill(6)
+            name = row[1].strip()
             if code.isdigit() and len(code) == 6:
                 rows.append((code, name))
 
