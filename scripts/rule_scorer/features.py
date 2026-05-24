@@ -8,6 +8,7 @@ import pandas as pd
 
 
 PRICE_COLUMNS = ("open", "high", "low", "close")
+DIVERGENCE_WING = 2
 
 
 @dataclass(slots=True)
@@ -113,12 +114,33 @@ def _lag_above_price(price: pd.DataFrame) -> bool | None:
     return last_close > prev_close
 
 
-def extract_features(df: pd.DataFrame) -> Features:
-    price, future = split_price_and_future(df)
+def _apply_confirmation_shift(df: pd.DataFrame, wing: int = DIVERGENCE_WING) -> pd.DataFrame:
+    """Shift divergence flags to the row where the swing is confirmed."""
+    if df.attrs.get("_div_shifted"):
+        return df
+    out = df.copy()
+    for col in ("strict_divergence", "rsi_divergence", "macd_hist_divergence"):
+        if col in out.columns:
+            out[col] = out[col].shift(wing)
+    out.attrs["_div_shifted"] = True
+    return out
+
+
+def extract_features_asof(df: pd.DataFrame, i: int) -> Features:
+    """Build Features as of price-row index i without using later price rows."""
+    df = _apply_confirmation_shift(df)
+    price_all, _future_all = split_price_and_future(df)
+    if price_all.empty:
+        raise ValueError("CSV has no price rows")
+    if i < 0 or i >= len(price_all):
+        raise IndexError(f"as-of index {i} out of range (price rows={len(price_all)})")
+
+    price = price_all.iloc[: i + 1]
     if price.empty:
         raise ValueError("CSV has no price rows")
 
     last = price.iloc[-1]
+    future = df.iloc[i + 1 : i + 27]
     ticker = str(last["ticker"]).strip()
     name = str(last["name"]).strip() if pd.notna(last["name"]) else ticker
     asof = str(last["date"]).strip()
@@ -158,3 +180,10 @@ def extract_features(df: pd.DataFrame) -> Features:
         price_rows=price,
         future_rows=future,
     )
+
+
+def extract_features(df: pd.DataFrame) -> Features:
+    price, _future = split_price_and_future(df)
+    if price.empty:
+        raise ValueError("CSV has no price rows")
+    return extract_features_asof(df, len(price) - 1)
