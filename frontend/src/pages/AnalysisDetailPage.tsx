@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
+import AnalysisBacktestPanel from '../components/AnalysisBacktestPanel';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import PriceLevels from '../components/PriceLevels';
 import QuickAnalysisLauncher from '../components/QuickAnalysisLauncher';
@@ -462,6 +463,7 @@ function AnalysisDetailPage() {
           isEvaluateError={evaluateOutcomeMutation.isError}
           onEvaluate={() => evaluateOutcomeMutation.mutate(analysis.id)}
         />
+        <AnalysisBacktestPanel analysisId={analysis.id} />
         <PriceLevels
           ticker={analysis.ticker}
           currentPrice={stockPrice}
