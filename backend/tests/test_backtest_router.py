@@ -65,6 +65,9 @@ def _seed(db: Session) -> int:
         ticker_count=2,
         signal_count=2,
         notes=None,
+        source_analysis_id=42,
+        strategy_kind="analysis_similarity",
+        similarity_threshold=9,
     )
     db.add(run)
     db.flush()
@@ -126,7 +129,10 @@ def test_list_runs(client: TestClient, db_session: Session) -> None:
     resp = client.get("/api/backtest/runs")
     assert resp.status_code == 200
     data = resp.json()
-    assert any(r["id"] == run_id for r in data)
+    run = next(r for r in data if r["id"] == run_id)
+    assert run["source_analysis_id"] == 42
+    assert run["strategy_kind"] == "analysis_similarity"
+    assert run["similarity_threshold"] == 9
 
 
 def test_run_detail_includes_stats(client: TestClient, db_session: Session) -> None:
@@ -135,6 +141,9 @@ def test_run_detail_includes_stats(client: TestClient, db_session: Session) -> N
     assert resp.status_code == 200
     body = resp.json()
     assert body["universe"] == "KOSPI200"
+    assert body["source_analysis_id"] == 42
+    assert body["strategy_kind"] == "analysis_similarity"
+    assert body["similarity_threshold"] == 9
     assert any(s["horizon"] == 4 and s["score_bucket"] == "ALL" for s in body["stats"])
 
 

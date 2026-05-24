@@ -26,6 +26,9 @@ export interface BacktestRunSummary {
   data_end: string | null;
   ticker_count: number;
   signal_count: number;
+  source_analysis_id: number | null;
+  strategy_kind: string | null;
+  similarity_threshold: number | null;
   notes: string | null;
 }
 

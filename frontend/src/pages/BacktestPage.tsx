@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   fetchBacktestRun,
   fetchBacktestRuns,
@@ -9,7 +10,8 @@ import {
 } from '../api/backtest';
 
 const HORIZONS = [4, 8, 12, 26] as const;
-const BUCKETS = ['4-5', '6-7', '8+'] as const;
+const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
+const SIMILARITY_BUCKETS = ['8-9', '10-11', '12+'] as const;
 
 function ratio(value: number | null, digits = 1): string {
   if (value === null) return '--';
@@ -121,6 +123,12 @@ function RunSelector({
           <p>
             {detail.universe} · 종목 {detail.ticker_count.toLocaleString('ko-KR')}개 ·
             기준점 {detail.buy_threshold}
+            {detail.strategy_kind === 'analysis_similarity' ? (
+              <span>
+                {' '}· source analysis #{detail.source_analysis_id ?? '--'} ·
+                similarity {detail.similarity_threshold ?? '--'}
+              </span>
+            ) : null}
           </p>
           <p className="mt-1">
             {date(detail.data_start)} ~ {date(detail.data_end)} · 워밍업 {detail.warmup_weeks}주
@@ -217,14 +225,26 @@ function HorizonTable({ stats }: { stats: BacktestStat[] }) {
   );
 }
 
+function scoreBuckets(stats: BacktestStat[]): string[] {
+  const buckets = new Set(stats.map((stat) => stat.score_bucket));
+  if (buckets.has('12+') || buckets.has('10-11') || buckets.has('8-9')) {
+    return [...SIMILARITY_BUCKETS];
+  }
+  if (buckets.has('8+') || buckets.has('6-7') || buckets.has('4-5')) {
+    return [...LEGACY_BUCKETS];
+  }
+  return [...buckets].filter((bucket) => bucket !== 'ALL').sort();
+}
+
 function BucketComparison({ stats }: { stats: BacktestStat[] }) {
+  const buckets = useMemo(() => scoreBuckets(stats), [stats]);
   const rows = useMemo(
     () =>
-      BUCKETS.map((bucket) => ({
+      buckets.map((bucket) => ({
         bucket,
         stats: HORIZONS.map((horizon) => statOf(stats, horizon, bucket)),
       })),
-    [stats],
+    [buckets, stats],
   );
 
   return (
@@ -280,6 +300,11 @@ function BucketComparison({ stats }: { stats: BacktestStat[] }) {
 }
 
 function BacktestPage() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const runIdParam = searchParams.get('runId');
+  const requestedRunId = runIdParam === null ? NaN : Number(runIdParam);
+  const lastAppliedSearch = useRef<string | null>(null);
   const {
     data: runs = [],
     isError: runsError,
@@ -292,7 +317,29 @@ function BacktestPage() {
   const [runId, setRunId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (runs.length > 0 && runId === null) {
+    if (runs.length === 0) {
+      return;
+    }
+
+    const searchChanged = lastAppliedSearch.current !== location.search;
+    if (!searchChanged && runId !== null) {
+      return;
+    }
+
+    const requested = Number.isInteger(requestedRunId)
+      ? runs.find((run) => run.id === requestedRunId)
+      : undefined;
+
+    setRunId(requested?.id ?? runs[0].id);
+    lastAppliedSearch.current = location.search;
+  }, [runs, runId, requestedRunId, location.search]);
+
+  useEffect(() => {
+    if (
+      runs.length > 0 &&
+      runId !== null &&
+      !runs.some((run) => run.id === runId)
+    ) {
       setRunId(runs[0].id);
     }
   }, [runs, runId]);
