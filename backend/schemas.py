@@ -252,6 +252,8 @@ class BacktestRunSummary(BaseModel):
     source_analysis_id: int | None = None
     strategy_kind: str | None = None
     similarity_threshold: int | None = None
+    source_ticker: str | None = None
+    source_name: str | None = None
 
 
 class BacktestRunDetail(BacktestRunSummary):

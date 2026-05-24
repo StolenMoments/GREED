@@ -30,6 +30,8 @@ export interface BacktestRunSummary {
   strategy_kind: string | null;
   similarity_threshold: number | null;
   notes: string | null;
+  source_ticker: string | null;
+  source_name: string | null;
 }
 
 export interface BacktestRunDetail extends BacktestRunSummary {

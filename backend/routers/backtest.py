@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from backend.database import get_db
 from backend.models import BacktestRun, BacktestSignal, BacktestStat
@@ -28,13 +28,31 @@ _RET_COLUMN = {
 
 
 @router.get("/runs", response_model=list[BacktestRunSummary])
-def list_runs(db: Session = Depends(get_db)) -> list[BacktestRun]:
-    return list(db.scalars(select(BacktestRun).order_by(BacktestRun.id.desc())).all())
+def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
+    runs = list(
+        db.scalars(
+            select(BacktestRun)
+            .options(joinedload(BacktestRun.source_analysis))
+            .order_by(BacktestRun.id.desc())
+        ).all()
+    )
+    result = []
+    for run in runs:
+        summary = BacktestRunSummary.model_validate(run)
+        if run.source_analysis is not None:
+            summary.source_ticker = run.source_analysis.ticker
+            summary.source_name = run.source_analysis.name
+        result.append(summary)
+    return result
 
 
 @router.get("/runs/{run_id}", response_model=BacktestRunDetail)
 def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
-    run = db.get(BacktestRun, run_id)
+    run = db.scalar(
+        select(BacktestRun)
+        .options(joinedload(BacktestRun.source_analysis))
+        .where(BacktestRun.id == run_id)
+    )
     if run is None:
         raise HTTPException(status_code=404, detail="백테스트 실행을 찾을 수 없습니다.")
 
@@ -45,8 +63,12 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
             .order_by(BacktestStat.horizon, BacktestStat.score_bucket)
         ).all()
     )
+    summary = BacktestRunSummary.model_validate(run)
+    if run.source_analysis is not None:
+        summary.source_ticker = run.source_analysis.ticker
+        summary.source_name = run.source_analysis.name
     return BacktestRunDetail(
-        **BacktestRunSummary.model_validate(run).model_dump(),
+        **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],
     )
 

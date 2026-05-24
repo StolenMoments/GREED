@@ -160,6 +160,10 @@ class BacktestRun(Base):
     strategy_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)
     similarity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    source_analysis: Mapped["Analysis | None"] = relationship(
+        "Analysis", foreign_keys=[source_analysis_id]
+    )
+
 
 class AnalysisBacktestJob(Base):
     __tablename__ = "analysis_backtest_jobs"

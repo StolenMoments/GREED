@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   fetchBacktestRun,
   fetchBacktestRuns,
@@ -101,38 +101,56 @@ function RunSelector({
   runs: BacktestRunSummary[];
   onChange: (id: number) => void;
 }) {
+  const isSimilarity = detail?.strategy_kind === 'analysis_similarity';
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-slate-400">실행 선택</span>
-        <select
-          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition focus:outline-none focus:ring-1 focus:ring-amber-400/60"
-          value={runId ?? ''}
-          onChange={(event) => onChange(Number(event.target.value))}
-        >
-          {runs.map((run) => (
-            <option key={run.id} value={run.id}>
-              #{run.id} · {date(run.created_at)} · 신호 {run.signal_count.toLocaleString('ko-KR')}
-            </option>
-          ))}
-        </select>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-6">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-400">실행 선택</span>
+          <select
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition focus:outline-none focus:ring-1 focus:ring-amber-400/60"
+            value={runId ?? ''}
+            onChange={(event) => onChange(Number(event.target.value))}
+          >
+            {runs.map((run) => (
+              <option key={run.id} value={run.id}>
+                {run.source_name
+                  ? `#${run.id} · ${run.source_name} · ${date(run.created_at)} · 신호 ${run.signal_count.toLocaleString('ko-KR')}`
+                  : `#${run.id} · ${date(run.created_at)} · 신호 ${run.signal_count.toLocaleString('ko-KR')}`}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {detail && isSimilarity && detail.source_name && (
+          <div className="flex items-baseline gap-3">
+            <span className="text-3xl font-semibold tracking-tight text-amber-200">
+              {detail.source_name}
+            </span>
+            {detail.source_ticker && (
+              <span className="text-lg text-slate-400">{detail.source_ticker}</span>
+            )}
+            {detail.source_analysis_id !== null && (
+              <Link
+                className="rounded border border-amber-200/25 px-2.5 py-1 text-lg font-semibold text-amber-300/80 transition hover:border-amber-300/50 hover:text-amber-200"
+                to={`/analyses/${detail.source_analysis_id}`}
+              >
+                분석 #{detail.source_analysis_id}
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       {detail && (
-        <div className="text-right text-xs text-slate-500">
-          <p>
+        <div className="text-xs text-slate-500">
+          <span>
             {detail.universe} · 종목 {detail.ticker_count.toLocaleString('ko-KR')}개 ·
             기준점 {detail.buy_threshold}
-            {detail.strategy_kind === 'analysis_similarity' ? (
-              <span>
-                {' '}· source analysis #{detail.source_analysis_id ?? '--'} ·
-                similarity {detail.similarity_threshold ?? '--'}
-              </span>
-            ) : null}
-          </p>
-          <p className="mt-1">
-            {date(detail.data_start)} ~ {date(detail.data_end)} · 워밍업 {detail.warmup_weeks}주
-          </p>
+            {isSimilarity ? ` · similarity ${detail.similarity_threshold ?? '--'}` : null}
+            {' · '}{date(detail.data_start)} ~ {date(detail.data_end)} · 워밍업 {detail.warmup_weeks}주
+          </span>
         </div>
       )}
     </div>
