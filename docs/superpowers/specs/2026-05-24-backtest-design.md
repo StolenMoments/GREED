@@ -56,15 +56,15 @@
 - `pick.py`는 이 모듈을 import 하도록 변경(동작 보존 리팩터).
 - 백테스트 엔진도 동일 모듈을 사용 → 중복 제거 + 주봉 정렬/지표 정의 일치 보장.
 
-## 4. DB 스키마 (신규 테이블 4개)
+## 4. DB 스키마 (신규 테이블 3개 + 기존 `price_bars` 재사용)
 
 SQLAlchemy 모델은 `backend/models.py`에 추가한다.
 
-### 4-1. `weekly_bars` — 주봉 지표 시리즈 캐시
-- PK: `(ticker, bar_date)`
-- 컬럼: `open, high, low, close, volume, trading_value, volume_ma20, volume_ratio_20, ma20, ma60, ma120, atr14, atr14_pct, rsi14, macd, macd_signal, macd_hist, ma20_60_cross, ma60_120_cross, macd_signal_cross, strict_divergence, ichi_conv, ichi_base, ichi_lead1, ichi_lead2, ichi_lag, cloud_top, cloud_bottom, cloud_thickness, cloud_thickness_pct` (= 주봉 CSV 컬럼과 동일), `fetched_at`
-- 미래 구름 행(close=NaN)은 **저장하지 않는다.** `ichi_lead1/lead2`가 이미 `shift(26)`된 값이라 as-of 시점의 미래 구름은 인접 행에서 재구성 가능하다.
-- 인덱스: `(ticker, bar_date)` 조회용.
+### 4-1. 주봉 데이터 저장 — 기존 `price_bars` 테이블 재사용 (interval=`"1w"`)
+- 신규 `weekly_bars` 테이블을 만들지 않고 기존 `price_bars`를 `interval="1w"`로 재사용한다. 이미 `(ticker, interval, bar_date)` PK와 `open/high/low/close/volume/trading_value` 컬럼, upsert 헬퍼(`backend/price_bars.py: upsert_price_bars`)가 있다.
+- **OHLCV만 캐시**하고 지표(MA/ATR/RSI/MACD/일목/다이버전스)는 로드 시 공용 모듈로 **메모리에서 재계산**한다. 비용의 대부분은 FDR 일봉 네트워크 수집이고 지표 계산은 시리즈 1회 벡터 연산이라 무시할 만하다. 와이드 테이블·지표 staleness 문제를 피한다.
+- 백테스트 데이터 적재 흐름: ① `price_bars(1w)` 캐시가 충분하면 사용 → ② 부족하면 FDR 일봉 최대 수집 후 `W-MON` 리샘플 → `upsert_price_bars(db, ticker, "1w", weekly_df)` → 재로드.
+- 미래 구름 행(close=NaN)은 저장하지 않는다. `ichi_lead1/lead2`가 `shift(26)` 값이라 as-of 시점 미래 구름은 인접 행에서 재구성 가능하다.
 
 ### 4-2. `backtest_runs` — 실행 단위
 - `id (PK), created_at, universe(="KOSPI200"), buy_threshold, horizons(="4,8,12,26"), warmup_weeks, data_start, data_end, ticker_count, signal_count, notes`
@@ -133,8 +133,8 @@ SQLAlchemy 모델은 `backend/models.py`에 추가한다.
 ## 8. CLI (`scripts/backtest.py`)
 
 실행 단계:
-1. KOSPI200 유니버스 해석 (10절 리스크 1 참고).
-2. 종목별: 일봉 로드/갱신(`price_bars` 1d 캐시, 최대 과거) → 주봉 리샘플 + 지표 계산(공용 모듈) → `weekly_bars` upsert.
+1. KOSPI200 유니버스 해석 — `scripts/backtest/kospi200.csv` 로드 (10절 리스크 1 참고).
+2. 종목별: `price_bars(1w)` 캐시 확인 → 부족하면 FDR 일봉 최대 수집 → `W-MON` 리샘플 → `upsert_price_bars(..., "1w", ...)` → 재로드. 지표는 로드 후 공용 모듈로 메모리에서 재계산.
 3. 이벤트 스터디: 워밍업 이후 매 주봉 as-of 피처 재구성 → 스코어링 → 매수 신호의 horizon별 forward 수익률 수집.
 4. 영속화: `backtest_runs`, `backtest_signals`, `backtest_stats`.
 5. (선택) `rule_score.py`처럼 마크다운/CSV 요약 출력.
@@ -152,7 +152,7 @@ SQLAlchemy 모델은 `backend/models.py`에 추가한다.
 
 ## 10. 리스크 / 확인 사항
 
-1. **FDR KOSPI200 리스트 제공 여부** — 구현 계획 단계에서 `fdr.StockListing('KOSPI200')` 검증. 안 되면 정적 리스트(CSV/JSON) 폴백.
+1. **KOSPI200 멤버십 소스** — FDR은 `StockListing('KOSPI200')` 미구현이고 pykrx 1.2.8은 KRX 로그인(KRX_ID/KRX_PW)을 요구해 검증 단계에서 사용 불가로 확인됨. → **사용자가 제공하는 정적 CSV** `scripts/backtest/kospi200.csv`(컬럼: `code,name`)를 고정 유니버스로 사용한다. 파일이 없으면 CLI가 명확한 안내 메시지와 함께 종료한다.
 2. **생존편향** — 현재 구성종목 고정이라 과거 편입/편출 미반영(합의됨).
 3. **첫 실행 속도** — KOSPI200 전체 FDR 수집은 느림, 캐시 후 빨라짐(배치라 허용).
 4. **누수 차단 정확성** — as-of 재구성이 최고 위험 영역 → 골든 테스트 + 누수 테스트로 완화.
