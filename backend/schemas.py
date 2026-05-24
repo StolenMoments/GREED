@@ -185,3 +185,73 @@ class SignalCell(BaseModel):
 class SignalMatrixStat(BaseModel):
     model: str
     cells: list[SignalCell]
+
+
+class BacktestStatRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    horizon: int
+    score_bucket: str
+    count: int
+    censored_count: int
+    win_rate: float | None
+    mean: float | None
+    median: float | None
+    std: float | None
+    p25: float | None
+    p75: float | None
+    min: float | None
+    max: float | None
+
+
+class BacktestRunSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    universe: str
+    buy_threshold: int
+    horizons: str
+    warmup_weeks: int
+    data_start: date | None
+    data_end: date | None
+    ticker_count: int
+    signal_count: int
+    notes: str | None
+
+
+class BacktestRunDetail(BacktestRunSummary):
+    stats: list[BacktestStatRead]
+
+
+class BacktestSignalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ticker: str
+    name: str
+    signal_date: date
+    score: int
+    score_bucket: str
+    entry_date: date
+    entry_price: float
+    ret_4w: float | None
+    ret_8w: float | None
+    ret_12w: float | None
+    ret_26w: float | None
+
+
+class BacktestSignalPage(BaseModel):
+    total: int
+    items: list[BacktestSignalRead]
+
+
+class HistogramBin(BaseModel):
+    lower: float
+    upper: float
+    count: int
+
+
+class BacktestHistogram(BaseModel):
+    horizon: int
+    score_bucket: str
+    bins: list[HistogramBin]

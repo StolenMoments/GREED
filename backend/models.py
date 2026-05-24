@@ -138,3 +138,61 @@ class UsStock(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     market: Mapped[str] = mapped_column(String(20), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=seoul_now, nullable=False)
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=seoul_now, nullable=False
+    )
+    universe: Mapped[str] = mapped_column(String(50), nullable=False)
+    buy_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    horizons: Mapped[str] = mapped_column(String(50), nullable=False)
+    warmup_weeks: Mapped[int] = mapped_column(Integer, nullable=False)
+    data_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    data_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ticker_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class BacktestSignal(Base):
+    __tablename__ = "backtest_signals"
+    __table_args__ = (
+        Index("ix_backtest_signals_run", "run_id"),
+        Index("ix_backtest_signals_run_bucket", "run_id", "score_bucket"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    signal_date: Mapped[date] = mapped_column(Date, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    score_bucket: Mapped[str] = mapped_column(String(10), nullable=False)
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    ret_4w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_8w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_12w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ret_26w: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class BacktestStat(Base):
+    __tablename__ = "backtest_stats"
+
+    run_id: Mapped[int] = mapped_column(ForeignKey("backtest_runs.id"), primary_key=True)
+    horizon: Mapped[int] = mapped_column(Integer, primary_key=True)
+    score_bucket: Mapped[str] = mapped_column(String(10), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    censored_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    win_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mean: Mapped[float | None] = mapped_column(Float, nullable=True)
+    median: Mapped[float | None] = mapped_column(Float, nullable=True)
+    std: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p25: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p75: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max: Mapped[float | None] = mapped_column(Float, nullable=True)

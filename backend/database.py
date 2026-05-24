@@ -114,6 +114,72 @@ def _migrate_mariadb() -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS backtest_runs (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    created_at DATETIME NOT NULL,
+                    universe VARCHAR(50) NOT NULL,
+                    buy_threshold INTEGER NOT NULL,
+                    horizons VARCHAR(50) NOT NULL,
+                    warmup_weeks INTEGER NOT NULL,
+                    data_start DATE NULL,
+                    data_end DATE NULL,
+                    ticker_count INTEGER NOT NULL,
+                    signal_count INTEGER NOT NULL,
+                    notes TEXT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS backtest_signals (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    run_id INTEGER NOT NULL,
+                    ticker VARCHAR(20) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    signal_date DATE NOT NULL,
+                    score INTEGER NOT NULL,
+                    score_bucket VARCHAR(10) NOT NULL,
+                    entry_date DATE NOT NULL,
+                    entry_price FLOAT NOT NULL,
+                    ret_4w FLOAT NULL,
+                    ret_8w FLOAT NULL,
+                    ret_12w FLOAT NULL,
+                    ret_26w FLOAT NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_backtest_signals_run (run_id),
+                    INDEX ix_backtest_signals_run_bucket (run_id, score_bucket)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS backtest_stats (
+                    run_id INTEGER NOT NULL,
+                    horizon INTEGER NOT NULL,
+                    score_bucket VARCHAR(10) NOT NULL,
+                    count INTEGER NOT NULL,
+                    censored_count INTEGER NOT NULL,
+                    win_rate FLOAT NULL,
+                    mean FLOAT NULL,
+                    median FLOAT NULL,
+                    std FLOAT NULL,
+                    p25 FLOAT NULL,
+                    p75 FLOAT NULL,
+                    min FLOAT NULL,
+                    max FLOAT NULL,
+                    PRIMARY KEY (run_id, horizon, score_bucket)
+                )
+                """
+            )
+        )
         conn.commit()
 
 
