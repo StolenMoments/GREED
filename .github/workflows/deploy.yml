@@ -29,6 +29,8 @@ jobs:
           python -m pip install -r requirements.lock.txt
 
       - name: Run backend tests
+        env:
+          DATABASE_URL: mysql+pymysql://ci:ci@127.0.0.1:3306/ci?charset=utf8mb4
         run: python -m pytest backend/tests -q
 
       - name: Set up Node
