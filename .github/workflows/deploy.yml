@@ -61,16 +61,16 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "${{ secrets.OCI_DEPLOY_KEY }}" > ~/.ssh/greed_deploy
           chmod 600 ~/.ssh/greed_deploy
-          printf '%s\n' "${{ secrets.OCI_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' '146.56.170.98 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEdePKvNAMKsywS/VQD7Gk10JvTaogIQvWvjAOI4K3Td' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy
         shell: bash
         env:
           DEPLOY_SHA: ${{ github.sha }}
-          DEPLOY_HOST: ${{ secrets.OCI_DEPLOY_HOST }}
+          DEPLOY_HOST: 146.56.170.98
           DEPLOY_PORT: "22"
-          DEPLOY_USER: ${{ secrets.OCI_DEPLOY_USER }}
+          DEPLOY_USER: opc
         run: |
           ssh \
             -i ~/.ssh/greed_deploy \
