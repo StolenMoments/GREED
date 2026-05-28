@@ -32,6 +32,10 @@ def test_build_engine_kwargs_enables_pre_ping_for_mariadb() -> None:
 def test_migrate_mariadb_creates_price_bars_table(monkeypatch: pytest.MonkeyPatch) -> None:
     statements: list[str] = []
 
+    class FakeResult:
+        def all(self) -> list:
+            return []
+
     class FakeConnection:
         def __enter__(self) -> "FakeConnection":
             return self
@@ -39,8 +43,9 @@ def test_migrate_mariadb_creates_price_bars_table(monkeypatch: pytest.MonkeyPatc
         def __exit__(self, *args: object) -> None:
             return None
 
-        def execute(self, statement: object) -> None:
+        def execute(self, statement: object) -> "FakeResult":
             statements.append(str(statement))
+            return FakeResult()
 
         def commit(self) -> None:
             return None

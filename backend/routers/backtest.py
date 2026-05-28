@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import BacktestRun, BacktestSignal, BacktestStat
+from backend.models import Analysis, BacktestRun, BacktestSignal, BacktestStat
 from backend.schemas import (
     BacktestHistogram,
     BacktestRunDetail,
@@ -47,9 +47,7 @@ def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:
 def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
     runs = list(
         db.scalars(
-            select(BacktestRun)
-            .options(joinedload(BacktestRun.source_analysis))
-            .order_by(BacktestRun.id.desc())
+            select(BacktestRun).order_by(BacktestRun.id.desc())
         ).all()
     )
     adj = _adj_signal_counts(db, [run.id for run in runs])
@@ -58,9 +56,11 @@ def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
         summary = BacktestRunSummary.model_validate(run)
         if run.id in adj:
             summary.signal_count = adj[run.id]
-        if run.source_analysis is not None:
-            summary.source_ticker = run.source_analysis.ticker
-            summary.source_name = run.source_analysis.name
+        if run.source_analysis_id is not None:
+            analysis = db.get(Analysis, run.source_analysis_id)
+            if analysis is not None:
+                summary.source_ticker = analysis.ticker
+                summary.source_name = analysis.name
         result.append(summary)
     return result
 
@@ -68,9 +68,7 @@ def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
 @router.get("/runs/{run_id}", response_model=BacktestRunDetail)
 def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
     run = db.scalar(
-        select(BacktestRun)
-        .options(joinedload(BacktestRun.source_analysis))
-        .where(BacktestRun.id == run_id)
+        select(BacktestRun).where(BacktestRun.id == run_id)
     )
     if run is None:
         raise HTTPException(status_code=404, detail="백테스트 실행을 찾을 수 없습니다.")
@@ -86,9 +84,11 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
     adj = _adj_signal_counts(db, [run_id])
     if run_id in adj:
         summary.signal_count = adj[run_id]
-    if run.source_analysis is not None:
-        summary.source_ticker = run.source_analysis.ticker
-        summary.source_name = run.source_analysis.name
+    if run.source_analysis_id is not None:
+        analysis = db.get(Analysis, run.source_analysis_id)
+        if analysis is not None:
+            summary.source_ticker = analysis.ticker
+            summary.source_name = analysis.name
     return BacktestRunDetail(
         **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],

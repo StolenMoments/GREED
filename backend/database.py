@@ -88,6 +88,19 @@ def _migrate() -> None:
 def _migrate_mariadb() -> None:
     assert engine is not None
     with engine.connect() as conn:
+        for tbl in [
+            "analyses", "analysis_jobs", "backtest_runs",
+            "analysis_backtest_jobs", "backtest_signals", "backtest_stats",
+        ]:
+            rows = conn.execute(text(
+                "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                f"AND TABLE_NAME = '{tbl}' AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
+            )).all()
+            for row in rows:
+                conn.execute(text(f"ALTER TABLE `{tbl}` DROP FOREIGN KEY `{row[0]}`"))
+        conn.commit()
+
         for col, typedef in [
             ("outcome", "VARCHAR(20)"),
             ("outcome_date", "DATE"),

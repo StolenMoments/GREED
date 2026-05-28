@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Date, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
 from backend.timezone import seoul_now
@@ -20,11 +20,6 @@ class Run(Base):
         nullable=False,
     )
 
-    analyses: Mapped[list["Analysis"]] = relationship(
-        "Analysis",
-        back_populates="run",
-        cascade="all, delete-orphan",
-    )
 
 
 class Analysis(Base):
@@ -37,7 +32,7 @@ class Analysis(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     name_initials: Mapped[str] = mapped_column(String(255), default="", nullable=False)
@@ -62,8 +57,6 @@ class Analysis(Base):
         nullable=False,
     )
 
-    run: Mapped[Run] = relationship("Run", back_populates="analyses")
-
 
 class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"
@@ -74,12 +67,12 @@ class AnalysisJob(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
-    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
     model: Mapped[str] = mapped_column(String(50), default="claude", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
-    analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
+    analysis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=seoul_now,
@@ -156,13 +149,9 @@ class BacktestRun(Base):
     ticker_count: Mapped[int] = mapped_column(Integer, nullable=False)
     signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_analysis_id: Mapped[int | None] = mapped_column(ForeignKey("analyses.id"), nullable=True)
+    source_analysis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     strategy_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)
     similarity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-    source_analysis: Mapped["Analysis | None"] = relationship(
-        "Analysis", foreign_keys=[source_analysis_id]
-    )
 
 
 class AnalysisBacktestJob(Base):
@@ -173,10 +162,10 @@ class AnalysisBacktestJob(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("analyses.id"), nullable=False)
+    analysis_id: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     similarity_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
-    backtest_run_id: Mapped[int | None] = mapped_column(ForeignKey("backtest_runs.id"), nullable=True)
+    backtest_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -194,7 +183,7 @@ class BacktestSignal(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("backtest_runs.id"), nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     signal_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -211,7 +200,7 @@ class BacktestSignal(Base):
 class BacktestStat(Base):
     __tablename__ = "backtest_stats"
 
-    run_id: Mapped[int] = mapped_column(ForeignKey("backtest_runs.id"), primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     horizon: Mapped[int] = mapped_column(Integer, primary_key=True)
     score_bucket: Mapped[str] = mapped_column(String(10), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, nullable=False)
