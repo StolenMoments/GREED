@@ -1,15 +1,22 @@
 # GREED 인스턴스 배포 및 티커 분석 정상화 계획
 
 ## Summary
-- 원격 인스턴스 `/home/opc/GREED`에 `origin/master`를 clone하고, 현재 로컬 `scripts/backtest/kospi200.csv` 수정분은 먼저 커밋 후 push해서 포함한다.
+- 계획 문서 저장과 `scripts/backtest/kospi200.csv` 수정분 커밋/push는 완료됐다.
+- 다음 작업은 원격 인스턴스 `/home/opc/GREED`에 최신 `origin/master`를 clone하는 것부터 시작한다.
 - 백엔드는 `systemd` 서비스로 `127.0.0.1:8000`, 프론트는 Vite dev 서버로 `0.0.0.0:5173`에 띄운다.
 - MariaDB는 같은 인스턴스의 기존 `greed` DB와 `dbuser01` 계정을 사용한다. `.env`의 비밀번호는 로컬 `.env`에 있는 기존 `dbuser01` 비밀번호를 사용하되 출력하지 않는다.
 - DB 데이터 이관은 사용자가 담당하고, 이후 내가 서비스 health, ticker 검색, 분석 job 생성/완료까지 검증한다.
 
-## Key Changes
-- 로컬 준비:
-  - `scripts/backtest/kospi200.csv` 수정분을 커밋한다.
-  - `git push origin master` 후 원격 인스턴스에서 같은 커밋을 clone한다.
+## Completed
+- 계획 문서 저장 완료:
+  - `docs/instance-setup-plan-2026-05-28.md`
+- 로컬 준비 작업 완료:
+  - `scripts/backtest/kospi200.csv` 수정분 포함.
+  - 커밋: `283f798 chore: prepare instance setup plan`
+  - `origin/master` push 완료.
+- 따라서 다음 실행 때는 문서 저장, CSV 커밋, push를 다시 하지 않는다.
+
+## Remaining Key Changes
 - 원격 설치:
   - `/home/opc/GREED`에 repo clone.
   - `python3 -m venv .venv`
