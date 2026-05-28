@@ -10,6 +10,25 @@ log() {
   printf '[%s] %s\n' "$(date -Is)" "$*"
 }
 
+wait_for_url() {
+  local label="$1"
+  local url="$2"
+  local curl_args=("${@:3}")
+
+  for attempt in $(seq 1 30); do
+    if curl -fsS "${curl_args[@]}" "$url" >/dev/null; then
+      log "$label is healthy."
+      return 0
+    fi
+
+    log "$label is not ready yet; retrying ($attempt/30)."
+    sleep 1
+  done
+
+  log "$label did not become healthy."
+  return 1
+}
+
 cd "$APP_DIR"
 
 exec 9>"$LOCK_FILE"
@@ -42,9 +61,9 @@ log "Restarting services."
 sudo systemctl restart greed-backend.service greed-frontend.service
 
 log "Checking backend health."
-curl -fsS http://127.0.0.1:8000/api/health >/dev/null
+wait_for_url "Backend" "http://127.0.0.1:8000/api/health"
 
 log "Checking frontend health."
-curl -fsSI http://127.0.0.1:5173 >/dev/null
+wait_for_url "Frontend" "http://127.0.0.1:5173" -I
 
 log "Deployment complete: $(git rev-parse --short HEAD)."
