@@ -69,7 +69,7 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.sha }}
           DEPLOY_HOST: ${{ secrets.OCI_DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.OCI_DEPLOY_PORT }}
+          DEPLOY_PORT: "22"
           DEPLOY_USER: ${{ secrets.OCI_DEPLOY_USER }}
         run: |
           ssh \
