@@ -256,11 +256,11 @@ def run_analysis_backtest_pipeline(job_id: int) -> None:
 
         try:
             mark_analysis_backtest_job_running(db, job)
-            from scripts.backtest.analysis_similarity import run_analysis_similarity_backtest
+            from scripts.backtest.analysis_similarity import run_analysis_contract_backtest
             from scripts.backtest.engine import WARMUP_WEEKS
             from scripts.backtest.persistence import persist_run
 
-            result = run_analysis_similarity_backtest(
+            result = run_analysis_contract_backtest(
                 db,
                 analysis,
                 threshold=job.similarity_threshold,
@@ -275,12 +275,13 @@ def run_analysis_backtest_pipeline(job_id: int) -> None:
                 data_start=result.data_start,
                 data_end=result.data_end,
                 notes=(
-                    f"analysis_similarity source_analysis_id={analysis.id}; "
+                    f"analysis_contract source_analysis_id={analysis.id}; "
                     f"base_score={result.base_score}; base_judgment={result.base_judgment}"
                 ),
                 source_analysis_id=analysis.id,
-                strategy_kind="analysis_similarity",
+                strategy_kind="analysis_contract",
                 similarity_threshold=job.similarity_threshold,
+                horizons="contract",
             )
             mark_analysis_backtest_job_done(db, job, backtest_run_id=run_id)
         except Exception as exc:

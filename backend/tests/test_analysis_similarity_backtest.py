@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
+from backend.models import Analysis
 from scripts.backtest.analysis_similarity import (
     SimilarityProfile,
     analysis_score_bucket,
     bucket_macd_hist,
     bucket_rsi,
     bucket_volume,
+    contract_event_for_candidate,
     profile_from_features,
+    run_analysis_contract_backtest,
     run_similarity_ticker,
     similarity_score,
 )
@@ -110,3 +114,217 @@ def test_run_similarity_ticker_emits_records() -> None:
     assert records[0].score >= 10
     assert records[0].score_bucket == str(records[0].score)
     assert 4 in records[0].returns
+
+
+def _daily_frame(rows: list[tuple[str, float, float, float, float]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "open": [row[1] for row in rows],
+            "high": [row[2] for row in rows],
+            "low": [row[3] for row in rows],
+            "close": [row[4] for row in rows],
+            "volume": [1000 for _ in rows],
+            "trading_value": [100000 for _ in rows],
+        },
+        index=pd.to_datetime([row[0] for row in rows]),
+    )
+
+
+def test_contract_event_waits_for_entry_then_records_target() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 103, 99, 102),
+            ("2024-01-03", 102, 104, 101, 103),
+            ("2024-01-04", 103, 106, 95, 100),
+            ("2024-01-05", 100, 112, 99, 111),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=96,
+        target_price=110,
+        stop_price=90,
+        max_entry_days=20,
+        max_hold_days=130,
+    )
+
+    assert event.entry_date == pd.Timestamp("2024-01-04").date()
+    assert event.exit_date == pd.Timestamp("2024-01-05").date()
+    assert event.exit_reason == "target"
+    assert event.exit_price == 110
+    assert event.event_return == 110 / 96 - 1
+    assert event.days_held == 1
+
+
+def test_contract_event_uses_stop_first_when_target_and_stop_touch_same_day() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 103, 99, 102),
+            ("2024-01-03", 102, 106, 94, 100),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=100,
+        target_price=105,
+        stop_price=95,
+        max_entry_days=20,
+        max_hold_days=130,
+    )
+
+    assert event.exit_reason == "stop"
+    assert event.exit_price == 95
+    assert event.event_return == pytest.approx(-0.05)
+
+
+def test_contract_event_ignores_invalid_zero_ohlc_rows() -> None:
+    daily = _daily_frame(
+        [
+            ("2018-04-27", 50000, 51000, 49000, 50000),
+            ("2018-04-30", 0, 0, 0, 53000),
+            ("2018-05-02", 50000, 52000, 49500, 51000),
+            ("2018-05-03", 51000, 56000, 50500, 55500),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2018-04-27").date(),
+        entry_price=50000,
+        target_price=55000,
+        stop_price=48000,
+        max_entry_days=1,
+        max_hold_days=130,
+    )
+
+    assert event.entry_date == pd.Timestamp("2018-05-02").date()
+    assert event.exit_reason == "target"
+    assert event.exit_date == pd.Timestamp("2018-05-03").date()
+
+
+def test_contract_event_ignores_invalid_rows_in_hold_window() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 101, 99, 100),
+            ("2024-01-03", 100, 101, 99, 100),
+            ("2024-01-04", 0, 0, 0, 100),
+            ("2024-01-05", 100, 111, 99, 110),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=100,
+        target_price=110,
+        stop_price=95,
+        max_entry_days=20,
+        max_hold_days=130,
+    )
+
+    assert event.exit_reason == "target"
+    assert event.exit_date == pd.Timestamp("2024-01-05").date()
+
+
+def test_contract_event_expires_at_last_close_after_hold_window() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 101, 99, 100),
+            ("2024-01-03", 100, 101, 99, 100),
+            ("2024-01-04", 100, 102, 98, 101),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=100,
+        target_price=110,
+        stop_price=90,
+        max_entry_days=20,
+        max_hold_days=1,
+    )
+
+    assert event.exit_reason == "expiry"
+    assert event.exit_date == pd.Timestamp("2024-01-04").date()
+    assert event.exit_price == 101
+    assert event.event_return == pytest.approx(0.01)
+
+
+def test_contract_event_reports_no_entry_when_entry_not_touched() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 102, 99, 101),
+            ("2024-01-03", 101, 103, 100, 102),
+        ]
+    )
+
+    event = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=95,
+        target_price=105,
+        stop_price=90,
+        max_entry_days=1,
+        max_hold_days=130,
+    )
+
+    assert event.exit_reason == "no_entry"
+    assert event.entry_date is None
+    assert event.event_return is None
+
+
+def test_contract_event_changes_when_contract_levels_change_on_same_prices() -> None:
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100, 101, 99, 100),
+            ("2024-01-03", 100, 106, 94, 100),
+        ]
+    )
+
+    target_first = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=100,
+        target_price=105,
+        stop_price=90,
+    )
+    stop_first = contract_event_for_candidate(
+        daily,
+        signal_date=pd.Timestamp("2024-01-02").date(),
+        entry_price=100,
+        target_price=110,
+        stop_price=95,
+    )
+
+    assert target_first.exit_reason == "target"
+    assert stop_first.exit_reason == "stop"
+
+
+def test_contract_backtest_requires_buy_analysis_and_contract_prices() -> None:
+    analysis = Analysis(
+        run_id=1,
+        ticker="005930",
+        name="Samsung",
+        name_initials="SS",
+        model="rule",
+        markdown="body",
+        judgment="hold",
+        trend="up",
+        cloud_position="above",
+        ma_alignment="bullish",
+        entry_price=None,
+        target_price=120,
+        stop_loss=90,
+    )
+
+    with pytest.raises(ValueError, match="requires a buy analysis"):
+        run_analysis_contract_backtest(None, analysis)
+
+    analysis.judgment = "buy"
+    with pytest.raises(ValueError, match="entry_price"):
+        run_analysis_contract_backtest(None, analysis)

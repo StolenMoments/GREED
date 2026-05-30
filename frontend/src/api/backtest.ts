@@ -34,8 +34,22 @@ export interface BacktestRunSummary {
   source_name: string | null;
 }
 
+export interface BacktestEventSummary {
+  signal_count: number;
+  entered_count: number;
+  no_entry_count: number;
+  target_count: number;
+  stop_count: number;
+  expiry_count: number;
+  win_rate: number | null;
+  mean_return: number | null;
+  median_return: number | null;
+  avg_days_held: number | null;
+}
+
 export interface BacktestRunDetail extends BacktestRunSummary {
   stats: BacktestStat[];
+  event_summary: BacktestEventSummary | null;
 }
 
 export async function fetchBacktestRuns(): Promise<BacktestRunSummary[]> {

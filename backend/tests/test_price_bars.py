@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from backend.database import Base
 from backend.models import PriceBar
 from backend.price_bars import DAILY_INTERVAL, WEEKLY_INTERVAL, fetch_price_bars_df, upsert_price_bars
+from scripts.backtest.data import load_daily_ohlcv
 
 
 @pytest.fixture()
@@ -78,6 +79,86 @@ def test_upsert_price_bars_updates_existing_weekly_row_without_merge(
     assert len(rows) == 1
     assert rows[0].interval == WEEKLY_INTERVAL
     assert rows[0].high == 77000
+
+
+def test_upsert_price_bars_skips_invalid_ohlc_rows(db_session: Session) -> None:
+    df = make_bars(
+        [
+            ("2026-05-11", 70000, 76000, 69000, 75000, 10),
+            ("2026-05-12", 0, 76000, 69000, 75000, 10),
+            ("2026-05-13", 70000, 0, 69000, 75000, 10),
+            ("2026-05-14", 70000, 76000, 0, 75000, 10),
+            ("2026-05-15", 70000, 76000, 69000, 0, 10),
+            ("2026-05-18", 70000, 68000, 69000, 75000, 10),
+        ]
+    )
+
+    assert upsert_price_bars(db_session, "005930", DAILY_INTERVAL, df) == 1
+
+    rows = db_session.scalars(select(PriceBar).order_by(PriceBar.bar_date)).all()
+    assert [row.bar_date for row in rows] == [date(2026, 5, 11)]
+
+
+def test_upsert_price_bars_allows_missing_open_for_legacy_sources(db_session: Session) -> None:
+    df = pd.DataFrame(
+        [{"High": 76000, "Low": 69000, "Close": 75000, "Volume": 10}],
+        index=pd.to_datetime(["2026-05-11"]),
+    )
+
+    assert upsert_price_bars(db_session, "005930", DAILY_INTERVAL, df) == 1
+
+    row = db_session.scalar(select(PriceBar))
+    assert row is not None
+    assert row.open is None
+
+
+def test_load_daily_ohlcv_skips_existing_invalid_ohlc_rows(db_session: Session) -> None:
+    fetched_at = datetime(2026, 5, 19, 12)
+    db_session.add_all(
+        [
+            PriceBar(
+                ticker="005930",
+                interval=DAILY_INTERVAL,
+                bar_date=date(2026, 5, 11),
+                open=70000,
+                high=76000,
+                low=69000,
+                close=75000,
+                volume=10,
+                trading_value=750000,
+                fetched_at=fetched_at,
+            ),
+            PriceBar(
+                ticker="005930",
+                interval=DAILY_INTERVAL,
+                bar_date=date(2026, 5, 12),
+                open=0,
+                high=0,
+                low=0,
+                close=75000,
+                volume=0,
+                trading_value=0,
+                fetched_at=fetched_at,
+            ),
+            PriceBar(
+                ticker="005930",
+                interval=DAILY_INTERVAL,
+                bar_date=date(2026, 5, 13),
+                open=70000,
+                high=68000,
+                low=69000,
+                close=75000,
+                volume=10,
+                trading_value=750000,
+                fetched_at=fetched_at,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    df = load_daily_ohlcv(db_session, "005930")
+
+    assert list(df.index.date) == [date(2026, 5, 11)]
 
 
 def test_fetch_price_bars_df_reuses_complete_past_cache(

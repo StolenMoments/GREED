@@ -164,12 +164,17 @@ def _migrate_mariadb() -> None:
                     signal_date DATE NOT NULL,
                     score INTEGER NOT NULL,
                     score_bucket VARCHAR(10) NOT NULL,
-                    entry_date DATE NOT NULL,
+                    entry_date DATE NULL,
                     entry_price FLOAT NOT NULL,
                     ret_4w FLOAT NULL,
                     ret_8w FLOAT NULL,
                     ret_12w FLOAT NULL,
                     ret_26w FLOAT NULL,
+                    exit_date DATE NULL,
+                    exit_reason VARCHAR(20) NULL,
+                    exit_price FLOAT NULL,
+                    event_return FLOAT NULL,
+                    days_held INTEGER NULL,
                     PRIMARY KEY (id),
                     INDEX ix_backtest_signals_run (run_id),
                     INDEX ix_backtest_signals_run_bucket (run_id, score_bucket)
@@ -177,6 +182,15 @@ def _migrate_mariadb() -> None:
                 """
             )
         )
+        conn.execute(text("ALTER TABLE backtest_signals MODIFY COLUMN entry_date DATE NULL"))
+        for col, typedef in [
+            ("exit_date", "DATE NULL"),
+            ("exit_reason", "VARCHAR(20) NULL"),
+            ("exit_price", "FLOAT NULL"),
+            ("event_return", "FLOAT NULL"),
+            ("days_held", "INTEGER NULL"),
+        ]:
+            conn.execute(text(f"ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS {col} {typedef}"))
         conn.execute(
             text(
                 """
