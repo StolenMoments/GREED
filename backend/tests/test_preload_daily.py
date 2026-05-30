@@ -85,6 +85,40 @@ def test_preload_daily_bars_continues_after_fetch_failure(db_session) -> None:
     assert db_session.get(PriceBar, ("000660", DAILY_INTERVAL, date(2024, 1, 2))) is not None
 
 
+def test_preload_daily_bars_skips_empty_response_when_cache_exists(db_session) -> None:
+    seeded = pd.DataFrame(
+        {"Open": [100], "High": [110], "Low": [90], "Close": [105], "Volume": [1000]},
+        index=pd.to_datetime(["2024-01-02"]),
+    )
+    starts: list[date] = []
+
+    def seed_fetcher(ticker: str, start: date) -> pd.DataFrame:
+        return seeded
+
+    def empty_fetcher(ticker: str, start: date) -> pd.DataFrame:
+        starts.append(start)
+        return pd.DataFrame()
+
+    preload_daily_bars(db_session, universe=[("005930", "Samsung")], fetcher=seed_fetcher)
+    result = preload_daily_bars(db_session, universe=[("005930", "Samsung")], fetcher=empty_fetcher)
+
+    assert starts == [date(2024, 1, 3)]
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.failed == []
+
+
+def test_preload_daily_bars_fails_empty_response_when_cache_missing(db_session) -> None:
+    def fetcher(ticker: str, start: date) -> pd.DataFrame:
+        return pd.DataFrame()
+
+    result = preload_daily_bars(db_session, universe=[("005930", "Samsung")], fetcher=fetcher)
+
+    assert result.processed == 0
+    assert result.skipped == 0
+    assert result.failed == [("005930", "Samsung", "no daily data returned")]
+
+
 def test_preload_daily_bars_sleeps_between_successful_requests(db_session) -> None:
     sleeps: list[float] = []
 

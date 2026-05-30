@@ -34,6 +34,7 @@ Sleeper = Callable[[float], None]
 @dataclass(slots=True)
 class PreloadDailyResult:
     processed: int = 0
+    skipped: int = 0
     upserted_rows: int = 0
     failed: list[tuple[str, str, str]] = field(default_factory=list)
 
@@ -59,7 +60,7 @@ def preload_daily_bars(
     rows = list(universe)
     for index, (ticker, name) in enumerate(rows):
         try:
-            fetch_start = _next_fetch_start(db, ticker, start)
+            fetch_start, has_cache = _next_fetch_state(db, ticker, start)
             daily = _fetch_with_retries(
                 ticker,
                 fetch_start,
@@ -69,6 +70,10 @@ def preload_daily_bars(
                 sleeper=sleeper,
             )
             if daily is None or daily.empty:
+                if has_cache:
+                    logger.info("No new daily bars for %s %s from %s", ticker, name, fetch_start)
+                    result.skipped += 1
+                    continue
                 raise RuntimeError("no daily data returned")
             result.upserted_rows += upsert_price_bars(db, ticker, DAILY_INTERVAL, daily)
             result.processed += 1
@@ -104,7 +109,7 @@ def _fetch_with_retries(
             attempt += 1
 
 
-def _next_fetch_start(db, ticker: str, default_start: date) -> date:
+def _next_fetch_state(db, ticker: str, default_start: date) -> tuple[date, bool]:
     latest = db.scalar(
         select(func.max(PriceBar.bar_date)).where(
             PriceBar.ticker == ticker,
@@ -112,8 +117,8 @@ def _next_fetch_start(db, ticker: str, default_start: date) -> date:
         )
     )
     if latest is None:
-        return default_start
-    return max(default_start, latest + timedelta(days=1))
+        return default_start, False
+    return max(default_start, latest + timedelta(days=1)), True
 
 
 def main() -> None:
@@ -141,8 +146,9 @@ def main() -> None:
         db.close()
 
     logger.info(
-        "Daily preload finished: processed=%s upserted_rows=%s failed=%s",
+        "Daily preload finished: processed=%s skipped=%s upserted_rows=%s failed=%s",
         result.processed,
+        result.skipped,
         result.upserted_rows,
         len(result.failed),
     )
