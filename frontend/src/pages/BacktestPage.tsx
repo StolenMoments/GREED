@@ -11,7 +11,7 @@ import {
 
 const HORIZONS = [4, 8, 12, 26] as const;
 const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
-const SIMILARITY_BUCKETS = ['10-11', '12+'] as const;
+const SIMILARITY_BUCKETS = ['10', '11', '12', '13', '14'] as const;
 
 function ratio(value: number | null, digits = 1): string {
   if (value === null) return '--';
@@ -250,7 +250,7 @@ function HorizonTable({ stats }: { stats: BacktestStat[] }) {
 
 function scoreBuckets(stats: BacktestStat[]): string[] {
   const buckets = new Set(stats.map((stat) => stat.score_bucket));
-  if (buckets.has('12+') || buckets.has('10-11')) {
+  if (SIMILARITY_BUCKETS.some((bucket) => buckets.has(bucket))) {
     return [...SIMILARITY_BUCKETS];
   }
   if (buckets.has('8+') || buckets.has('6-7') || buckets.has('4-5')) {
