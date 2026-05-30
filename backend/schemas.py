@@ -235,6 +235,19 @@ class BacktestStatRead(BaseModel):
     max: float | None
 
 
+class BacktestEventSummary(BaseModel):
+    signal_count: int
+    entered_count: int
+    no_entry_count: int
+    target_count: int
+    stop_count: int
+    expiry_count: int
+    win_rate: float | None
+    mean_return: float | None
+    median_return: float | None
+    avg_days_held: float | None
+
+
 class BacktestRunSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -258,6 +271,7 @@ class BacktestRunSummary(BaseModel):
 
 class BacktestRunDetail(BacktestRunSummary):
     stats: list[BacktestStatRead]
+    event_summary: BacktestEventSummary | None = None
 
 
 class BacktestSignalRead(BaseModel):
@@ -268,12 +282,17 @@ class BacktestSignalRead(BaseModel):
     signal_date: date
     score: int
     score_bucket: str
-    entry_date: date
+    entry_date: date | None
     entry_price: float
     ret_4w: float | None
     ret_8w: float | None
     ret_12w: float | None
     ret_26w: float | None
+    exit_date: date | None = None
+    exit_reason: str | None = None
+    exit_price: float | None = None
+    event_return: float | None = None
+    days_held: int | None = None
 
 
 class BacktestSignalPage(BaseModel):

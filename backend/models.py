@@ -189,12 +189,17 @@ class BacktestSignal(Base):
     signal_date: Mapped[date] = mapped_column(Date, nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     score_bucket: Mapped[str] = mapped_column(String(10), nullable=False)
-    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    entry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     entry_price: Mapped[float] = mapped_column(Float, nullable=False)
     ret_4w: Mapped[float | None] = mapped_column(Float, nullable=True)
     ret_8w: Mapped[float | None] = mapped_column(Float, nullable=True)
     ret_12w: Mapped[float | None] = mapped_column(Float, nullable=True)
     ret_26w: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    event_return: Mapped[float | None] = mapped_column(Float, nullable=True)
+    days_held: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class BacktestStat(Base):

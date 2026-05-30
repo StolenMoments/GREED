@@ -29,11 +29,12 @@ def persist_run(
     source_analysis_id: int | None = None,
     strategy_kind: str | None = None,
     similarity_threshold: int | None = None,
+    horizons: str | None = None,
 ) -> int:
     run = BacktestRun(
         universe="KOSPI200",
         buy_threshold=buy_threshold,
-        horizons=",".join(str(h) for h in HORIZONS),
+        horizons=horizons or ",".join(str(h) for h in HORIZONS),
         warmup_weeks=warmup_weeks,
         data_start=data_start,
         data_end=data_end,
@@ -62,6 +63,11 @@ def persist_run(
                 ret_8w=r.returns.get(8),
                 ret_12w=r.returns.get(12),
                 ret_26w=r.returns.get(26),
+                exit_date=r.exit_date,
+                exit_reason=r.exit_reason,
+                exit_price=r.exit_price,
+                event_return=r.event_return,
+                days_held=r.days_held,
             )
         )
     for s in stats:

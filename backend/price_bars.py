@@ -56,10 +56,11 @@ def upsert_price_bars(db: Session, ticker: str, interval: str, df: pd.DataFrame)
         bar_date = ts.date() if hasattr(ts, "date") else ts
         high = _float_or_none(row, "High")
         low = _float_or_none(row, "Low")
-        if high is None or low is None:
+        open_ = _float_or_none(row, "Open")
+        close = _float_or_none(row, "Close")
+        if not _is_valid_ohlc(open_, high, low, close):
             continue
 
-        close = _float_or_none(row, "Close")
         volume = _float_or_none(row, "Volume")
         trading_value = _trading_value(row, close, volume)
         rows.append(
@@ -67,7 +68,7 @@ def upsert_price_bars(db: Session, ticker: str, interval: str, df: pd.DataFrame)
                 "ticker": ticker,
                 "interval": interval,
                 "bar_date": bar_date,
-                "open": _float_or_none(row, "Open"),
+                "open": open_,
                 "high": high,
                 "low": low,
                 "close": close,
@@ -184,6 +185,21 @@ def _float_or_none(row: Any, column: str) -> float | None:
     if column not in row or pd.isna(row[column]):
         return None
     return float(row[column])
+
+
+def _is_valid_ohlc(
+    open_: float | None,
+    high: float | None,
+    low: float | None,
+    close: float | None,
+) -> bool:
+    if high is None or low is None or close is None:
+        return False
+    if high <= 0 or low <= 0 or close <= 0:
+        return False
+    if open_ is not None and open_ <= 0:
+        return False
+    return high >= low
 
 
 def _trading_value(row: Any, close: float | None, volume: float | None) -> float | None:

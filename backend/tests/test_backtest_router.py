@@ -147,6 +147,86 @@ def test_run_detail_includes_stats(client: TestClient, db_session: Session) -> N
     assert any(s["horizon"] == 4 and s["score_bucket"] == "ALL" for s in body["stats"])
 
 
+def test_contract_run_detail_includes_event_summary(client: TestClient, db_session: Session) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200",
+        buy_threshold=10,
+        horizons="contract",
+        warmup_weeks=120,
+        data_start=date(2015, 1, 5),
+        data_end=date(2026, 5, 18),
+        ticker_count=2,
+        signal_count=3,
+        notes=None,
+        source_analysis_id=42,
+        strategy_kind="analysis_contract",
+        similarity_threshold=10,
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            BacktestSignal(
+                run_id=run.id,
+                ticker="005930",
+                name="Samsung",
+                signal_date=date(2024, 1, 2),
+                score=12,
+                score_bucket="12",
+                entry_date=date(2024, 1, 3),
+                entry_price=100,
+                exit_date=date(2024, 1, 10),
+                exit_reason="target",
+                exit_price=110,
+                event_return=0.10,
+                days_held=5,
+            ),
+            BacktestSignal(
+                run_id=run.id,
+                ticker="000660",
+                name="SK Hynix",
+                signal_date=date(2024, 1, 2),
+                score=10,
+                score_bucket="10",
+                entry_date=date(2024, 1, 3),
+                entry_price=100,
+                exit_date=date(2024, 1, 8),
+                exit_reason="stop",
+                exit_price=95,
+                event_return=-0.05,
+                days_held=3,
+            ),
+            BacktestSignal(
+                run_id=run.id,
+                ticker="035420",
+                name="Naver",
+                signal_date=date(2024, 1, 2),
+                score=11,
+                score_bucket="11",
+                entry_date=None,
+                entry_price=100,
+                exit_reason="no_entry",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}")
+
+    assert resp.status_code == 200
+    summary = resp.json()["event_summary"]
+    assert summary["signal_count"] == 3
+    assert summary["entered_count"] == 2
+    assert summary["no_entry_count"] == 1
+    assert summary["target_count"] == 1
+    assert summary["stop_count"] == 1
+    assert summary["expiry_count"] == 0
+    assert summary["win_rate"] == 0.5
+    assert summary["mean_return"] == pytest.approx(0.025)
+    assert summary["avg_days_held"] == 4
+
+
 def test_signals_filter_by_bucket(client: TestClient, db_session: Session) -> None:
     run_id = _seed(db_session)
     resp = client.get(f"/api/backtest/runs/{run_id}/signals", params={"score_bucket": "6-7"})

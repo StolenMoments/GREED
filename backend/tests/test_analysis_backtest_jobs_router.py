@@ -154,7 +154,7 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
         )
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
-    monkeypatch.setattr(analysis_similarity, "run_analysis_similarity_backtest", fake_backtest)
+    monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
 
@@ -168,7 +168,7 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
     run = db_session.get(BacktestRun, saved_job.backtest_run_id)
     assert run is not None
     assert run.source_analysis_id == analysis_id
-    assert run.strategy_kind == "analysis_similarity"
+    assert run.strategy_kind == "analysis_contract"
     assert run.similarity_threshold == 10
     assert run.buy_threshold == 10
     assert run.ticker_count == 3
@@ -196,7 +196,7 @@ def test_analysis_backtest_pipeline_marks_failure(
         raise RuntimeError("not enough data")
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
-    monkeypatch.setattr(analysis_similarity, "run_analysis_similarity_backtest", fake_backtest)
+    monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
 
@@ -244,7 +244,7 @@ def test_analysis_backtest_pipeline_rolls_back_before_marking_failure(
         db.flush()
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
-    monkeypatch.setattr(analysis_similarity, "run_analysis_similarity_backtest", fake_backtest)
+    monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
 

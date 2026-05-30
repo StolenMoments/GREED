@@ -7,6 +7,7 @@ import {
   type BacktestRunSummary,
   type BacktestRunDetail,
   type BacktestStat,
+  type BacktestEventSummary,
 } from '../api/backtest';
 import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
 
@@ -103,6 +104,7 @@ function RunSelector({
   onChange: (id: number) => void;
 }) {
   const isSimilarity = detail?.strategy_kind === 'analysis_similarity';
+  const isContract = detail?.strategy_kind === 'analysis_contract';
 
   return (
     <div className="flex flex-col gap-2">
@@ -124,7 +126,7 @@ function RunSelector({
           </select>
         </div>
 
-        {detail && isSimilarity && detail.source_name && (
+        {detail && (isSimilarity || isContract) && detail.source_name && (
           <div className="flex items-baseline gap-3">
             <span className="text-3xl font-semibold tracking-tight text-amber-200">
               {detail.source_name}
@@ -150,6 +152,7 @@ function RunSelector({
             {detail.universe} · 종목 {detail.ticker_count.toLocaleString('ko-KR')}개 ·
             기준점 {detail.buy_threshold}
             {isSimilarity ? ` · similarity ${detail.similarity_threshold ?? '--'}` : null}
+            {isContract ? ` · contract similarity ${detail.similarity_threshold ?? '--'}` : null}
             {' · '}{date(detail.data_start)} ~ {date(detail.data_end)} · 워밍업 {detail.warmup_weeks}주
           </span>
         </div>
@@ -159,6 +162,41 @@ function RunSelector({
 }
 
 function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
+  if (detail.strategy_kind === 'analysis_contract' && detail.event_summary) {
+    const summary = detail.event_summary;
+    return (
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">contract signals</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {summary.signal_count.toLocaleString('ko-KR')}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">entered / missed</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {summary.entered_count.toLocaleString('ko-KR')}
+            <span className="text-base font-medium text-slate-500">
+              {' / '}{summary.no_entry_count.toLocaleString('ko-KR')}
+            </span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">target win rate</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-300">
+            {ratio(summary.win_rate)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">mean event return</p>
+          <p className={`mt-1 text-2xl font-semibold ${signedTone(summary.mean_return)}`}>
+            {pct(summary.mean_return)}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const allStats = detail.stats.filter((stat) => stat.score_bucket === 'ALL');
   const namedH4 = detail.stats.filter(
     (stat) => stat.horizon === 4 && stat.score_bucket !== 'ALL' && stat.score_bucket !== '8-9',
@@ -193,6 +231,59 @@ function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
         <p className="text-xs text-slate-500">수익률 구간</p>
         <p className="mt-1 text-2xl font-semibold text-slate-50">
           {detail.horizons.replaceAll(',', ' / ')}주
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ContractEventSummaryPanel({ summary }: { summary: BacktestEventSummary }) {
+  const outcomes = [
+    { label: 'Target', value: summary.target_count, tone: 'text-emerald-200' },
+    { label: 'Stop', value: summary.stop_count, tone: 'text-rose-200' },
+    { label: 'Expiry', value: summary.expiry_count, tone: 'text-amber-100' },
+    { label: 'No entry', value: summary.no_entry_count, tone: 'text-slate-400' },
+  ];
+  const max = Math.max(...outcomes.map((item) => item.value), 1);
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]">
+      <div className="rounded-lg border border-slate-800/80 bg-slate-950/55 p-5">
+        <div className="border-b border-amber-100/10 pb-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+            contract outcomes
+          </p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
+            Entry touch to target / stop / expiry
+          </h3>
+        </div>
+        <div className="mt-5 grid gap-3">
+          {outcomes.map((item) => (
+            <div className="grid grid-cols-[92px_minmax(0,1fr)_72px] items-center gap-3" key={item.label}>
+              <span className={`text-sm font-semibold ${item.tone}`}>{item.label}</span>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-amber-300"
+                  style={{ width: `${(item.value / max) * 100}%` }}
+                />
+              </div>
+              <span className="text-right text-sm font-semibold text-slate-200">
+                {item.value.toLocaleString('ko-KR')}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-lg border border-slate-800/80 bg-slate-950/55 p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          holding
+        </p>
+        <p className="mt-4 text-3xl font-semibold text-slate-50">
+          {summary.avg_days_held === null ? '--' : summary.avg_days_held.toFixed(1)}
+          <span className="ml-2 text-base font-medium text-slate-500">days avg</span>
+        </p>
+        <p className={`mt-4 text-sm font-semibold ${signedTone(summary.median_return)}`}>
+          median return {pct(summary.median_return)}
         </p>
       </div>
     </div>
@@ -442,8 +533,14 @@ function BacktestPage() {
           ) : (
             <>
               <SummaryStrip detail={detail} />
-              <HorizonTable stats={detail.stats} />
-              {detail.stats.length > 0 && <BucketComparison stats={detail.stats} />}
+              {detail.strategy_kind === 'analysis_contract' && detail.event_summary ? (
+                <ContractEventSummaryPanel summary={detail.event_summary} />
+              ) : (
+                <>
+                  <HorizonTable stats={detail.stats} />
+                  {detail.stats.length > 0 && <BucketComparison stats={detail.stats} />}
+                </>
+              )}
             </>
           )}
         </>

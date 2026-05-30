@@ -30,9 +30,14 @@ class SignalRecord:
     signal_date: date
     score: int
     score_bucket: str
-    entry_date: date
+    entry_date: date | None
     entry_price: float
     returns: dict[int, float | None] = field(default_factory=dict)
+    exit_date: date | None = None
+    exit_reason: str | None = None
+    exit_price: float | None = None
+    event_return: float | None = None
+    days_held: int | None = None
 
 
 @dataclass(slots=True)

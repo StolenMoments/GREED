@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import Analysis, BacktestRun, BacktestSignal, BacktestStat
 from backend.schemas import (
+    BacktestEventSummary,
     BacktestHistogram,
     BacktestRunDetail,
     BacktestRunSummary,
@@ -41,6 +42,33 @@ def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:
         .group_by(BacktestStat.run_id)
     ).all()
     return {row[0]: int(row[1]) for row in rows}
+
+
+def _event_summary(db: Session, run_id: int) -> BacktestEventSummary:
+    signals = list(
+        db.scalars(
+            select(BacktestSignal).where(BacktestSignal.run_id == run_id)
+        ).all()
+    )
+    entered = [signal for signal in signals if signal.exit_reason != "no_entry"]
+    returns = [signal.event_return for signal in entered if signal.event_return is not None]
+    days = [signal.days_held for signal in entered if signal.days_held is not None]
+    target_count = sum(1 for signal in signals if signal.exit_reason == "target")
+    stop_count = sum(1 for signal in signals if signal.exit_reason == "stop")
+    expiry_count = sum(1 for signal in signals if signal.exit_reason == "expiry")
+    no_entry_count = sum(1 for signal in signals if signal.exit_reason == "no_entry")
+    return BacktestEventSummary(
+        signal_count=len(signals),
+        entered_count=len(entered),
+        no_entry_count=no_entry_count,
+        target_count=target_count,
+        stop_count=stop_count,
+        expiry_count=expiry_count,
+        win_rate=(target_count / len(entered)) if entered else None,
+        mean_return=float(np.mean(returns)) if returns else None,
+        median_return=float(np.median(returns)) if returns else None,
+        avg_days_held=float(np.mean(days)) if days else None,
+    )
 
 
 @router.get("/runs", response_model=list[BacktestRunSummary])
@@ -92,6 +120,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
     return BacktestRunDetail(
         **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],
+        event_summary=_event_summary(db, run_id) if run.strategy_kind == "analysis_contract" else None,
     )
 
 
