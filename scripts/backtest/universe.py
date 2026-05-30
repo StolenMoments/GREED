@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models import BacktestUniverseMember
@@ -94,3 +95,17 @@ def import_universe_csv(
         existing.source = source
     db.commit()
     return len(rows)
+
+
+def ensure_default_universe_seeded(
+    db: Session,
+    path: Path | str = DEFAULT_UNIVERSE_PATH,
+) -> int:
+    existing_count = db.scalar(
+        select(func.count())
+        .select_from(BacktestUniverseMember)
+        .where(BacktestUniverseMember.market == "KR")
+    )
+    if existing_count:
+        return 0
+    return import_universe_csv(db, path, source="kospi200.csv")

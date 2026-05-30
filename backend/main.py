@@ -59,10 +59,18 @@ def configure_access_log_filter() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         init_db()
+        _seed_default_backtest_universe()
         _mark_orphaned_backtest_jobs_failed()
     except (DBAPIError, OperationalError) as exc:
         mark_database_unavailable(exc)
     yield
+
+
+def _seed_default_backtest_universe() -> None:
+    from scripts.backtest.universe import ensure_default_universe_seeded
+
+    with SessionLocal() as db:
+        ensure_default_universe_seeded(db)
 
 
 def _mark_orphaned_backtest_jobs_failed() -> None:

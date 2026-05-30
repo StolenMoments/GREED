@@ -3,6 +3,7 @@ import { DatabaseStatusBanner } from './components/DatabaseStatusBanner';
 import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import AnalysisListPage from './pages/AnalysisListPage';
 import BacktestPage from './pages/BacktestPage';
+import BacktestUniversePage from './pages/BacktestUniversePage';
 import JobsPage from './pages/JobsPage';
 import RunListPage from './pages/RunListPage';
 import StatsPage from './pages/StatsPage';
@@ -13,7 +14,8 @@ const navItems = [
   { to: '/runs', label: 'Runs' },
   { to: '/analyses', label: 'Analyses' },
   { to: '/stats', label: 'Stats' },
-  { to: '/backtest', label: 'Backtest' },
+  { to: '/backtest', label: 'Backtest', end: true },
+  { to: '/backtest/universe', label: 'Universe' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/stocks', label: 'Stocks' },
 ];
@@ -42,6 +44,7 @@ function App() {
                       : 'text-slate-300 hover:bg-slate-800 hover:text-slate-50',
                   ].join(' ')
                 }
+                end={item.end}
                 key={item.to}
                 to={item.to}
               >
@@ -64,6 +67,7 @@ function App() {
           />
           <Route element={<StatsPage />} path="/stats" />
           <Route element={<BacktestPage />} path="/backtest" />
+          <Route element={<BacktestUniversePage />} path="/backtest/universe" />
           <Route element={<JobsPage />} path="/jobs" />
           <Route element={<StockSummaryPage />} path="/stocks" />
           <Route element={<Navigate replace to="/runs" />} path="*" />

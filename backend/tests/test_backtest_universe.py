@@ -12,7 +12,12 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from backtest.universe import import_universe_csv, load_active_universe, load_universe  # noqa: E402
+from backtest.universe import (  # noqa: E402
+    ensure_default_universe_seeded,
+    import_universe_csv,
+    load_active_universe,
+    load_universe,
+)
 
 
 def test_load_universe_parses_code_name(tmp_path):
@@ -127,3 +132,42 @@ def test_import_universe_csv_upserts_normalizes_and_reactivates(db_session, tmp_
     assert samsung.source == "seed"
     assert hynix is not None
     assert hynix.sort_order == 1
+
+
+def test_ensure_default_universe_seeded_imports_when_empty(db_session, tmp_path):
+    csv = tmp_path / "u.csv"
+    csv.write_text("code,name\n5930,Samsung\n000660,SK Hynix\n", encoding="utf-8-sig")
+
+    imported = ensure_default_universe_seeded(db_session, csv)
+
+    assert imported == 2
+    assert load_active_universe(db_session) == [
+        ("005930", "Samsung"),
+        ("000660", "SK Hynix"),
+    ]
+
+
+def test_ensure_default_universe_seeded_preserves_existing_members(db_session, tmp_path):
+    csv = tmp_path / "u.csv"
+    csv.write_text("code,name\n5930,Samsung\n000660,SK Hynix\n", encoding="utf-8-sig")
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="005930",
+            name="User Samsung",
+            market="KR",
+            active=False,
+            sort_order=7,
+            source="manual",
+        )
+    )
+    db_session.commit()
+
+    imported = ensure_default_universe_seeded(db_session, csv)
+
+    samsung = db_session.get(BacktestUniverseMember, "005930")
+    assert imported == 0
+    assert samsung is not None
+    assert samsung.name == "User Samsung"
+    assert samsung.active is False
+    assert samsung.sort_order == 7
+    assert samsung.source == "manual"
