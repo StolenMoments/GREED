@@ -10,11 +10,11 @@ function isActive(job: AnalysisBacktestJob | undefined): boolean {
 }
 
 function statusLabel(job: AnalysisBacktestJob | undefined): string {
-  if (!job) return '실행 없음';
-  if (job.status === 'pending') return '대기 중';
-  if (job.status === 'running') return '실행 중';
+  if (!job) return 'Not run';
+  if (job.status === 'pending') return 'Queued';
+  if (job.status === 'running') return 'Running';
   if (job.status === 'done') return 'Done';
-  return '실패';
+  return 'Failed';
 }
 
 function statusTone(job: AnalysisBacktestJob | undefined): string {
@@ -43,7 +43,7 @@ export default function AnalysisBacktestPanel({
 
   async function handleRun() {
     try {
-      await trigger.mutateAsync({});
+      await trigger.mutateAsync({ similarity_threshold: 12 });
     } catch {
       // The mutation state renders the failure message below.
     }
@@ -54,16 +54,16 @@ export default function AnalysisBacktestPanel({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-slate-100">
-            KOSPI200 유사도 백테스트
+            KOSPI200 Contract Backtest
           </h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            이 분석의 룰 피처와 유사한 KOSPI200 과거 구간을 검증합니다.
+            Runs the analysis contract against similar KOSPI200 history using the fixed 12+ threshold.
           </p>
         </div>
         <span
           className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(latest)}`}
         >
-          {statusLabel(latest)}
+          12+ · {statusLabel(latest)}
         </span>
       </div>
 
@@ -73,18 +73,18 @@ export default function AnalysisBacktestPanel({
         onClick={() => void handleRun()}
         type="button"
       >
-        {isRunning ? '실행 중' : '백테스트 실행'}
+        {isRunning ? '12+ running' : 'Run 12+ backtest'}
       </button>
 
       {trigger.isError ? (
         <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-950/20 px-3 py-2 text-xs leading-5 text-rose-100">
-          백테스트 작업을 시작하지 못했습니다.
+          Could not start the backtest job.
         </p>
       ) : null}
 
       {jobsQuery.isError ? (
         <p className="mt-3 rounded-md border border-rose-300/20 bg-rose-950/20 px-3 py-2 text-xs leading-5 text-rose-100">
-          백테스트 실행 이력을 불러오지 못했습니다.
+          Could not load recent backtest jobs.
         </p>
       ) : null}
 
@@ -100,20 +100,21 @@ export default function AnalysisBacktestPanel({
           to={`/backtest?runId=${latest.backtest_run_id}`}
         >
           Backtest Run #{latest.backtest_run_id}
+          <span className="ml-2 text-xs font-medium text-emerald-200/70">12+</span>
         </Link>
       ) : null}
 
       <div className="mt-4 border-t border-amber-100/10 pt-3">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-medium text-slate-500">최근 실행</p>
+          <p className="text-xs font-medium text-slate-500">Recent runs</p>
           {jobsQuery.isFetching ? (
-            <span className="text-xs text-slate-600">갱신 중</span>
+            <span className="text-xs text-slate-600">Refreshing</span>
           ) : null}
         </div>
 
         {jobs.length === 0 ? (
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            아직 실행한 백테스트가 없습니다.
+            No contract backtests have been run yet.
           </p>
         ) : (
           <div className="mt-2 space-y-1.5">
@@ -123,7 +124,7 @@ export default function AnalysisBacktestPanel({
                 key={job.id}
               >
                 <span className="min-w-0 truncate">
-                  #{job.id}
+                  #{job.id} · {job.similarity_threshold}+
                 </span>
                 {job.backtest_run_id ? (
                   <Link

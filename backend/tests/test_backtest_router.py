@@ -292,6 +292,21 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
     assert summary["realized_payoff_ratio"] == pytest.approx(0.065 / 0.035)
     assert summary["avg_days_held"] == pytest.approx(11.75)
 
+    breakdown = resp.json()["contract_breakdown"]
+    assert breakdown["focus_threshold"] == 12
+    assert breakdown["focus"]["signal_count"] == 1
+    assert breakdown["focus"]["entered_count"] == 1
+    assert breakdown["focus"]["target_count"] == 1
+    assert breakdown["focus"]["mean_return"] == pytest.approx(0.10)
+    assert breakdown["by_score"]["10"]["mean_return"] == pytest.approx(-0.05)
+    assert breakdown["by_score"]["11"]["signal_count"] == 3
+    assert breakdown["by_score"]["11"]["entered_count"] == 2
+    assert breakdown["by_score"]["11"]["no_entry_count"] == 1
+    assert breakdown["by_year"]["2024"]["signal_count"] == 5
+    assert breakdown["by_year"]["2024"]["entered_count"] == 4
+    assert breakdown["top_tickers"] == []
+    assert breakdown["bottom_tickers"] == []
+
 
 def test_signals_filter_by_bucket(client: TestClient, db_session: Session) -> None:
     run_id = _seed(db_session)
@@ -300,6 +315,85 @@ def test_signals_filter_by_bucket(client: TestClient, db_session: Session) -> No
     page = resp.json()
     assert page["total"] == 1
     assert page["items"][0]["ticker"] == "005930"
+
+
+def test_contract_breakdown_ranks_tickers_with_at_least_five_entries(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200",
+        buy_threshold=12,
+        horizons="contract",
+        warmup_weeks=120,
+        data_start=date(2015, 1, 5),
+        data_end=date(2026, 5, 18),
+        ticker_count=3,
+        signal_count=14,
+        notes=None,
+        strategy_kind="analysis_contract",
+        similarity_threshold=12,
+    )
+    db_session.add(run)
+    db_session.flush()
+    for index in range(5):
+        db_session.add(
+            BacktestSignal(
+                run_id=run.id,
+                ticker="111111",
+                name="Winner",
+                signal_date=date(2024, 1, 1 + index),
+                score=12,
+                score_bucket="12",
+                entry_date=date(2024, 1, 2 + index),
+                entry_price=100,
+                exit_reason="target",
+                event_return=0.10,
+                days_held=5,
+            )
+        )
+        db_session.add(
+            BacktestSignal(
+                run_id=run.id,
+                ticker="222222",
+                name="Loser",
+                signal_date=date(2024, 2, 1 + index),
+                score=12,
+                score_bucket="12",
+                entry_date=date(2024, 2, 2 + index),
+                entry_price=100,
+                exit_reason="stop",
+                event_return=-0.05,
+                days_held=5,
+            )
+        )
+    for index in range(4):
+        db_session.add(
+            BacktestSignal(
+                run_id=run.id,
+                ticker="333333",
+                name="Small Sample",
+                signal_date=date(2024, 3, 1 + index),
+                score=12,
+                score_bucket="12",
+                entry_date=date(2024, 3, 2 + index),
+                entry_price=100,
+                exit_reason="target",
+                event_return=0.50,
+                days_held=5,
+            )
+        )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}")
+
+    assert resp.status_code == 200
+    breakdown = resp.json()["contract_breakdown"]
+    assert breakdown["top_tickers"][0]["ticker"] == "111111"
+    assert breakdown["top_tickers"][0]["mean_return"] == pytest.approx(0.10)
+    assert breakdown["bottom_tickers"][0]["ticker"] == "222222"
+    assert [item["ticker"] for item in breakdown["top_tickers"]] == ["111111", "222222"]
 
 
 def test_histogram_returns_bins_for_horizon(client: TestClient, db_session: Session) -> None:

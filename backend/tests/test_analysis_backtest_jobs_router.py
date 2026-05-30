@@ -100,7 +100,7 @@ def test_create_analysis_backtest_job(
     body = response.json()
     assert body["analysis_id"] == analysis_id
     assert body["status"] == "pending"
-    assert body["similarity_threshold"] == 10
+    assert body["similarity_threshold"] == 12
     assert body["backtest_run_id"] is None
     assert scheduled == [body["id"]]
 
@@ -112,6 +112,20 @@ def test_create_analysis_backtest_job_rejects_missing_analysis(client: TestClien
     )
 
     assert response.status_code == 404
+
+
+def test_create_analysis_backtest_job_rejects_invalid_threshold(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analysis_id = _seed_analysis(db_session)
+
+    response = client.post(
+        f"/api/analyses/{analysis_id}/backtest-jobs",
+        json={"similarity_threshold": 9},
+    )
+
+    assert response.status_code == 422
 
 
 def test_list_analysis_backtest_jobs(client: TestClient, db_session: Session) -> None:
@@ -132,7 +146,7 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
     job = AnalysisBacktestJob(
         analysis_id=analysis_id,
         status="pending",
-        similarity_threshold=10,
+        similarity_threshold=12,
     )
     db_session.add(job)
     db_session.commit()
@@ -144,7 +158,7 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
 
     def fake_backtest(db: Session, analysis: Analysis, *, threshold: int) -> AnalysisBacktestResult:
         assert analysis.id == analysis_id
-        assert threshold == 10
+        assert threshold == 12
         return AnalysisBacktestResult(
             ticker_count=3,
             data_start=None,
@@ -169,8 +183,8 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
     assert run is not None
     assert run.source_analysis_id == analysis_id
     assert run.strategy_kind == "analysis_contract"
-    assert run.similarity_threshold == 10
-    assert run.buy_threshold == 10
+    assert run.similarity_threshold == 12
+    assert run.buy_threshold == 12
     assert run.ticker_count == 3
 
 

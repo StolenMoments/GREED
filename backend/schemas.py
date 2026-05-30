@@ -151,7 +151,7 @@ class EvaluateOutcomesResult(BaseModel):
 
 
 class AnalysisBacktestJobCreate(BaseModel):
-    pass
+    similarity_threshold: Literal[10, 11, 12] = 12
 
 
 class AnalysisBacktestJobRead(BaseModel):
@@ -258,6 +258,34 @@ class BacktestEventSummary(BaseModel):
     realized_payoff_ratio: float | None = None
 
 
+class ContractBreakdownItem(BaseModel):
+    signal_count: int
+    entered_count: int
+    no_entry_count: int
+    target_count: int
+    stop_count: int
+    expiry_count: int
+    target_hit_rate: float | None
+    positive_return_rate: float | None
+    mean_return: float | None
+    median_return: float | None
+    avg_days_held: float | None
+
+
+class ContractTickerBreakdownItem(ContractBreakdownItem):
+    ticker: str
+    name: str
+
+
+class ContractBreakdown(BaseModel):
+    focus_threshold: int
+    focus: ContractBreakdownItem
+    by_score: dict[str, ContractBreakdownItem]
+    by_year: dict[str, ContractBreakdownItem]
+    top_tickers: list[ContractTickerBreakdownItem]
+    bottom_tickers: list[ContractTickerBreakdownItem]
+
+
 class BacktestRunSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -282,6 +310,7 @@ class BacktestRunSummary(BaseModel):
 class BacktestRunDetail(BacktestRunSummary):
     stats: list[BacktestStatRead]
     event_summary: BacktestEventSummary | None = None
+    contract_breakdown: ContractBreakdown | None = None
 
 
 class BacktestSignalRead(BaseModel):

@@ -56,9 +56,38 @@ export interface BacktestEventSummary {
   realized_payoff_ratio: number | null;
 }
 
+export interface ContractBreakdownItem {
+  signal_count: number;
+  entered_count: number;
+  no_entry_count: number;
+  target_count: number;
+  stop_count: number;
+  expiry_count: number;
+  target_hit_rate: number | null;
+  positive_return_rate: number | null;
+  mean_return: number | null;
+  median_return: number | null;
+  avg_days_held: number | null;
+}
+
+export interface ContractTickerBreakdownItem extends ContractBreakdownItem {
+  ticker: string;
+  name: string;
+}
+
+export interface ContractBreakdown {
+  focus_threshold: number;
+  focus: ContractBreakdownItem;
+  by_score: Record<string, ContractBreakdownItem>;
+  by_year: Record<string, ContractBreakdownItem>;
+  top_tickers: ContractTickerBreakdownItem[];
+  bottom_tickers: ContractTickerBreakdownItem[];
+}
+
 export interface BacktestRunDetail extends BacktestRunSummary {
   stats: BacktestStat[];
   event_summary: BacktestEventSummary | null;
+  contract_breakdown: ContractBreakdown | null;
 }
 
 export interface BacktestUniverseMember {

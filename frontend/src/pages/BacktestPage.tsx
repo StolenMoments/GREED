@@ -8,6 +8,8 @@ import {
   type BacktestRunDetail,
   type BacktestStat,
   type BacktestEventSummary,
+  type ContractBreakdownItem,
+  type ContractTickerBreakdownItem,
 } from '../api/backtest';
 import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
 
@@ -319,6 +321,198 @@ function ContractEventSummaryPanel({ summary }: { summary: BacktestEventSummary 
   );
 }
 
+function ContractMetricCards({
+  title,
+  item,
+}: {
+  title: string;
+  item: ContractBreakdownItem;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200/15 bg-slate-950/55 p-5">
+      <div className="border-b border-amber-100/10 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          {title}
+        </p>
+        <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
+          Score 12+ focus
+        </h3>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div>
+          <p className="text-xs text-slate-500">signals</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {item.signal_count.toLocaleString('ko-KR')}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">entered / no entry</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {item.entered_count.toLocaleString('ko-KR')}
+            <span className="text-base font-medium text-slate-500">
+              {' / '}{item.no_entry_count.toLocaleString('ko-KR')}
+            </span>
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">target hit</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-300">
+            {ratio(item.target_hit_rate)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">mean return</p>
+          <p className={`mt-1 text-2xl font-semibold ${signedTone(item.mean_return)}`}>
+            {pct(item.mean_return)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500">avg holding</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {item.avg_days_held === null ? '--' : item.avg_days_held.toFixed(1)}
+            <span className="ml-1 text-base font-medium text-slate-500">d</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContractBreakdownTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: Array<[string, ContractBreakdownItem]>;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-800/80 bg-slate-950/55 p-5">
+      <div className="border-b border-amber-100/10 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          {title}
+        </p>
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
+          <thead>
+            <tr className="text-slate-400">
+              <th className="px-3 py-2 text-left">bucket</th>
+              <th className="px-3 py-2 text-right">signals</th>
+              <th className="px-3 py-2 text-right">entered</th>
+              <th className="px-3 py-2 text-right">no entry</th>
+              <th className="px-3 py-2 text-right">target / stop / expiry</th>
+              <th className="px-3 py-2 text-right">target hit</th>
+              <th className="px-3 py-2 text-right">positive</th>
+              <th className="px-3 py-2 text-right">mean / median</th>
+              <th className="px-3 py-2 text-right">avg days</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, item]) => (
+              <tr className="border-t border-slate-800/70" key={label}>
+                <td className="px-3 py-3 font-semibold text-slate-200">{label}</td>
+                <td className="px-3 py-3 text-right text-slate-300">{count(item.signal_count)}</td>
+                <td className="px-3 py-3 text-right text-slate-300">{count(item.entered_count)}</td>
+                <td className="px-3 py-3 text-right text-slate-500">{count(item.no_entry_count)}</td>
+                <td className="px-3 py-3 text-right text-slate-400">
+                  {count(item.target_count)} / {count(item.stop_count)} / {count(item.expiry_count)}
+                </td>
+                <td className="px-3 py-3 text-right font-semibold text-emerald-300">
+                  {ratio(item.target_hit_rate)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {ratio(item.positive_return_rate)}
+                </td>
+                <td className={`px-3 py-3 text-right font-semibold ${signedTone(item.mean_return)}`}>
+                  {pct(item.mean_return)} / {pct(item.median_return)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-400">
+                  {item.avg_days_held === null ? '--' : item.avg_days_held.toFixed(1)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ContractTickerTable({
+  title,
+  tickers,
+}: {
+  title: string;
+  tickers: ContractTickerBreakdownItem[];
+}) {
+  return (
+    <div className="rounded-lg border border-slate-800/80 bg-slate-950/55 p-5">
+      <div className="border-b border-amber-100/10 pb-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          {title}
+        </p>
+      </div>
+      {tickers.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          No ticker has at least 5 entered contracts in this run.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {tickers.map((ticker) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_92px_92px] items-center gap-3 text-sm"
+              key={`${title}-${ticker.ticker}`}
+            >
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-200">
+                  {ticker.name}
+                  <span className="ml-2 text-slate-500">{ticker.ticker}</span>
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  entered {count(ticker.entered_count)} · target {ratio(ticker.target_hit_rate)}
+                </p>
+              </div>
+              <p className={`text-right font-semibold ${signedTone(ticker.mean_return)}`}>
+                {pct(ticker.mean_return)}
+              </p>
+              <p className="text-right text-slate-400">
+                {ratio(ticker.positive_return_rate)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContractBreakdownPanel({ detail }: { detail: BacktestRunDetail }) {
+  const breakdown = detail.contract_breakdown;
+  if (!breakdown) return null;
+
+  const scoreRows = Object.entries(breakdown.by_score).sort(
+    ([left], [right]) => Number(left) - Number(right),
+  );
+  const yearRows = Object.entries(breakdown.by_year).sort(
+    ([left], [right]) => Number(left) - Number(right),
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <ContractMetricCards
+        item={breakdown.focus}
+        title={`${breakdown.focus_threshold}+ focus summary`}
+      />
+      <ContractBreakdownTable rows={scoreRows} title="score breakdown" />
+      <ContractBreakdownTable rows={yearRows} title="year breakdown" />
+      <div className="grid gap-5 xl:grid-cols-2">
+        <ContractTickerTable tickers={breakdown.top_tickers} title="top tickers" />
+        <ContractTickerTable tickers={breakdown.bottom_tickers} title="bottom tickers" />
+      </div>
+    </div>
+  );
+}
+
 function HorizonTable({ stats }: { stats: BacktestStat[] }) {
   return (
     <div className="overflow-x-auto">
@@ -561,11 +755,15 @@ function BacktestPage() {
             </div>
           ) : (
             <>
-              <SummaryStrip detail={detail} />
               {detail.strategy_kind === 'analysis_contract' && detail.event_summary ? (
-                <ContractEventSummaryPanel summary={detail.event_summary} />
+                <>
+                  <ContractBreakdownPanel detail={detail} />
+                  <SummaryStrip detail={detail} />
+                  <ContractEventSummaryPanel summary={detail.event_summary} />
+                </>
               ) : (
                 <>
+                  <SummaryStrip detail={detail} />
                   <HorizonTable stats={detail.stats} />
                   {detail.stats.length > 0 && <BucketComparison stats={detail.stats} />}
                 </>

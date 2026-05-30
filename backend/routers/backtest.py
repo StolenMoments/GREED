@@ -15,6 +15,9 @@ from backend.models import (
     BacktestUniverseMember,
 )
 from backend.schemas import (
+    ContractBreakdown,
+    ContractBreakdownItem,
+    ContractTickerBreakdownItem,
     BacktestEventSummary,
     BacktestHistogram,
     BacktestRunDetail,
@@ -40,6 +43,8 @@ _RET_COLUMN = {
     26: BacktestSignal.ret_26w,
 }
 _ACTIVE_PRELOAD_JOB_STATUSES = ("pending", "running")
+_CONTRACT_FOCUS_THRESHOLD = 12
+_CONTRACT_TICKER_MIN_ENTRIES = 5
 
 
 def _universe_member_or_404(db: Session, ticker: str) -> BacktestUniverseMember:
@@ -290,6 +295,104 @@ def _event_summary(db: Session, run: BacktestRun) -> BacktestEventSummary:
     )
 
 
+def _contract_breakdown_item(signals: list[BacktestSignal]) -> ContractBreakdownItem:
+    entered = [signal for signal in signals if signal.exit_reason != "no_entry"]
+    returns = [signal.event_return for signal in entered if signal.event_return is not None]
+    days = [signal.days_held for signal in entered if signal.days_held is not None]
+    target_count = sum(1 for signal in signals if signal.exit_reason == "target")
+    stop_count = sum(1 for signal in signals if signal.exit_reason == "stop")
+    expiry_count = sum(1 for signal in signals if signal.exit_reason == "expiry")
+    no_entry_count = sum(1 for signal in signals if signal.exit_reason == "no_entry")
+
+    return ContractBreakdownItem(
+        signal_count=len(signals),
+        entered_count=len(entered),
+        no_entry_count=no_entry_count,
+        target_count=target_count,
+        stop_count=stop_count,
+        expiry_count=expiry_count,
+        target_hit_rate=(target_count / len(entered)) if entered else None,
+        positive_return_rate=(
+            sum(1 for event_return in returns if event_return > 0) / len(returns)
+            if returns
+            else None
+        ),
+        mean_return=float(np.mean(returns)) if returns else None,
+        median_return=float(np.median(returns)) if returns else None,
+        avg_days_held=float(np.mean(days)) if days else None,
+    )
+
+
+def _contract_breakdown(db: Session, run: BacktestRun) -> ContractBreakdown:
+    signals = list(
+        db.scalars(
+            select(BacktestSignal)
+            .where(BacktestSignal.run_id == run.id)
+            .order_by(BacktestSignal.signal_date, BacktestSignal.id)
+        ).all()
+    )
+
+    score_values = sorted({signal.score for signal in signals})
+    by_score = {
+        str(score): _contract_breakdown_item(
+            [signal for signal in signals if signal.score == score]
+        )
+        for score in score_values
+    }
+
+    year_values = sorted({signal.signal_date.year for signal in signals})
+    by_year = {
+        str(year): _contract_breakdown_item(
+            [signal for signal in signals if signal.signal_date.year == year]
+        )
+        for year in year_values
+    }
+
+    ticker_items: list[ContractTickerBreakdownItem] = []
+    ticker_keys = sorted({(signal.ticker, signal.name) for signal in signals})
+    for ticker, name in ticker_keys:
+        ticker_signals = [
+            signal for signal in signals if signal.ticker == ticker and signal.name == name
+        ]
+        item = _contract_breakdown_item(ticker_signals)
+        if item.entered_count < _CONTRACT_TICKER_MIN_ENTRIES:
+            continue
+        ticker_items.append(
+            ContractTickerBreakdownItem(
+                **item.model_dump(),
+                ticker=ticker,
+                name=name,
+            )
+        )
+
+    ticker_items.sort(
+        key=lambda item: (
+            item.mean_return is None,
+            -(item.mean_return or 0),
+            item.ticker,
+        )
+    )
+    bottom_tickers = sorted(
+        ticker_items,
+        key=lambda item: (
+            item.mean_return is None,
+            item.mean_return or 0,
+            item.ticker,
+        ),
+    )
+
+    return ContractBreakdown(
+        focus_threshold=_CONTRACT_FOCUS_THRESHOLD,
+        focus=_contract_breakdown_item(
+            [signal for signal in signals if signal.score >= _CONTRACT_FOCUS_THRESHOLD]
+        ),
+        by_score=by_score,
+        by_year=by_year,
+        top_tickers=ticker_items[:10],
+        bottom_tickers=bottom_tickers[:10],
+    )
+
+
 @router.get("/runs", response_model=list[BacktestRunSummary])
 def list_runs(db: Session = Depends(get_db)) -> list[BacktestRunSummary]:
     runs = list(
@@ -340,6 +443,9 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
         **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],
         event_summary=_event_summary(db, run) if run.strategy_kind == "analysis_contract" else None,
+        contract_breakdown=_contract_breakdown(db, run)
+        if run.strategy_kind == "analysis_contract"
+        else None,
     )
 
 
