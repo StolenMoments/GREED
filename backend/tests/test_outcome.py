@@ -51,12 +51,11 @@ def make_daily_df(rows: list[tuple[str, int, int]]) -> pd.DataFrame:
     )
 
 
-def test_evaluate_outcome_ignores_prices_before_and_on_analysis_date() -> None:
+def test_evaluate_outcome_ignores_prices_before_analysis_date() -> None:
     analysis = make_analysis(created_at=datetime(2026, 5, 13, 12, 23, 3))
     df = make_daily_df(
         [
             ("2026-05-11", 179500, 155700),
-            ("2026-05-13", 180000, 136700),
             ("2026-05-14", 148900, 137600),
         ]
     )
@@ -68,7 +67,7 @@ def test_evaluate_outcome_ignores_prices_before_and_on_analysis_date() -> None:
     assert outcome_price is None
 
 
-def test_evaluate_outcome_uses_first_trade_date_after_analysis_date() -> None:
+def test_evaluate_outcome_includes_same_day_bar() -> None:
     analysis = make_analysis(created_at=datetime(2026, 5, 13, 12, 23, 3))
     df = make_daily_df(
         [
@@ -81,8 +80,8 @@ def test_evaluate_outcome_uses_first_trade_date_after_analysis_date() -> None:
     outcome, outcome_date, outcome_price = evaluate_outcome(analysis, df)
 
     assert outcome == OUTCOME_TARGET
-    assert outcome_date == pd.Timestamp("2026-05-15").date()
-    assert outcome_price == 175500
+    assert outcome_date == pd.Timestamp("2026-05-13").date()
+    assert outcome_price == 180000
 
 
 def test_evaluate_outcome_keeps_stop_priority_when_both_hit_same_day() -> None:

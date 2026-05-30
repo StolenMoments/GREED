@@ -29,7 +29,7 @@ def evaluate_outcome(
 
     for ts, row in df.iterrows():
         trade_date: date = ts.date() if hasattr(ts, "date") else ts
-        if trade_date <= analysis_date:
+        if trade_date < analysis_date:
             continue
 
         hit_stop = analysis.stop_loss is not None and float(row["Low"]) <= analysis.stop_loss
