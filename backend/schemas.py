@@ -242,6 +242,8 @@ class BacktestEventSummary(BaseModel):
     target_count: int
     stop_count: int
     expiry_count: int
+    target_hit_rate: float | None
+    positive_return_rate: float | None
     win_rate: float | None
     mean_return: float | None
     median_return: float | None

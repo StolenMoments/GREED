@@ -57,6 +57,12 @@ def _event_summary(db: Session, run_id: int) -> BacktestEventSummary:
     stop_count = sum(1 for signal in signals if signal.exit_reason == "stop")
     expiry_count = sum(1 for signal in signals if signal.exit_reason == "expiry")
     no_entry_count = sum(1 for signal in signals if signal.exit_reason == "no_entry")
+    target_hit_rate = (target_count / len(entered)) if entered else None
+    positive_return_rate = (
+        sum(1 for event_return in returns if event_return > 0) / len(returns)
+        if returns
+        else None
+    )
     return BacktestEventSummary(
         signal_count=len(signals),
         entered_count=len(entered),
@@ -64,7 +70,9 @@ def _event_summary(db: Session, run_id: int) -> BacktestEventSummary:
         target_count=target_count,
         stop_count=stop_count,
         expiry_count=expiry_count,
-        win_rate=(target_count / len(entered)) if entered else None,
+        target_hit_rate=target_hit_rate,
+        positive_return_rate=positive_return_rate,
+        win_rate=target_hit_rate,
         mean_return=float(np.mean(returns)) if returns else None,
         median_return=float(np.median(returns)) if returns else None,
         avg_days_held=float(np.mean(days)) if days else None,

@@ -182,9 +182,12 @@ function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
           </p>
         </div>
         <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
-          <p className="text-xs text-slate-500">target win rate</p>
+          <p className="text-xs text-slate-500">target hit rate</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-300">
-            {ratio(summary.win_rate)}
+            {ratio(summary.target_hit_rate)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            positive return {ratio(summary.positive_return_rate)}
           </p>
         </div>
         <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
@@ -284,6 +287,9 @@ function ContractEventSummaryPanel({ summary }: { summary: BacktestEventSummary 
         </p>
         <p className={`mt-4 text-sm font-semibold ${signedTone(summary.median_return)}`}>
           median return {pct(summary.median_return)}
+        </p>
+        <p className="mt-2 text-sm font-semibold text-slate-300">
+          positive return {ratio(summary.positive_return_rate)}
         </p>
       </div>
     </div>

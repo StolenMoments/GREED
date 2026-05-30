@@ -157,7 +157,7 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
         data_start=date(2015, 1, 5),
         data_end=date(2026, 5, 18),
         ticker_count=2,
-        signal_count=3,
+        signal_count=5,
         notes=None,
         source_analysis_id=42,
         strategy_kind="analysis_contract",
@@ -204,6 +204,36 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
                 signal_date=date(2024, 1, 2),
                 score=11,
                 score_bucket="11",
+                entry_date=date(2024, 1, 4),
+                entry_price=100,
+                exit_date=date(2024, 2, 2),
+                exit_reason="expiry",
+                exit_price=103,
+                event_return=0.03,
+                days_held=20,
+            ),
+            BacktestSignal(
+                run_id=run.id,
+                ticker="068270",
+                name="Celltrion",
+                signal_date=date(2024, 1, 2),
+                score=11,
+                score_bucket="11",
+                entry_date=date(2024, 1, 5),
+                entry_price=100,
+                exit_date=date(2024, 2, 2),
+                exit_reason="expiry",
+                exit_price=98,
+                event_return=-0.02,
+                days_held=19,
+            ),
+            BacktestSignal(
+                run_id=run.id,
+                ticker="051910",
+                name="LG Chem",
+                signal_date=date(2024, 1, 2),
+                score=11,
+                score_bucket="11",
                 entry_date=None,
                 entry_price=100,
                 exit_reason="no_entry",
@@ -216,15 +246,17 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
 
     assert resp.status_code == 200
     summary = resp.json()["event_summary"]
-    assert summary["signal_count"] == 3
-    assert summary["entered_count"] == 2
+    assert summary["signal_count"] == 5
+    assert summary["entered_count"] == 4
     assert summary["no_entry_count"] == 1
     assert summary["target_count"] == 1
     assert summary["stop_count"] == 1
-    assert summary["expiry_count"] == 0
-    assert summary["win_rate"] == 0.5
-    assert summary["mean_return"] == pytest.approx(0.025)
-    assert summary["avg_days_held"] == 4
+    assert summary["expiry_count"] == 2
+    assert summary["target_hit_rate"] == pytest.approx(1 / 4)
+    assert summary["positive_return_rate"] == pytest.approx(2 / 4)
+    assert summary["win_rate"] == pytest.approx(summary["target_hit_rate"])
+    assert summary["mean_return"] == pytest.approx(0.015)
+    assert summary["avg_days_held"] == pytest.approx(11.75)
 
 
 def test_signals_filter_by_bucket(client: TestClient, db_session: Session) -> None:

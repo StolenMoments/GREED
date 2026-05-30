@@ -41,6 +41,8 @@ export interface BacktestEventSummary {
   target_count: number;
   stop_count: number;
   expiry_count: number;
+  target_hit_rate: number | null;
+  positive_return_rate: number | null;
   win_rate: number | null;
   mean_return: number | null;
   median_return: number | null;
