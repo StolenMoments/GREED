@@ -55,9 +55,11 @@ def test_bucket_helpers() -> None:
 
 
 def test_analysis_score_bucket() -> None:
-    assert analysis_score_bucket(10) == "10-11"
-    assert analysis_score_bucket(11) == "10-11"
-    assert analysis_score_bucket(12) == "12+"
+    assert analysis_score_bucket(10) == "10"
+    assert analysis_score_bucket(11) == "11"
+    assert analysis_score_bucket(12) == "12"
+    assert analysis_score_bucket(13) == "13"
+    assert analysis_score_bucket(14) == "14"
 
 
 def _combined_frame() -> pd.DataFrame:
@@ -106,5 +108,5 @@ def test_run_similarity_ticker_emits_records() -> None:
 
     assert records
     assert records[0].score >= 10
-    assert records[0].score_bucket in {"10-11", "12+"}
+    assert records[0].score_bucket == str(records[0].score)
     assert 4 in records[0].returns

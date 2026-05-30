@@ -22,3 +22,4 @@ package-lock.json
 pick_output/
 screening_*.csv
 screening_progress.json
+.idea

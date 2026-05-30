@@ -8,10 +8,11 @@ import {
   type BacktestRunDetail,
   type BacktestStat,
 } from '../api/backtest';
+import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
 
 const HORIZONS = [4, 8, 12, 26] as const;
 const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
-const SIMILARITY_BUCKETS = ['10-11', '12+'] as const;
+const SIMILARITY_BUCKETS = ['10', '11', '12', '13', '14'] as const;
 
 function ratio(value: number | null, digits = 1): string {
   if (value === null) return '--';
@@ -250,7 +251,7 @@ function HorizonTable({ stats }: { stats: BacktestStat[] }) {
 
 function scoreBuckets(stats: BacktestStat[]): string[] {
   const buckets = new Set(stats.map((stat) => stat.score_bucket));
-  if (buckets.has('12+') || buckets.has('10-11')) {
+  if (SIMILARITY_BUCKETS.some((bucket) => buckets.has(bucket))) {
     return [...SIMILARITY_BUCKETS];
   }
   if (buckets.has('8+') || buckets.has('6-7') || buckets.has('4-5')) {
@@ -261,6 +262,10 @@ function scoreBuckets(stats: BacktestStat[]): string[] {
 
 function BucketComparison({ stats }: { stats: BacktestStat[] }) {
   const buckets = useMemo(() => scoreBuckets(stats), [stats]);
+  const topWinRateRanks = useMemo(
+    () => rankTopWinRateCells(stats, buckets, HORIZONS),
+    [buckets, stats],
+  );
   const rows = useMemo(
     () =>
       buckets.map((bucket) => ({
@@ -296,20 +301,40 @@ function BucketComparison({ stats }: { stats: BacktestStat[] }) {
               const stat = bucketStats[index];
               const winRate = stat?.win_rate ?? null;
               const width = winRate === null ? 0 : Math.max(0, Math.min(100, winRate * 100));
+              const rank = topWinRateRanks.get(bucketHorizonKey(bucket, horizon));
+              const isTopRank = rank !== undefined;
               return (
-                <div className="flex min-w-0 flex-col gap-2" key={horizon}>
+                <div
+                  className={[
+                    'flex min-w-0 flex-col gap-2 rounded-md border p-2 transition-colors',
+                    isTopRank
+                      ? 'border-amber-200/40 bg-amber-300/10 shadow-[0_0_0_1px_rgba(252,211,77,0.08)]'
+                      : 'border-transparent',
+                  ].join(' ')}
+                  key={horizon}
+                >
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="font-semibold text-slate-300">{horizon}주</span>
                     <span className="text-slate-500">n={count(stat?.count)}</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-800">
                     <div
-                      className="h-full rounded-full bg-amber-300 transition-[width]"
+                      className={[
+                        'h-full rounded-full transition-[width]',
+                        isTopRank ? 'bg-amber-200' : 'bg-amber-300',
+                      ].join(' ')}
                       style={{ width: `${width}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-semibold text-slate-100">{ratio(winRate)}</span>
+                    <span className="flex items-center gap-1.5 font-semibold text-slate-100">
+                      {ratio(winRate)}
+                      {rank !== undefined && (
+                        <span className="rounded-full border border-amber-200/40 bg-slate-950/70 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-200">
+                          #{rank}
+                        </span>
+                      )}
+                    </span>
                     <span className={signedTone(stat?.mean)}>{pct(stat?.mean ?? null)}</span>
                   </div>
                 </div>
