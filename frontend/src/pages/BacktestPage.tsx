@@ -25,6 +25,11 @@ function pct(value: number | null, digits = 1): string {
   return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(digits)}%`;
 }
 
+function multiple(value: number | null, digits = 2): string {
+  if (value === null) return '--';
+  return `${value.toFixed(digits)}x`;
+}
+
 function count(value: number | undefined): string {
   return (value ?? 0).toLocaleString('ko-KR');
 }
@@ -164,8 +169,9 @@ function RunSelector({
 function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
   if (detail.strategy_kind === 'analysis_contract' && detail.event_summary) {
     const summary = detail.event_summary;
+    const expectancy = summary.expectancy ?? summary.mean_return;
     return (
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
           <p className="text-xs text-slate-500">contract signals</p>
           <p className="mt-1 text-2xl font-semibold text-slate-50">
@@ -191,9 +197,23 @@ function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
           </p>
         </div>
         <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
-          <p className="text-xs text-slate-500">mean event return</p>
-          <p className={`mt-1 text-2xl font-semibold ${signedTone(summary.mean_return)}`}>
-            {pct(summary.mean_return)}
+          <p className="text-xs text-slate-500">EV / 기대값</p>
+          <p className={`mt-1 text-2xl font-semibold ${signedTone(expectancy)}`}>
+            {pct(expectancy)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            mean event return
+          </p>
+        </div>
+        <div className="rounded-lg border border-amber-200/15 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">Plan R:R</p>
+          <p className="mt-1 text-2xl font-semibold text-amber-200">
+            {multiple(summary.planned_risk_reward_ratio)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Realized payoff <span className="font-semibold text-slate-300">
+              {multiple(summary.realized_payoff_ratio)}
+            </span>
           </p>
         </div>
       </div>
@@ -290,6 +310,9 @@ function ContractEventSummaryPanel({ summary }: { summary: BacktestEventSummary 
         </p>
         <p className="mt-2 text-sm font-semibold text-slate-300">
           positive return {ratio(summary.positive_return_rate)}
+        </p>
+        <p className="mt-2 text-sm font-semibold text-slate-400">
+          avg gain {pct(summary.avg_gain_return)} / loss {pct(summary.avg_loss_return)}
         </p>
       </div>
     </div>

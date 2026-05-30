@@ -13,7 +13,14 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base, get_db
 from scripts.backtest.preload_daily import PreloadDailyResult
 
-from backend.models import BacktestPreloadJob, BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
+from backend.models import (
+    Analysis,
+    BacktestPreloadJob,
+    BacktestRun,
+    BacktestSignal,
+    BacktestStat,
+    BacktestUniverseMember,
+)
 from backend.routers import backtest
 from backend.routers.backtest import router
 
@@ -151,6 +158,23 @@ def test_run_detail_includes_stats(client: TestClient, db_session: Session) -> N
 
 
 def test_contract_run_detail_includes_event_summary(client: TestClient, db_session: Session) -> None:
+    db_session.add(
+        Analysis(
+            id=42,
+            run_id=7,
+            ticker="005930",
+            name="Samsung",
+            model="claude",
+            markdown="contract",
+            judgment="buy",
+            trend="up",
+            cloud_position="above",
+            ma_alignment="bullish",
+            entry_price=100,
+            target_price=115,
+            stop_loss=94,
+        )
+    )
     run = BacktestRun(
         created_at=datetime(2026, 5, 24, 9, 0, 0),
         universe="KOSPI200",
@@ -259,6 +283,13 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
     assert summary["positive_return_rate"] == pytest.approx(2 / 4)
     assert summary["win_rate"] == pytest.approx(summary["target_hit_rate"])
     assert summary["mean_return"] == pytest.approx(0.015)
+    assert summary["expectancy"] == pytest.approx(summary["mean_return"])
+    assert summary["planned_target_return"] == pytest.approx(0.15)
+    assert summary["planned_stop_return"] == pytest.approx(-0.06)
+    assert summary["planned_risk_reward_ratio"] == pytest.approx(2.5)
+    assert summary["avg_gain_return"] == pytest.approx(0.065)
+    assert summary["avg_loss_return"] == pytest.approx(-0.035)
+    assert summary["realized_payoff_ratio"] == pytest.approx(0.065 / 0.035)
     assert summary["avg_days_held"] == pytest.approx(11.75)
 
 

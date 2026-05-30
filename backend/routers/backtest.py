@@ -215,19 +215,52 @@ def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:
     return {row[0]: int(row[1]) for row in rows}
 
 
-def _event_summary(db: Session, run_id: int) -> BacktestEventSummary:
+def _planned_contract_returns(
+    analysis: Analysis | None,
+) -> tuple[float | None, float | None, float | None]:
+    if (
+        analysis is None
+        or analysis.entry_price is None
+        or analysis.target_price is None
+        or analysis.stop_loss is None
+        or analysis.entry_price <= 0
+    ):
+        return None, None, None
+
+    target_return = analysis.target_price / analysis.entry_price - 1
+    stop_return = analysis.stop_loss / analysis.entry_price - 1
+    risk = abs(stop_return)
+    risk_reward = target_return / risk if risk > 0 else None
+    return target_return, stop_return, risk_reward
+
+
+def _event_summary(db: Session, run: BacktestRun) -> BacktestEventSummary:
     signals = list(
         db.scalars(
-            select(BacktestSignal).where(BacktestSignal.run_id == run_id)
+            select(BacktestSignal).where(BacktestSignal.run_id == run.id)
         ).all()
     )
     entered = [signal for signal in signals if signal.exit_reason != "no_entry"]
     returns = [signal.event_return for signal in entered if signal.event_return is not None]
+    gains = [event_return for event_return in returns if event_return > 0]
+    losses = [event_return for event_return in returns if event_return < 0]
     days = [signal.days_held for signal in entered if signal.days_held is not None]
     target_count = sum(1 for signal in signals if signal.exit_reason == "target")
     stop_count = sum(1 for signal in signals if signal.exit_reason == "stop")
     expiry_count = sum(1 for signal in signals if signal.exit_reason == "expiry")
     no_entry_count = sum(1 for signal in signals if signal.exit_reason == "no_entry")
+    mean_return = float(np.mean(returns)) if returns else None
+    avg_gain_return = float(np.mean(gains)) if gains else None
+    avg_loss_return = float(np.mean(losses)) if losses else None
+    realized_payoff_ratio = (
+        avg_gain_return / abs(avg_loss_return)
+        if avg_gain_return is not None and avg_loss_return is not None and avg_loss_return != 0
+        else None
+    )
+    source_analysis = db.get(Analysis, run.source_analysis_id) if run.source_analysis_id else None
+    planned_target_return, planned_stop_return, planned_risk_reward_ratio = (
+        _planned_contract_returns(source_analysis)
+    )
     target_hit_rate = (target_count / len(entered)) if entered else None
     positive_return_rate = (
         sum(1 for event_return in returns if event_return > 0) / len(returns)
@@ -244,9 +277,16 @@ def _event_summary(db: Session, run_id: int) -> BacktestEventSummary:
         target_hit_rate=target_hit_rate,
         positive_return_rate=positive_return_rate,
         win_rate=target_hit_rate,
-        mean_return=float(np.mean(returns)) if returns else None,
+        mean_return=mean_return,
+        expectancy=mean_return,
         median_return=float(np.median(returns)) if returns else None,
         avg_days_held=float(np.mean(days)) if days else None,
+        planned_target_return=planned_target_return,
+        planned_stop_return=planned_stop_return,
+        planned_risk_reward_ratio=planned_risk_reward_ratio,
+        avg_gain_return=avg_gain_return,
+        avg_loss_return=avg_loss_return,
+        realized_payoff_ratio=realized_payoff_ratio,
     )
 
 
@@ -299,7 +339,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
     return BacktestRunDetail(
         **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],
-        event_summary=_event_summary(db, run_id) if run.strategy_kind == "analysis_contract" else None,
+        event_summary=_event_summary(db, run) if run.strategy_kind == "analysis_contract" else None,
     )
 
 

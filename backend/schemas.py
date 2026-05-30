@@ -247,8 +247,15 @@ class BacktestEventSummary(BaseModel):
     positive_return_rate: float | None
     win_rate: float | None
     mean_return: float | None
+    expectancy: float | None
     median_return: float | None
     avg_days_held: float | None
+    planned_target_return: float | None = None
+    planned_stop_return: float | None = None
+    planned_risk_reward_ratio: float | None = None
+    avg_gain_return: float | None = None
+    avg_loss_return: float | None = None
+    realized_payoff_ratio: float | None = None
 
 
 class BacktestRunSummary(BaseModel):

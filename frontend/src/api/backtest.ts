@@ -45,8 +45,15 @@ export interface BacktestEventSummary {
   positive_return_rate: number | null;
   win_rate: number | null;
   mean_return: number | null;
+  expectancy: number | null;
   median_return: number | null;
   avg_days_held: number | null;
+  planned_target_return: number | null;
+  planned_stop_return: number | null;
+  planned_risk_reward_ratio: number | null;
+  avg_gain_return: number | null;
+  avg_loss_return: number | null;
+  realized_payoff_ratio: number | null;
 }
 
 export interface BacktestRunDetail extends BacktestRunSummary {
