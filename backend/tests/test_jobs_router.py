@@ -140,7 +140,10 @@ def test_system_prompt_uses_conservative_buy_gate() -> None:
     assert "지지권 근처 선제 진입 또는 저항 돌파 예상 진입도" in jobs.KR_SYSTEM_PROMPT
     assert "조건이 아직 충족되지 않은 경우 최종 판정은 매수가 아니라 홀드" not in jobs.KR_SYSTEM_PROMPT
     assert "구름 위 + MA 정배열이라도 확인 신호 2개 미만이면 홀드" in jobs.KR_SYSTEM_PROMPT
-    assert "다음 리스크가 2개 이상이면 매수 판정을 금지" in jobs.KR_SYSTEM_PROMPT
+    assert "다음 리스크가 2개 이상이면 매수 판정을 금지" not in jobs.KR_SYSTEM_PROMPT
+    assert "리스크가 2개 이상이면" not in jobs.KR_SYSTEM_PROMPT
+    assert "강한 리스크가 1개 이상" in jobs.KR_SYSTEM_PROMPT
+    assert "일반 리스크가 3개 이상" in jobs.KR_SYSTEM_PROMPT
     assert "atr14_pct >= 6%" in jobs.KR_SYSTEM_PROMPT
     assert "구름 위 + MA 정배열 + RSI < 70 → 매수를 우선 판정" not in jobs.KR_SYSTEM_PROMPT
 
@@ -152,6 +155,8 @@ def test_us_system_prompt_keeps_conservative_buy_gate() -> None:
     assert "MACD hist 양전환 또는 증가만으로는 매수 판정 금지" in jobs.US_SYSTEM_PROMPT
     assert "확인 신호가 2개 이상" in jobs.US_SYSTEM_PROMPT
     assert "구름 위 + MA 정배열이라도 확인 신호 2개 미만이면 홀드" in jobs.US_SYSTEM_PROMPT
+    assert "강한 리스크가 1개 이상" in jobs.US_SYSTEM_PROMPT
+    assert "일반 리스크가 3개 이상" in jobs.US_SYSTEM_PROMPT
     assert "가격은 가능하면 실제 숫자와 달러 단위로 쓰고" in jobs.US_SYSTEM_PROMPT
 
 
