@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.models import Analysis, AnalysisBacktestJob, KrxStock
+from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, KrxStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -360,6 +360,7 @@ def test_job_overview_includes_analysis_and_backtest_jobs(
         "analysis_id": analysis_id,
         "backtest_run_id": None,
         "similarity_threshold": 9,
+        "upserted_rows": None,
         "created_at": body[0]["created_at"],
     }
 
@@ -412,6 +413,57 @@ def test_job_overview_filters_backtest_failed_status(
     assert done_job_id not in [job["id"] for job in body]
     assert body[0]["kind"] == "analysis_backtest"
     assert body[0]["error_message"] == "price cache unavailable"
+
+
+def test_job_overview_includes_backtest_preload_jobs(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+) -> None:
+    with test_db() as db:
+        pending_job = BacktestPreloadJob(
+            ticker="005930",
+            name="Samsung",
+            status="pending",
+            upserted_rows=0,
+            created_at=seoul_now(),
+        )
+        failed_job = BacktestPreloadJob(
+            ticker="000660",
+            name="SK Hynix",
+            status="failed",
+            upserted_rows=3,
+            error_message="000660 SK Hynix: no daily data returned",
+            created_at=seoul_now(),
+        )
+        done_job = BacktestPreloadJob(
+            ticker="035420",
+            name="Naver",
+            status="done",
+            upserted_rows=5,
+            created_at=seoul_now(),
+        )
+        db.add_all([pending_job, failed_job, done_job])
+        db.commit()
+        pending_job_id = pending_job.id
+        failed_job_id = failed_job.id
+        done_job_id = done_job.id
+
+    response = client.get("/api/jobs/overview?status=pending&status=failed")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [(job["kind"], job["id"]) for job in body] == [
+        ("backtest_preload", failed_job_id),
+        ("backtest_preload", pending_job_id),
+    ]
+    assert done_job_id not in [job["id"] for job in body]
+    assert body[0]["ticker"] == "000660"
+    assert body[0]["run_id"] is None
+    assert body[0]["model"] == "daily_preload"
+    assert body[0]["analysis_id"] is None
+    assert body[0]["backtest_run_id"] is None
+    assert body[0]["similarity_threshold"] is None
+    assert body[0]["upserted_rows"] == 3
 
 
 def test_list_jobs_returns_404_when_run_missing(client: TestClient) -> None:

@@ -91,7 +91,7 @@ def _migrate_mariadb() -> None:
         for tbl in [
             "analyses", "analysis_jobs", "backtest_runs",
             "analysis_backtest_jobs", "backtest_signals", "backtest_stats",
-            "backtest_universe_members",
+            "backtest_universe_members", "backtest_preload_jobs",
         ]:
             rows = conn.execute(text(
                 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
@@ -168,6 +168,26 @@ def _migrate_mariadb() -> None:
                     updated_at DATETIME NOT NULL,
                     PRIMARY KEY (ticker),
                     INDEX ix_backtest_universe_members_active_order (active, sort_order, ticker)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS backtest_preload_jobs (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    ticker VARCHAR(20) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    processed INTEGER NOT NULL DEFAULT 0,
+                    skipped INTEGER NOT NULL DEFAULT 0,
+                    upserted_rows INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT NULL,
+                    created_at DATETIME NOT NULL,
+                    completed_at DATETIME NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_backtest_preload_jobs_status_created (status, created_at)
                 )
                 """
             )

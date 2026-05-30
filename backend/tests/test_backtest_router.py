@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
-from backend.models import BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
+from scripts.backtest.preload_daily import PreloadDailyResult
+
+from backend.models import BacktestPreloadJob, BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
+from backend.routers import backtest
 from backend.routers.backtest import router
 
 
@@ -286,7 +289,12 @@ def test_run_detail_404(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_universe_api_lists_adds_deactivates_and_reactivates(client: TestClient, db_session: Session) -> None:
+def test_universe_api_lists_adds_deactivates_and_reactivates(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backtest, "run_backtest_preload_pipeline", lambda job_id: None)
     db_session.add(
         BacktestUniverseMember(
             ticker="000660",
@@ -336,6 +344,93 @@ def test_universe_api_lists_adds_deactivates_and_reactivates(client: TestClient,
     delete_resp = client.delete("/api/backtest/universe/000660")
     assert delete_resp.status_code == 204
     assert db_session.get(BacktestUniverseMember, "000660").active is False
+
+
+def test_create_universe_member_creates_preload_job(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(
+        backtest,
+        "run_backtest_preload_pipeline",
+        lambda job_id: called_job_ids.append(job_id),
+    )
+
+    add_resp = client.post(
+        "/api/backtest/universe",
+        json={"ticker": "5930", "name": "Samsung", "sort_order": 1},
+    )
+
+    assert add_resp.status_code == 201
+    job = db_session.scalar(
+        backtest.select(BacktestPreloadJob).where(BacktestPreloadJob.ticker == "005930")
+    )
+    assert job is not None
+    assert job.name == "Samsung"
+    assert job.status == "pending"
+    assert called_job_ids == [job.id]
+
+
+def test_run_backtest_preload_pipeline_marks_done(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = BacktestPreloadJob(ticker="005930", name="Samsung")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        backtest,
+        "preload_daily_bars",
+        lambda db, universe: PreloadDailyResult(processed=1, skipped=0, upserted_rows=7),
+    )
+
+    backtest.run_backtest_preload_pipeline(job_id)
+
+    saved = db_session.get(BacktestPreloadJob, job_id)
+    assert saved is not None
+    assert saved.status == "done"
+    assert saved.processed == 1
+    assert saved.skipped == 0
+    assert saved.upserted_rows == 7
+    assert saved.error_message is None
+    assert saved.completed_at is not None
+
+
+def test_run_backtest_preload_pipeline_marks_failed_on_empty_response(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = BacktestPreloadJob(ticker="005930", name="Samsung")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        backtest,
+        "preload_daily_bars",
+        lambda db, universe: PreloadDailyResult(
+            processed=0,
+            skipped=0,
+            upserted_rows=0,
+            failed=[("005930", "Samsung", "no daily data returned")],
+        ),
+    )
+
+    backtest.run_backtest_preload_pipeline(job_id)
+
+    saved = db_session.get(BacktestPreloadJob, job_id)
+    assert saved is not None
+    assert saved.status == "failed"
+    assert saved.processed == 0
+    assert saved.upserted_rows == 0
+    assert saved.error_message == "005930 Samsung: no daily data returned"
+    assert saved.completed_at is not None
 
 
 def test_universe_api_rejects_non_kr_ticker(client: TestClient) -> None:

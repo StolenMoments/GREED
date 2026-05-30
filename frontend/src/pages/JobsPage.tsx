@@ -66,10 +66,16 @@ function StatusBadge({ status }: { status: JobOverviewStatus }) {
 }
 
 function jobIdLabel(job: JobOverview): string {
+  if (job.kind === 'backtest_preload') {
+    return `Preload #${job.id}`;
+  }
   return job.kind === 'analysis_backtest' ? `BT #${job.id}` : `#${job.id}`;
 }
 
 function modelLabel(job: JobOverview): string {
+  if (job.kind === 'backtest_preload') {
+    return 'daily preload';
+  }
   if (job.kind === 'analysis_backtest') {
     return job.similarity_threshold === null
       ? 'backtest'
@@ -79,6 +85,14 @@ function modelLabel(job: JobOverview): string {
 }
 
 function JobDetail({ job }: { job: JobOverview }) {
+  if (job.kind === 'backtest_preload' && !job.error_message) {
+    return (
+      <p className="mt-1 text-sm text-slate-300 lg:mt-0">
+        upserted {(job.upserted_rows ?? 0).toLocaleString('ko-KR')} rows
+      </p>
+    );
+  }
+
   if (job.kind === 'analysis_backtest' && job.backtest_run_id !== null) {
     return (
       <Link
@@ -133,12 +147,16 @@ function JobRow({ job }: { job: JobOverview }) {
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 lg:hidden">
           run
         </span>
-        <Link
-          className="mt-1 inline-flex font-medium text-slate-200 transition hover:text-amber-200 lg:mt-0"
-          to={`/runs/${job.run_id}`}
-        >
-          Run #{job.run_id}
-        </Link>
+        {job.run_id === null ? (
+          <p className="mt-1 text-slate-500 lg:mt-0">-</p>
+        ) : (
+          <Link
+            className="mt-1 inline-flex font-medium text-slate-200 transition hover:text-amber-200 lg:mt-0"
+            to={`/runs/${job.run_id}`}
+          >
+            Run #{job.run_id}
+          </Link>
+        )}
       </div>
 
       <div>

@@ -179,6 +179,28 @@ class BacktestUniverseMember(Base):
     )
 
 
+class BacktestPreloadJob(Base):
+    __tablename__ = "backtest_preload_jobs"
+    __table_args__ = (
+        Index("ix_backtest_preload_jobs_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    upserted_rows: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AnalysisBacktestJob(Base):
     __tablename__ = "analysis_backtest_jobs"
     __table_args__ = (

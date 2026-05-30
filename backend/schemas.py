@@ -131,16 +131,17 @@ class JobRead(BaseModel):
 
 
 class JobOverviewRead(BaseModel):
-    kind: Literal["analysis", "analysis_backtest"]
+    kind: Literal["analysis", "analysis_backtest", "backtest_preload"]
     id: int
     ticker: str
-    run_id: int
+    run_id: int | None
     model: str
     status: str
     error_message: str | None
     analysis_id: int | None
     backtest_run_id: int | None = None
     similarity_threshold: int | None = None
+    upserted_rows: int | None = None
     created_at: datetime
 
 

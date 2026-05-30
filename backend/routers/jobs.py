@@ -29,7 +29,7 @@ from backend.crud import (
     update_job_failed,
 )
 from backend.database import SessionLocal, get_db
-from backend.models import Analysis, AnalysisBacktestJob, AnalysisJob
+from backend.models import Analysis, AnalysisBacktestJob, AnalysisJob, BacktestPreloadJob
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobOverviewRead, JobRead, JobTriggerRequest
 from backend.stock_price import fetch_and_store_latest_close
@@ -332,6 +332,28 @@ def list_job_overview_endpoint(
                 analysis_id=job.analysis_id,
                 backtest_run_id=job.backtest_run_id,
                 similarity_threshold=job.similarity_threshold,
+                created_at=job.created_at,
+            )
+        )
+
+    preload_stmt = select(BacktestPreloadJob).order_by(BacktestPreloadJob.id.desc())
+    if allowed_statuses:
+        preload_stmt = preload_stmt.where(BacktestPreloadJob.status.in_(allowed_statuses))
+
+    for job in db.scalars(preload_stmt).all():
+        rows.append(
+            JobOverviewRead(
+                kind="backtest_preload",
+                id=job.id,
+                ticker=job.ticker,
+                run_id=None,
+                model="daily_preload",
+                status=job.status,
+                error_message=job.error_message,
+                analysis_id=None,
+                backtest_run_id=None,
+                similarity_threshold=None,
+                upserted_rows=job.upserted_rows,
                 created_at=job.created_at,
             )
         )

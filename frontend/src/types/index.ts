@@ -106,7 +106,7 @@ export type AnalysisBacktestJobStatus = 'pending' | 'running' | 'done' | 'failed
 
 export type JobOverviewStatus = JobStatus | 'running';
 
-export type JobKind = 'analysis' | 'analysis_backtest';
+export type JobKind = 'analysis' | 'analysis_backtest' | 'backtest_preload';
 
 export interface AnalysisBacktestJob {
   id: number;
@@ -138,13 +138,14 @@ export interface JobOverview {
   kind: JobKind;
   id: number;
   ticker: string;
-  run_id: number;
+  run_id: number | null;
   model: string;
   status: JobOverviewStatus;
   error_message: string | null;
   analysis_id: number | null;
   backtest_run_id: number | null;
   similarity_threshold: number | null;
+  upserted_rows: number | null;
   created_at: string;
 }
 

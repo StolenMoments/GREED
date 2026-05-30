@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.database import get_db
-from backend.models import Analysis, BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
+from backend.database import SessionLocal, get_db
+from backend.models import (
+    Analysis,
+    BacktestPreloadJob,
+    BacktestRun,
+    BacktestSignal,
+    BacktestStat,
+    BacktestUniverseMember,
+)
 from backend.schemas import (
     BacktestEventSummary,
     BacktestHistogram,
@@ -20,6 +27,8 @@ from backend.schemas import (
     BacktestUniverseMemberUpdate,
     HistogramBin,
 )
+from backend.timezone import seoul_now
+from scripts.backtest.preload_daily import preload_daily_bars
 from scripts.backtest.universe import normalize_korean_ticker
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -70,6 +79,7 @@ def list_universe_members(
 )
 def create_universe_member(
     payload: BacktestUniverseMemberCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> BacktestUniverseMemberRead:
     ticker = _normalize_universe_ticker(payload.ticker)
@@ -85,9 +95,49 @@ def create_universe_member(
         source=payload.source.strip() or "manual",
     )
     db.add(member)
+    db.flush()
+    preload_job = BacktestPreloadJob(ticker=ticker, name=member.name)
+    db.add(preload_job)
     db.commit()
     db.refresh(member)
+    db.refresh(preload_job)
+    background_tasks.add_task(run_backtest_preload_pipeline, preload_job.id)
     return BacktestUniverseMemberRead.model_validate(member)
+
+
+def run_backtest_preload_pipeline(job_id: int) -> None:
+    db = SessionLocal()
+    try:
+        job = db.get(BacktestPreloadJob, job_id)
+        if job is None:
+            return
+
+        job.status = "running"
+        db.commit()
+
+        result = preload_daily_bars(db, universe=[(job.ticker, job.name)])
+        job.processed = result.processed
+        job.skipped = result.skipped
+        job.upserted_rows = result.upserted_rows
+        job.completed_at = seoul_now()
+        if result.failed:
+            job.status = "failed"
+            job.error_message = "; ".join(
+                f"{ticker} {name}: {message}" for ticker, name, message in result.failed
+            )
+        else:
+            job.status = "done"
+            job.error_message = None
+        db.commit()
+    except Exception as exc:
+        job = db.get(BacktestPreloadJob, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error_message = str(exc)
+            job.completed_at = seoul_now()
+            db.commit()
+    finally:
+        db.close()
 
 
 @router.patch("/universe/{ticker}", response_model=BacktestUniverseMemberRead)
