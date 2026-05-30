@@ -396,7 +396,7 @@ def run_analysis_contract_backtest(
     if base_weekly.empty or len(base_weekly) <= warmup + 1:
         raise ValueError(f"Not enough weekly data for base analysis ticker: {analysis.ticker}")
 
-    base_daily = load_daily_ohlcv(db, analysis.ticker)
+    base_daily = load_daily_ohlcv(db, analysis.ticker, fetch_missing=True)
     if base_daily.empty:
         raise ValueError(f"No daily data for base analysis ticker: {analysis.ticker}")
 

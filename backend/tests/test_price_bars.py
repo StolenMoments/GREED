@@ -161,6 +161,32 @@ def test_load_daily_ohlcv_skips_existing_invalid_ohlc_rows(db_session: Session) 
     assert list(df.index.date) == [date(2026, 5, 11)]
 
 
+def test_load_daily_ohlcv_fetches_and_caches_when_missing(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetched = make_bars(
+        [
+            ("2026-05-11", 70000, 76000, 69000, 75000, 10),
+            ("2026-05-12", 71000, 77000, 70000, 76000, 20),
+        ]
+    )
+
+    monkeypatch.setattr("scripts.backtest.data._fetch_daily_max", lambda ticker: fetched)
+
+    df = load_daily_ohlcv(db_session, "083450", fetch_missing=True)
+
+    assert list(df.index.date) == [date(2026, 5, 11), date(2026, 5, 12)]
+    assert list(df["close"]) == [75000, 76000]
+
+    rows = db_session.scalars(
+        select(PriceBar)
+        .where(PriceBar.ticker == "083450", PriceBar.interval == DAILY_INTERVAL)
+        .order_by(PriceBar.bar_date)
+    ).all()
+    assert [row.bar_date for row in rows] == [date(2026, 5, 11), date(2026, 5, 12)]
+
+
 def test_fetch_price_bars_df_reuses_complete_past_cache(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

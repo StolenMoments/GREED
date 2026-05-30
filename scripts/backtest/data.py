@@ -42,12 +42,14 @@ def _load_cached_weekly(db: Session, ticker: str) -> pd.DataFrame:
     return df.dropna(subset=["close"])
 
 
-def load_daily_ohlcv(db: Session, ticker: str) -> pd.DataFrame:
-    rows = db.scalars(
-        select(PriceBar)
-        .where(PriceBar.ticker == ticker, PriceBar.interval == DAILY_INTERVAL)
-        .order_by(PriceBar.bar_date)
-    ).all()
+def load_daily_ohlcv(db: Session, ticker: str, *, fetch_missing: bool = False) -> pd.DataFrame:
+    rows = _load_cached_daily_rows(db, ticker)
+    if not rows and fetch_missing:
+        daily = _fetch_daily_max(ticker)
+        if daily is None:
+            return pd.DataFrame()
+        upsert_price_bars(db, ticker, DAILY_INTERVAL, daily)
+        rows = _load_cached_daily_rows(db, ticker)
     if not rows:
         return pd.DataFrame()
 
@@ -64,6 +66,14 @@ def load_daily_ohlcv(db: Session, ticker: str) -> pd.DataFrame:
     )
     df.index.name = "date"
     return valid_daily_ohlcv(df)
+
+
+def _load_cached_daily_rows(db: Session, ticker: str) -> list[PriceBar]:
+    return db.scalars(
+        select(PriceBar)
+        .where(PriceBar.ticker == ticker, PriceBar.interval == DAILY_INTERVAL)
+        .order_by(PriceBar.bar_date)
+    ).all()
 
 
 def valid_daily_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
