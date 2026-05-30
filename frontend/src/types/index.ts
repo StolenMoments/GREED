@@ -106,7 +106,7 @@ export type AnalysisBacktestJobStatus = 'pending' | 'running' | 'done' | 'failed
 
 export type JobOverviewStatus = JobStatus | 'running';
 
-export type JobKind = 'analysis' | 'analysis_backtest' | 'backtest_preload';
+export type JobKind = 'analysis' | 'analysis_backtest' | 'backtest_preload' | 'backtest_strategy';
 
 export interface AnalysisBacktestJob {
   id: number;

@@ -40,6 +40,7 @@ export interface BacktestEventSummary {
   no_entry_count: number;
   target_count: number;
   stop_count: number;
+  open_count: number;
   expiry_count: number;
   target_hit_rate: number | null;
   positive_return_rate: number | null;
@@ -54,6 +55,18 @@ export interface BacktestEventSummary {
   avg_gain_return: number | null;
   avg_loss_return: number | null;
   realized_payoff_ratio: number | null;
+}
+
+export type BacktestStrategyKind = 'ichimoku_span2_breakout';
+
+export interface BacktestStrategyJob {
+  id: number;
+  strategy_kind: BacktestStrategyKind;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  backtest_run_id: number | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
 }
 
 export interface ContractBreakdownItem {
@@ -120,6 +133,20 @@ export async function fetchBacktestRuns(): Promise<BacktestRunSummary[]> {
 
 export async function fetchBacktestRun(id: number): Promise<BacktestRunDetail> {
   const response = await apiClient.get<BacktestRunDetail>(`/backtest/runs/${id}`);
+  return response.data;
+}
+
+export async function createBacktestStrategyJob(
+  strategyKind: BacktestStrategyKind,
+): Promise<BacktestStrategyJob> {
+  const response = await apiClient.post<BacktestStrategyJob>('/backtest/strategy-jobs', {
+    strategy_kind: strategyKind,
+  });
+  return response.data;
+}
+
+export async function fetchBacktestStrategyJobs(): Promise<BacktestStrategyJob[]> {
+  const response = await apiClient.get<BacktestStrategyJob[]>('/backtest/strategy-jobs');
   return response.data;
 }
 

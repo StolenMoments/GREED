@@ -1,13 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  createBacktestStrategyJob,
   fetchBacktestRun,
   fetchBacktestRuns,
+  fetchBacktestStrategyJobs,
   type BacktestRunSummary,
   type BacktestRunDetail,
   type BacktestStat,
   type BacktestEventSummary,
+  type BacktestStrategyJob,
   type ContractBreakdownItem,
   type ContractTickerBreakdownItem,
 } from '../api/backtest';
@@ -99,6 +102,61 @@ function EmptyState() {
   );
 }
 
+function StrategyJobPanel({
+  latestJob,
+  isRunning,
+  isStarting,
+  onRun,
+}: {
+  latestJob: BacktestStrategyJob | undefined;
+  isRunning: boolean;
+  isStarting: boolean;
+  onRun: () => void;
+}) {
+  const disabled = isRunning || isStarting;
+  const statusLabel = latestJob
+    ? latestJob.status === 'done' && latestJob.backtest_run_id !== null
+      ? `done · Backtest #${latestJob.backtest_run_id}`
+      : latestJob.status
+    : 'ready';
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-amber-100/10 bg-slate-950/45 px-5 py-4 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
+          ichimoku strategy
+        </p>
+        <p className="mt-2 text-sm text-slate-300">
+          Span2 breakout · weekly close · KOSPI200-DB · 120w warmup
+        </p>
+        {latestJob?.status === 'failed' && latestJob.error_message && (
+          <p className="mt-2 max-w-3xl truncate text-sm font-semibold text-rose-200">
+            {latestJob.error_message}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300">
+          {statusLabel}
+        </span>
+        <button
+          className={[
+            'rounded-md px-4 py-2 text-sm font-semibold transition',
+            disabled
+              ? 'cursor-not-allowed border border-slate-700 bg-slate-900 text-slate-500'
+              : 'border border-amber-200/40 bg-amber-300 text-slate-950 hover:bg-amber-200',
+          ].join(' ')}
+          disabled={disabled}
+          onClick={onRun}
+          type="button"
+        >
+          {disabled ? 'Running...' : 'Run Span2 Breakout'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RunSelector({
   detail,
   runId,
@@ -169,6 +227,48 @@ function RunSelector({
 }
 
 function SummaryStrip({ detail }: { detail: BacktestRunDetail }) {
+  if (detail.strategy_kind === 'ichimoku_span2_breakout' && detail.event_summary) {
+    const summary = detail.event_summary;
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">signals</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {summary.signal_count.toLocaleString('ko-KR')}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">stopped / open</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {summary.stop_count.toLocaleString('ko-KR')}
+            <span className="text-base font-medium text-slate-500">
+              {' / '}{summary.open_count.toLocaleString('ko-KR')}
+            </span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">positive return</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-300">
+            {ratio(summary.positive_return_rate)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">mean return</p>
+          <p className={`mt-1 text-2xl font-semibold ${signedTone(summary.mean_return)}`}>
+            {pct(summary.mean_return)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-5 py-4">
+          <p className="text-xs text-slate-500">avg holding</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-50">
+            {summary.avg_days_held === null ? '--' : summary.avg_days_held.toFixed(1)}
+            <span className="ml-1 text-base font-medium text-slate-500">d</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (detail.strategy_kind === 'analysis_contract' && detail.event_summary) {
     const summary = detail.event_summary;
     const expectancy = summary.expectancy ?? summary.mean_return;
@@ -663,6 +763,8 @@ function BucketComparison({ stats }: { stats: BacktestStat[] }) {
 
 function BacktestPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const runIdParam = searchParams.get('runId');
   const requestedRunId = runIdParam === null ? NaN : Number(runIdParam);
@@ -677,6 +779,31 @@ function BacktestPage() {
     queryFn: fetchBacktestRuns,
   });
   const [runId, setRunId] = useState<number | null>(null);
+  const latestAppliedStrategyJobRef = useRef<number | null>(null);
+
+  const {
+    data: strategyJobs = [],
+  } = useQuery({
+    queryKey: ['backtest', 'strategy-jobs'],
+    queryFn: fetchBacktestStrategyJobs,
+    refetchInterval: (query) => {
+      const jobs = query.state.data;
+      return jobs?.some((job) => job.status === 'pending' || job.status === 'running') ? 2000 : false;
+    },
+  });
+  const latestStrategyJob = strategyJobs[0];
+  const strategyJobRunning =
+    latestStrategyJob?.status === 'pending' || latestStrategyJob?.status === 'running';
+  const runSpan2Mutation = useMutation({
+    mutationFn: () => createBacktestStrategyJob('ichimoku_span2_breakout'),
+    onSuccess: (job) => {
+      queryClient.setQueryData(['backtest', 'strategy-jobs'], (current: BacktestStrategyJob[] | undefined) => [
+        job,
+        ...(current ?? []).filter((item) => item.id !== job.id),
+      ]);
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
 
   useEffect(() => {
     if (runs.length === 0) {
@@ -706,6 +833,22 @@ function BacktestPage() {
     }
   }, [runs, runId]);
 
+  useEffect(() => {
+    if (
+      !latestStrategyJob ||
+      latestStrategyJob.status !== 'done' ||
+      latestStrategyJob.backtest_run_id === null ||
+      latestAppliedStrategyJobRef.current === latestStrategyJob.id
+    ) {
+      return;
+    }
+
+    latestAppliedStrategyJobRef.current = latestStrategyJob.id;
+    void queryClient.invalidateQueries({ queryKey: ['backtest', 'runs'] });
+    setRunId(latestStrategyJob.backtest_run_id);
+    navigate(`/backtest?runId=${latestStrategyJob.backtest_run_id}`, { replace: true });
+  }, [latestStrategyJob, navigate, queryClient]);
+
   const {
     data: detail,
     isError: detailError,
@@ -732,6 +875,13 @@ function BacktestPage() {
           룰 신호 백테스트
         </h2>
       </div>
+
+      <StrategyJobPanel
+        isRunning={strategyJobRunning}
+        isStarting={runSpan2Mutation.isPending}
+        latestJob={latestStrategyJob}
+        onRun={() => runSpan2Mutation.mutate()}
+      />
 
       {runsError || detailError ? (
         <ErrorPanel onRetry={retry} />
@@ -761,6 +911,8 @@ function BacktestPage() {
                   <SummaryStrip detail={detail} />
                   <ContractEventSummaryPanel summary={detail.event_summary} />
                 </>
+              ) : detail.strategy_kind === 'ichimoku_span2_breakout' && detail.event_summary ? (
+                <SummaryStrip detail={detail} />
               ) : (
                 <>
                   <SummaryStrip detail={detail} />

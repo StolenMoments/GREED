@@ -19,6 +19,7 @@ from backend.models import (
     BacktestRun,
     BacktestSignal,
     BacktestStat,
+    BacktestStrategyJob,
     BacktestUniverseMember,
 )
 from backend.routers import backtest
@@ -306,6 +307,181 @@ def test_contract_run_detail_includes_event_summary(client: TestClient, db_sessi
     assert breakdown["by_year"]["2024"]["entered_count"] == 4
     assert breakdown["top_tickers"] == []
     assert breakdown["bottom_tickers"] == []
+
+
+def test_span2_run_detail_includes_event_summary_with_open_count(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="event",
+        warmup_weeks=120,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=2,
+        signal_count=2,
+        strategy_kind="ichimoku_span2_breakout",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            BacktestSignal(
+                run_id=run.id,
+                ticker="005930",
+                name="Samsung",
+                signal_date=date(2024, 1, 8),
+                score=1,
+                score_bucket="span2",
+                entry_date=date(2024, 1, 8),
+                entry_price=100,
+                exit_date=date(2024, 1, 15),
+                exit_reason="stop",
+                exit_price=94,
+                event_return=-0.06,
+                days_held=7,
+            ),
+            BacktestSignal(
+                run_id=run.id,
+                ticker="000660",
+                name="SK Hynix",
+                signal_date=date(2024, 1, 22),
+                score=1,
+                score_bucket="span2",
+                entry_date=date(2024, 1, 22),
+                entry_price=100,
+                exit_date=date(2024, 2, 5),
+                exit_reason="open",
+                exit_price=110,
+                event_return=0.10,
+                days_held=14,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}")
+
+    assert resp.status_code == 200
+    summary = resp.json()["event_summary"]
+    assert summary["signal_count"] == 2
+    assert summary["entered_count"] == 2
+    assert summary["target_count"] == 0
+    assert summary["stop_count"] == 1
+    assert summary["open_count"] == 1
+    assert summary["expiry_count"] == 0
+    assert summary["no_entry_count"] == 0
+    assert summary["positive_return_rate"] == pytest.approx(0.5)
+    assert summary["win_rate"] == pytest.approx(summary["positive_return_rate"])
+    assert summary["mean_return"] == pytest.approx(0.02)
+    assert summary["avg_days_held"] == pytest.approx(10.5)
+
+
+def test_create_strategy_job_rejects_duplicate_active_job(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(
+        backtest,
+        "run_backtest_strategy_pipeline",
+        lambda job_id: called_job_ids.append(job_id),
+    )
+
+    first = client.post(
+        "/api/backtest/strategy-jobs",
+        json={"strategy_kind": "ichimoku_span2_breakout"},
+    )
+    second = client.post(
+        "/api/backtest/strategy-jobs",
+        json={"strategy_kind": "ichimoku_span2_breakout"},
+    )
+
+    assert first.status_code == 202
+    assert first.json()["status"] == "pending"
+    assert called_job_ids == [first.json()["id"]]
+    assert second.status_code == 409
+    assert "already running" in second.json()["detail"]
+    jobs = list(db_session.scalars(backtest.select(BacktestStrategyJob)).all())
+    assert len(jobs) == 1
+
+
+def test_run_backtest_strategy_pipeline_marks_done_with_run_id(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = BacktestStrategyJob(strategy_kind="ichimoku_span2_breakout")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    class FakeResult:
+        ticker_count = 1
+        records = [
+            backtest.SignalRecord(
+                ticker="005930",
+                name="Samsung",
+                signal_date=date(2024, 1, 8),
+                score=1,
+                score_bucket="span2",
+                entry_date=date(2024, 1, 8),
+                entry_price=100,
+                returns={},
+                exit_date=date(2024, 1, 15),
+                exit_reason="stop",
+                exit_price=94,
+                event_return=-0.06,
+                days_held=7,
+            )
+        ]
+        stats = []
+        data_start = date(2024, 1, 1)
+        data_end = date(2024, 1, 31)
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "run_span2_breakout_backtest", lambda db: FakeResult())
+
+    backtest.run_backtest_strategy_pipeline(job_id)
+
+    saved = db_session.get(BacktestStrategyJob, job_id)
+    assert saved is not None
+    assert saved.status == "done"
+    assert saved.backtest_run_id is not None
+    assert saved.completed_at is not None
+    run = db_session.get(BacktestRun, saved.backtest_run_id)
+    assert run is not None
+    assert run.strategy_kind == "ichimoku_span2_breakout"
+    assert run.horizons == "event"
+    assert run.buy_threshold == 0
+
+
+def test_run_backtest_strategy_pipeline_marks_failed(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = BacktestStrategyJob(strategy_kind="ichimoku_span2_breakout")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        backtest,
+        "run_span2_breakout_backtest",
+        lambda db: (_ for _ in ()).throw(RuntimeError("price data unavailable")),
+    )
+
+    backtest.run_backtest_strategy_pipeline(job_id)
+
+    saved = db_session.get(BacktestStrategyJob, job_id)
+    assert saved is not None
+    assert saved.status == "failed"
+    assert saved.error_message == "price data unavailable"
+    assert saved.completed_at is not None
 
 
 def test_signals_filter_by_bucket(client: TestClient, db_session: Session) -> None:

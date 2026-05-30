@@ -131,7 +131,7 @@ class JobRead(BaseModel):
 
 
 class JobOverviewRead(BaseModel):
-    kind: Literal["analysis", "analysis_backtest", "backtest_preload"]
+    kind: Literal["analysis", "analysis_backtest", "backtest_preload", "backtest_strategy"]
     id: int
     ticker: str
     run_id: int | None
@@ -161,6 +161,22 @@ class AnalysisBacktestJobRead(BaseModel):
     analysis_id: int
     status: str
     similarity_threshold: int
+    backtest_run_id: int | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class BacktestStrategyJobCreate(BaseModel):
+    strategy_kind: Literal["ichimoku_span2_breakout"]
+
+
+class BacktestStrategyJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    strategy_kind: str
+    status: str
     backtest_run_id: int | None
     error_message: str | None
     created_at: datetime
@@ -242,6 +258,7 @@ class BacktestEventSummary(BaseModel):
     no_entry_count: int
     target_count: int
     stop_count: int
+    open_count: int = 0
     expiry_count: int
     target_hit_rate: float | None
     positive_return_rate: float | None

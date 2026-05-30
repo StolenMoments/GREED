@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, KrxStock
+from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, BacktestStrategyJob, KrxStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -469,6 +469,43 @@ def test_job_overview_includes_backtest_preload_jobs(
     assert body[0]["backtest_run_id"] is None
     assert body[0]["similarity_threshold"] is None
     assert body[0]["upserted_rows"] == 3
+
+
+def test_job_overview_includes_backtest_strategy_jobs(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+) -> None:
+    with test_db() as db:
+        job = BacktestStrategyJob(
+            strategy_kind="ichimoku_span2_breakout",
+            status="done",
+            backtest_run_id=123,
+            created_at=seoul_now(),
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    response = client.get("/api/jobs/overview?status=done")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == [
+        {
+            "kind": "backtest_strategy",
+            "id": job_id,
+            "ticker": "-",
+            "run_id": None,
+            "model": "ichimoku_span2_breakout",
+            "status": "done",
+            "error_message": None,
+            "analysis_id": None,
+            "backtest_run_id": 123,
+            "similarity_threshold": None,
+            "upserted_rows": None,
+            "created_at": body[0]["created_at"],
+        }
+    ]
 
 
 def test_list_jobs_returns_404_when_run_missing(client: TestClient) -> None:

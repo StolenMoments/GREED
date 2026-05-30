@@ -66,6 +66,9 @@ function StatusBadge({ status }: { status: JobOverviewStatus }) {
 }
 
 function jobIdLabel(job: JobOverview): string {
+  if (job.kind === 'backtest_strategy') {
+    return `Strategy #${job.id}`;
+  }
   if (job.kind === 'backtest_preload') {
     return `Preload #${job.id}`;
   }
@@ -73,6 +76,9 @@ function jobIdLabel(job: JobOverview): string {
 }
 
 function modelLabel(job: JobOverview): string {
+  if (job.kind === 'backtest_strategy') {
+    return job.model === 'ichimoku_span2_breakout' ? 'span2 breakout' : job.model;
+  }
   if (job.kind === 'backtest_preload') {
     return 'daily preload';
   }
@@ -85,6 +91,17 @@ function modelLabel(job: JobOverview): string {
 }
 
 function JobDetail({ job }: { job: JobOverview }) {
+  if (job.kind === 'backtest_strategy' && job.backtest_run_id !== null) {
+    return (
+      <Link
+        className="mt-1 inline-flex rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 lg:mt-0"
+        to={`/backtest?runId=${job.backtest_run_id}`}
+      >
+        Backtest #{job.backtest_run_id}
+      </Link>
+    );
+  }
+
   if (job.kind === 'backtest_preload' && !job.error_message) {
     return (
       <p className="mt-1 text-sm text-slate-300 lg:mt-0">

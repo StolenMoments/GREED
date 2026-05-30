@@ -22,7 +22,13 @@ from backend.database import SessionLocal, ensure_database_ready  # noqa: E402
 from rule_scorer.score import BUY_THRESHOLD  # noqa: E402
 
 from backtest.data import load_weekly_ohlcv  # noqa: E402
-from backtest.engine import WARMUP_WEEKS, aggregate, build_combined, run_ticker  # noqa: E402
+from backtest.engine import (  # noqa: E402
+    WARMUP_WEEKS,
+    aggregate,
+    build_combined,
+    run_span2_breakout_ticker,
+    run_ticker,
+)
 from backtest.persistence import persist_run  # noqa: E402
 from backtest.universe import load_active_universe, load_universe  # noqa: E402
 
@@ -33,6 +39,11 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=WARMUP_WEEKS)
     parser.add_argument("--limit", type=int, default=None, help="종목 수 제한(디버그)")
     parser.add_argument("--notes", default=None)
+    parser.add_argument(
+        "--strategy",
+        choices=["rule", "ichimoku_span2_breakout"],
+        default="rule",
+    )
     args = parser.parse_args()
 
     ensure_database_ready()
@@ -61,7 +72,11 @@ def main() -> int:
                 print(f"[SKIP] {code} {name} 주봉 부족({len(weekly)})")
                 continue
             combined = build_combined(weekly, code, name)
-            records = run_ticker(combined, warmup=args.warmup)
+            records = (
+                run_span2_breakout_ticker(combined, warmup=args.warmup)
+                if args.strategy == "ichimoku_span2_breakout"
+                else run_ticker(combined, warmup=args.warmup)
+            )
             all_records.extend(records)
             processed += 1
             first = weekly.index.min().date()
@@ -70,10 +85,10 @@ def main() -> int:
             data_end = last if data_end is None else max(data_end, last)
             print(f"[OK] {code} {name}: 신호 {len(records)}개")
 
-        stats = aggregate(all_records)
+        stats = [] if args.strategy == "ichimoku_span2_breakout" else aggregate(all_records)
         run_id = persist_run(
             db,
-            buy_threshold=BUY_THRESHOLD,
+            buy_threshold=0 if args.strategy == "ichimoku_span2_breakout" else BUY_THRESHOLD,
             warmup_weeks=args.warmup,
             ticker_count=processed,
             records=all_records,
@@ -81,6 +96,8 @@ def main() -> int:
             data_start=data_start,
             data_end=data_end,
             notes=args.notes,
+            strategy_kind=args.strategy if args.strategy != "rule" else None,
+            horizons="event" if args.strategy == "ichimoku_span2_breakout" else None,
             universe=universe_name,
         )
     finally:

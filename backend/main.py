@@ -88,6 +88,16 @@ def _mark_orphaned_backtest_jobs_failed() -> None:
             ),
             {"now": seoul_now()},
         )
+        db.execute(
+            text(
+                "UPDATE backtest_strategy_jobs"
+                " SET status='failed',"
+                " error_message='server restarted while job was running',"
+                " completed_at=:now"
+                " WHERE status='running'"
+            ),
+            {"now": seoul_now()},
+        )
         db.commit()
 
 

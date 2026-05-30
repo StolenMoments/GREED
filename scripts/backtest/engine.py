@@ -56,6 +56,15 @@ class StatRow:
     max: float | None
 
 
+@dataclass(slots=True)
+class Span2BacktestResult:
+    records: list[SignalRecord] = field(default_factory=list)
+    stats: list[StatRow] = field(default_factory=list)
+    ticker_count: int = 0
+    data_start: date | None = None
+    data_end: date | None = None
+
+
 def score_bucket(total: int) -> str:
     if total >= 8:
         return "8+"
@@ -125,6 +134,115 @@ def run_ticker(
         )
 
     return records
+
+
+def run_span2_breakout_ticker(
+    combined: pd.DataFrame,
+    *,
+    warmup: int = WARMUP_WEEKS,
+) -> list[SignalRecord]:
+    price = combined[combined["close"].notna()].reset_index(drop=True)
+    n = len(price)
+    records: list[SignalRecord] = []
+    i = warmup
+
+    while i < n:
+        if i == 0:
+            i += 1
+            continue
+
+        prev_close = _f(price["close"].iloc[i - 1])
+        close = _f(price["close"].iloc[i])
+        span2 = _f(price["ichi_lead2"].iloc[i]) if "ichi_lead2" in price else None
+        cloud_top = _f(price["cloud_top"].iloc[i]) if "cloud_top" in price else None
+        cloud_bottom = _f(price["cloud_bottom"].iloc[i]) if "cloud_bottom" in price else None
+        if (
+            prev_close is None
+            or close is None
+            or span2 is None
+            or cloud_top is None
+            or cloud_bottom is None
+            or close <= 0
+            or not (prev_close <= span2 < close and close > cloud_top)
+        ):
+            i += 1
+            continue
+
+        entry_date = _to_date(price["date"].iloc[i])
+        entry_price = close
+        exit_i = n - 1
+        exit_reason = "open"
+        exit_price = _f(price["close"].iloc[exit_i])
+
+        for j in range(i + 1, n):
+            hold_close = _f(price["close"].iloc[j])
+            hold_bottom = _f(price["cloud_bottom"].iloc[j]) if "cloud_bottom" in price else None
+            if hold_close is None or hold_bottom is None:
+                continue
+            if hold_close < hold_bottom:
+                exit_i = j
+                exit_reason = "stop"
+                exit_price = hold_close
+                break
+
+        exit_date = _to_date(price["date"].iloc[exit_i]) if exit_price is not None else None
+        records.append(
+            SignalRecord(
+                ticker=str(price["ticker"].iloc[i]),
+                name=str(price["name"].iloc[i]),
+                signal_date=entry_date,
+                score=1,
+                score_bucket="span2",
+                entry_date=entry_date,
+                entry_price=entry_price,
+                returns={},
+                exit_date=exit_date,
+                exit_reason=exit_reason,
+                exit_price=exit_price,
+                event_return=(exit_price / entry_price - 1) if exit_price is not None else None,
+                days_held=(exit_date - entry_date).days if exit_date is not None else None,
+            )
+        )
+        i = exit_i + 1
+
+    return records
+
+
+def run_span2_breakout_backtest(
+    db,
+    *,
+    warmup: int = WARMUP_WEEKS,
+    universe_path=None,
+) -> Span2BacktestResult:
+    from scripts.backtest.data import load_weekly_ohlcv
+    from scripts.backtest.universe import load_active_universe, load_universe
+
+    records: list[SignalRecord] = []
+    data_start: date | None = None
+    data_end: date | None = None
+    processed = 0
+    universe = load_universe(universe_path) if universe_path is not None else load_active_universe(db)
+
+    for code, name in universe:
+        weekly = load_weekly_ohlcv(db, code)
+        if weekly.empty or len(weekly) <= warmup + 1:
+            continue
+
+        combined = build_combined(weekly, code, name)
+        records.extend(run_span2_breakout_ticker(combined, warmup=warmup))
+        processed += 1
+        first = weekly.index.min().date()
+        last = weekly.index.max().date()
+        data_start = first if data_start is None else min(data_start, first)
+        data_end = last if data_end is None else max(data_end, last)
+
+    return Span2BacktestResult(
+        records=records,
+        stats=[],
+        ticker_count=processed,
+        data_start=data_start,
+        data_end=data_end,
+    )
 
 
 def _stat_row(horizon: int, bucket: str, records: list[SignalRecord]) -> StatRow:

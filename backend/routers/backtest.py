@@ -12,9 +12,12 @@ from backend.models import (
     BacktestRun,
     BacktestSignal,
     BacktestStat,
+    BacktestStrategyJob,
     BacktestUniverseMember,
 )
 from backend.schemas import (
+    BacktestStrategyJobCreate,
+    BacktestStrategyJobRead,
     ContractBreakdown,
     ContractBreakdownItem,
     ContractTickerBreakdownItem,
@@ -31,6 +34,8 @@ from backend.schemas import (
     HistogramBin,
 )
 from backend.timezone import seoul_now
+from scripts.backtest.engine import SignalRecord, WARMUP_WEEKS, run_span2_breakout_backtest
+from scripts.backtest.persistence import persist_run
 from scripts.backtest.preload_daily import preload_daily_bars
 from scripts.backtest.universe import normalize_korean_ticker
 
@@ -43,6 +48,8 @@ _RET_COLUMN = {
     26: BacktestSignal.ret_26w,
 }
 _ACTIVE_PRELOAD_JOB_STATUSES = ("pending", "running")
+_ACTIVE_STRATEGY_JOB_STATUSES = ("pending", "running")
+_SPAN2_STRATEGY_KIND = "ichimoku_span2_breakout"
 _CONTRACT_FOCUS_THRESHOLD = 12
 _CONTRACT_TICKER_MIN_ENTRIES = 5
 
@@ -167,6 +174,103 @@ def run_backtest_preload_pipeline(job_id: int) -> None:
         db.close()
 
 
+@router.post(
+    "/strategy-jobs",
+    response_model=BacktestStrategyJobRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_strategy_job_endpoint(
+    payload: BacktestStrategyJobCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> BacktestStrategyJobRead:
+    existing = db.scalar(
+        select(BacktestStrategyJob)
+        .where(BacktestStrategyJob.status.in_(_ACTIVE_STRATEGY_JOB_STATUSES))
+        .order_by(BacktestStrategyJob.id.desc())
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Backtest strategy job is already running",
+        )
+
+    job = BacktestStrategyJob(strategy_kind=payload.strategy_kind)
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    background_tasks.add_task(run_backtest_strategy_pipeline, job.id)
+    return BacktestStrategyJobRead.model_validate(job)
+
+
+@router.get("/strategy-jobs", response_model=list[BacktestStrategyJobRead])
+def list_strategy_jobs_endpoint(db: Session = Depends(get_db)) -> list[BacktestStrategyJobRead]:
+    jobs = list(
+        db.scalars(
+            select(BacktestStrategyJob).order_by(BacktestStrategyJob.id.desc()).limit(20)
+        ).all()
+    )
+    return [BacktestStrategyJobRead.model_validate(job) for job in jobs]
+
+
+@router.get("/strategy-jobs/{job_id}", response_model=BacktestStrategyJobRead)
+def get_strategy_job_endpoint(
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> BacktestStrategyJobRead:
+    job = db.get(BacktestStrategyJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backtest strategy job not found")
+    return BacktestStrategyJobRead.model_validate(job)
+
+
+def run_backtest_strategy_pipeline(job_id: int) -> None:
+    db = SessionLocal()
+    try:
+        job = db.get(BacktestStrategyJob, job_id)
+        if job is None:
+            return
+        job.status = "running"
+        job.error_message = None
+        db.commit()
+
+        if job.strategy_kind != _SPAN2_STRATEGY_KIND:
+            raise ValueError(f"Unsupported strategy_kind: {job.strategy_kind}")
+
+        result = run_span2_breakout_backtest(db)
+        run_id = persist_run(
+            db,
+            buy_threshold=0,
+            warmup_weeks=WARMUP_WEEKS,
+            ticker_count=result.ticker_count,
+            records=result.records,
+            stats=result.stats,
+            data_start=result.data_start,
+            data_end=result.data_end,
+            notes="ichimoku span2 breakout; weekly close execution",
+            strategy_kind=_SPAN2_STRATEGY_KIND,
+            horizons="event",
+            universe="KOSPI200-DB",
+        )
+        job = db.get(BacktestStrategyJob, job_id)
+        if job is not None:
+            job.status = "done"
+            job.backtest_run_id = run_id
+            job.error_message = None
+            job.completed_at = seoul_now()
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        job = db.get(BacktestStrategyJob, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error_message = str(exc)[:2000]
+            job.completed_at = seoul_now()
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.patch("/universe/{ticker}", response_model=BacktestUniverseMemberRead)
 def update_universe_member(
     ticker: str,
@@ -252,6 +356,7 @@ def _event_summary(db: Session, run: BacktestRun) -> BacktestEventSummary:
     days = [signal.days_held for signal in entered if signal.days_held is not None]
     target_count = sum(1 for signal in signals if signal.exit_reason == "target")
     stop_count = sum(1 for signal in signals if signal.exit_reason == "stop")
+    open_count = sum(1 for signal in signals if signal.exit_reason == "open")
     expiry_count = sum(1 for signal in signals if signal.exit_reason == "expiry")
     no_entry_count = sum(1 for signal in signals if signal.exit_reason == "no_entry")
     mean_return = float(np.mean(returns)) if returns else None
@@ -272,16 +377,18 @@ def _event_summary(db: Session, run: BacktestRun) -> BacktestEventSummary:
         if returns
         else None
     )
+    win_rate = positive_return_rate if run.strategy_kind == _SPAN2_STRATEGY_KIND else target_hit_rate
     return BacktestEventSummary(
         signal_count=len(signals),
         entered_count=len(entered),
         no_entry_count=no_entry_count,
         target_count=target_count,
         stop_count=stop_count,
+        open_count=open_count,
         expiry_count=expiry_count,
         target_hit_rate=target_hit_rate,
         positive_return_rate=positive_return_rate,
-        win_rate=target_hit_rate,
+        win_rate=win_rate,
         mean_return=mean_return,
         expectancy=mean_return,
         median_return=float(np.median(returns)) if returns else None,
@@ -442,7 +549,9 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
     return BacktestRunDetail(
         **summary.model_dump(),
         stats=[BacktestStatRead.model_validate(stat) for stat in stats],
-        event_summary=_event_summary(db, run) if run.strategy_kind == "analysis_contract" else None,
+        event_summary=_event_summary(db, run)
+        if run.strategy_kind in {"analysis_contract", _SPAN2_STRATEGY_KIND}
+        else None,
         contract_breakdown=_contract_breakdown(db, run)
         if run.strategy_kind == "analysis_contract"
         else None,

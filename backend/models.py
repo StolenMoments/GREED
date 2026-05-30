@@ -222,6 +222,25 @@ class AnalysisBacktestJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BacktestStrategyJob(Base):
+    __tablename__ = "backtest_strategy_jobs"
+    __table_args__ = (
+        Index("ix_backtest_strategy_jobs_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_kind: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    backtest_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class BacktestSignal(Base):
     __tablename__ = "backtest_signals"
     __table_args__ = (
