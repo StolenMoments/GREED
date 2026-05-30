@@ -373,6 +373,79 @@ def test_create_universe_member_creates_preload_job(
     assert called_job_ids == [job.id]
 
 
+def test_reactivating_universe_member_creates_preload_job(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(
+        backtest,
+        "run_backtest_preload_pipeline",
+        lambda job_id: called_job_ids.append(job_id),
+    )
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="000660",
+            name="SK Hynix",
+            market="KR",
+            active=False,
+            sort_order=2,
+            source="test",
+        )
+    )
+    db_session.commit()
+
+    resp = client.patch("/api/backtest/universe/000660", json={"active": True})
+
+    assert resp.status_code == 200
+    job = db_session.scalar(
+        backtest.select(BacktestPreloadJob).where(BacktestPreloadJob.ticker == "000660")
+    )
+    assert job is not None
+    assert job.name == "SK Hynix"
+    assert job.status == "pending"
+    assert called_job_ids == [job.id]
+
+
+def test_reactivating_universe_member_skips_duplicate_active_preload_job(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(
+        backtest,
+        "run_backtest_preload_pipeline",
+        lambda job_id: called_job_ids.append(job_id),
+    )
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="000660",
+            name="SK Hynix",
+            market="KR",
+            active=False,
+            sort_order=2,
+            source="test",
+        )
+    )
+    existing_job = BacktestPreloadJob(ticker="000660", name="SK Hynix", status="running")
+    db_session.add(existing_job)
+    db_session.commit()
+    existing_job_id = existing_job.id
+
+    resp = client.patch("/api/backtest/universe/000660", json={"active": True})
+
+    assert resp.status_code == 200
+    jobs = list(
+        db_session.scalars(
+            backtest.select(BacktestPreloadJob).where(BacktestPreloadJob.ticker == "000660")
+        ).all()
+    )
+    assert [job.id for job in jobs] == [existing_job_id]
+    assert called_job_ids == []
+
+
 def test_run_backtest_preload_pipeline_marks_done(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

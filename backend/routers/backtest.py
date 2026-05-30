@@ -39,6 +39,7 @@ _RET_COLUMN = {
     12: BacktestSignal.ret_12w,
     26: BacktestSignal.ret_26w,
 }
+_ACTIVE_PRELOAD_JOB_STATUSES = ("pending", "running")
 
 
 def _universe_member_or_404(db: Session, ticker: str) -> BacktestUniverseMember:
@@ -54,6 +55,27 @@ def _normalize_universe_ticker(ticker: str) -> str:
         return normalize_korean_ticker(ticker)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _create_preload_job_if_needed(
+    db: Session,
+    member: BacktestUniverseMember,
+) -> BacktestPreloadJob | None:
+    existing_job = db.scalar(
+        select(BacktestPreloadJob)
+        .where(
+            BacktestPreloadJob.ticker == member.ticker,
+            BacktestPreloadJob.status.in_(_ACTIVE_PRELOAD_JOB_STATUSES),
+        )
+        .order_by(BacktestPreloadJob.id.desc())
+    )
+    if existing_job is not None:
+        return None
+
+    preload_job = BacktestPreloadJob(ticker=member.ticker, name=member.name)
+    db.add(preload_job)
+    db.flush()
+    return preload_job
 
 
 @router.get("/universe", response_model=list[BacktestUniverseMemberRead])
@@ -96,12 +118,12 @@ def create_universe_member(
     )
     db.add(member)
     db.flush()
-    preload_job = BacktestPreloadJob(ticker=ticker, name=member.name)
-    db.add(preload_job)
+    preload_job = _create_preload_job_if_needed(db, member)
+    preload_job_id = preload_job.id if preload_job is not None else None
     db.commit()
     db.refresh(member)
-    db.refresh(preload_job)
-    background_tasks.add_task(run_backtest_preload_pipeline, preload_job.id)
+    if preload_job_id is not None:
+        background_tasks.add_task(run_backtest_preload_pipeline, preload_job_id)
     return BacktestUniverseMemberRead.model_validate(member)
 
 
@@ -144,17 +166,25 @@ def run_backtest_preload_pipeline(job_id: int) -> None:
 def update_universe_member(
     ticker: str,
     payload: BacktestUniverseMemberUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> BacktestUniverseMemberRead:
     member = _universe_member_or_404(db, ticker)
+    was_active = member.active
     if payload.name is not None:
         member.name = payload.name.strip()
     if payload.active is not None:
         member.active = payload.active
     if payload.sort_order is not None:
         member.sort_order = payload.sort_order
+    preload_job = None
+    if payload.active is True and not was_active:
+        preload_job = _create_preload_job_if_needed(db, member)
+    preload_job_id = preload_job.id if preload_job is not None else None
     db.commit()
     db.refresh(member)
+    if preload_job_id is not None:
+        background_tasks.add_task(run_backtest_preload_pipeline, preload_job_id)
     return BacktestUniverseMemberRead.model_validate(member)
 
 
