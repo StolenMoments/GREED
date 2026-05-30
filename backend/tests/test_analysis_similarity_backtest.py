@@ -16,6 +16,7 @@ from scripts.backtest.analysis_similarity import (
     run_similarity_ticker,
     similarity_score,
 )
+import scripts.backtest.analysis_similarity as analysis_similarity_module
 from scripts.rule_scorer.features import extract_features_asof
 
 
@@ -328,3 +329,44 @@ def test_contract_backtest_requires_buy_analysis_and_contract_prices() -> None:
     analysis.judgment = "buy"
     with pytest.raises(ValueError, match="entry_price"):
         run_analysis_contract_backtest(None, analysis)
+
+
+def test_similarity_backtest_uses_db_universe_by_default(monkeypatch) -> None:
+    analysis = Analysis(
+        run_id=1,
+        ticker="005930",
+        name="Samsung",
+        name_initials="SS",
+        model="rule",
+        markdown="body",
+        judgment="buy",
+        trend="up",
+        cloud_position="above",
+        ma_alignment="bullish",
+        created_at=pd.Timestamp("2024-01-02"),
+    )
+    weekly = pd.DataFrame({"close": [100.0] * 4}, index=pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15", "2024-01-22"]))
+    calls: list[str] = []
+
+    monkeypatch.setattr(analysis_similarity_module, "load_active_universe", lambda db: [("000660", "SK Hynix")])
+    monkeypatch.setattr(analysis_similarity_module, "load_universe", lambda path: pytest.fail("CSV universe should not be used by default"))
+
+    def fake_weekly(db, ticker: str):
+        calls.append(ticker)
+        return weekly
+
+    monkeypatch.setattr(analysis_similarity_module, "load_weekly_ohlcv", fake_weekly)
+    monkeypatch.setattr(analysis_similarity_module, "build_combined", lambda frame, ticker, name: _combined_frame())
+    monkeypatch.setattr(analysis_similarity_module, "analysis_asof_index", lambda combined, created_at: 120)
+    monkeypatch.setattr(analysis_similarity_module, "run_similarity_ticker", lambda *args, **kwargs: [])
+    monkeypatch.setattr(analysis_similarity_module, "aggregate", lambda records, buckets=None: [])
+
+    result = analysis_similarity_module.run_analysis_similarity_backtest(
+        object(),
+        analysis,
+        threshold=10,
+        warmup=1,
+    )
+
+    assert calls == ["005930", "000660"]
+    assert result.ticker_count == 1

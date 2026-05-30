@@ -30,9 +30,10 @@ def persist_run(
     strategy_kind: str | None = None,
     similarity_threshold: int | None = None,
     horizons: str | None = None,
+    universe: str = "KOSPI200-DB",
 ) -> int:
     run = BacktestRun(
-        universe="KOSPI200",
+        universe=universe,
         buy_threshold=buy_threshold,
         horizons=horizons or ",".join(str(h) for h in HORIZONS),
         warmup_weeks=warmup_weeks,

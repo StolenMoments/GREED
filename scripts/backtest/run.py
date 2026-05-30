@@ -24,24 +24,16 @@ from rule_scorer.score import BUY_THRESHOLD  # noqa: E402
 from backtest.data import load_weekly_ohlcv  # noqa: E402
 from backtest.engine import WARMUP_WEEKS, aggregate, build_combined, run_ticker  # noqa: E402
 from backtest.persistence import persist_run  # noqa: E402
-from backtest.universe import DEFAULT_UNIVERSE_PATH, load_universe  # noqa: E402
+from backtest.universe import load_active_universe, load_universe  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--universe", default=str(DEFAULT_UNIVERSE_PATH))
+    parser.add_argument("--universe", default=None, help="Optional CSV universe override.")
     parser.add_argument("--warmup", type=int, default=WARMUP_WEEKS)
     parser.add_argument("--limit", type=int, default=None, help="종목 수 제한(디버그)")
     parser.add_argument("--notes", default=None)
     args = parser.parse_args()
-
-    try:
-        universe = load_universe(args.universe)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[ERROR] {exc}", file=sys.stderr)
-        return 2
-    if args.limit:
-        universe = universe[: args.limit]
 
     ensure_database_ready()
     db = SessionLocal()
@@ -50,6 +42,15 @@ def main() -> int:
     data_end: date | None = None
     processed = 0
     try:
+        try:
+            universe = load_universe(args.universe) if args.universe else load_active_universe(db)
+            universe_name = "CSV" if args.universe else "KOSPI200-DB"
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 2
+        if args.limit:
+            universe = universe[: args.limit]
+
         for code, name in universe:
             try:
                 weekly = load_weekly_ohlcv(db, code)
@@ -80,6 +81,7 @@ def main() -> int:
             data_start=data_start,
             data_end=data_end,
             notes=args.notes,
+            universe=universe_name,
         )
     finally:
         db.close()

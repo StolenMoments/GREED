@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
-from backend.models import BacktestRun, BacktestSignal, BacktestStat
+from backend.models import BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
 from backend.routers.backtest import router
 
 
@@ -284,3 +284,61 @@ def test_histogram_returns_bins_for_horizon(client: TestClient, db_session: Sess
 def test_run_detail_404(client: TestClient) -> None:
     resp = client.get("/api/backtest/runs/999999")
     assert resp.status_code == 404
+
+
+def test_universe_api_lists_adds_deactivates_and_reactivates(client: TestClient, db_session: Session) -> None:
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="000660",
+            name="SK Hynix",
+            market="KR",
+            active=False,
+            sort_order=2,
+            source="test",
+        )
+    )
+    db_session.commit()
+
+    add_resp = client.post(
+        "/api/backtest/universe",
+        json={"ticker": "5930", "name": "Samsung", "sort_order": 1},
+    )
+    assert add_resp.status_code == 201
+    assert add_resp.json()["ticker"] == "005930"
+    assert add_resp.json()["active"] is True
+
+    duplicate_resp = client.post(
+        "/api/backtest/universe",
+        json={"ticker": "005930", "name": "Samsung Electronics"},
+    )
+    assert duplicate_resp.status_code == 409
+
+    list_resp = client.get("/api/backtest/universe", params={"include_inactive": "true"})
+    assert list_resp.status_code == 200
+    assert [item["ticker"] for item in list_resp.json()] == ["005930", "000660"]
+
+    patch_resp = client.patch(
+        "/api/backtest/universe/005930",
+        json={"active": False, "name": "Samsung Electronics", "sort_order": 3},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["active"] is False
+    assert patch_resp.json()["name"] == "Samsung Electronics"
+
+    active_only_resp = client.get("/api/backtest/universe")
+    assert active_only_resp.status_code == 200
+    assert active_only_resp.json() == []
+
+    reactivate_resp = client.patch("/api/backtest/universe/000660", json={"active": True})
+    assert reactivate_resp.status_code == 200
+    assert reactivate_resp.json()["active"] is True
+
+    delete_resp = client.delete("/api/backtest/universe/000660")
+    assert delete_resp.status_code == 204
+    assert db_session.get(BacktestUniverseMember, "000660").active is False
+
+
+def test_universe_api_rejects_non_kr_ticker(client: TestClient) -> None:
+    resp = client.post("/api/backtest/universe", json={"ticker": "AAPL", "name": "Apple"})
+
+    assert resp.status_code == 400

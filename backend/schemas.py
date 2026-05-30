@@ -312,3 +312,31 @@ class BacktestHistogram(BaseModel):
     horizon: int
     score_bucket: str
     bins: list[HistogramBin]
+
+
+class BacktestUniverseMemberRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ticker: str
+    name: str
+    market: str
+    active: bool
+    sort_order: int
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class BacktestUniverseMemberCreate(BaseModel):
+    ticker: str = Field(..., max_length=20)
+    name: str = Field(..., max_length=255)
+    market: Literal["KR"] = "KR"
+    active: bool = True
+    sort_order: int = 0
+    source: str = Field(default="manual", max_length=50)
+
+
+class BacktestUniverseMemberUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    active: bool | None = None
+    sort_order: int | None = None

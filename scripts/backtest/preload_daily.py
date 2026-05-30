@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 from backend.database import SessionLocal, ensure_database_ready  # noqa: E402
 from backend.models import PriceBar  # noqa: E402
 from backend.price_bars import DAILY_INTERVAL, upsert_price_bars  # noqa: E402
-from scripts.backtest.universe import DEFAULT_UNIVERSE_PATH, load_universe  # noqa: E402
+from scripts.backtest.universe import load_active_universe, load_universe  # noqa: E402
 
 
 DEFAULT_START = date(2011, 12, 19)
@@ -124,7 +124,7 @@ def _next_fetch_state(db, ticker: str, default_start: date) -> tuple[date, bool]
 def main() -> None:
     parser = argparse.ArgumentParser(description="Preload KOSPI200 daily OHLCV into price_bars(1d).")
     parser.add_argument("--start", default=DEFAULT_START.isoformat())
-    parser.add_argument("--universe", default=str(DEFAULT_UNIVERSE_PATH))
+    parser.add_argument("--universe", default=None, help="Optional CSV universe override.")
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_SECONDS)
     parser.add_argument("--retries", type=int, default=DEFAULT_RETRIES)
     parser.add_argument("--retry-backoff", type=float, default=DEFAULT_RETRY_BACKOFF_SECONDS)
@@ -134,9 +134,10 @@ def main() -> None:
     ensure_database_ready()
     db = SessionLocal()
     try:
+        universe = load_universe(args.universe) if args.universe else load_active_universe(db)
         result = preload_daily_bars(
             db,
-            universe=load_universe(args.universe),
+            universe=universe,
             start=date.fromisoformat(args.start),
             delay_seconds=args.delay,
             retries=args.retries,

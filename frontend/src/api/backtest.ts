@@ -54,6 +54,29 @@ export interface BacktestRunDetail extends BacktestRunSummary {
   event_summary: BacktestEventSummary | null;
 }
 
+export interface BacktestUniverseMember {
+  ticker: string;
+  name: string;
+  market: string;
+  active: boolean;
+  sort_order: number;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BacktestUniverseCreatePayload {
+  ticker: string;
+  name: string;
+  sort_order?: number;
+}
+
+export interface BacktestUniverseUpdatePayload {
+  name?: string;
+  active?: boolean;
+  sort_order?: number;
+}
+
 export async function fetchBacktestRuns(): Promise<BacktestRunSummary[]> {
   const response = await apiClient.get<BacktestRunSummary[]>('/backtest/runs');
   return response.data;
@@ -62,4 +85,35 @@ export async function fetchBacktestRuns(): Promise<BacktestRunSummary[]> {
 export async function fetchBacktestRun(id: number): Promise<BacktestRunDetail> {
   const response = await apiClient.get<BacktestRunDetail>(`/backtest/runs/${id}`);
   return response.data;
+}
+
+export async function fetchBacktestUniverse(
+  includeInactive = true,
+): Promise<BacktestUniverseMember[]> {
+  const response = await apiClient.get<BacktestUniverseMember[]>('/backtest/universe', {
+    params: { include_inactive: includeInactive },
+  });
+  return response.data;
+}
+
+export async function createBacktestUniverseMember(
+  payload: BacktestUniverseCreatePayload,
+): Promise<BacktestUniverseMember> {
+  const response = await apiClient.post<BacktestUniverseMember>('/backtest/universe', payload);
+  return response.data;
+}
+
+export async function updateBacktestUniverseMember(
+  ticker: string,
+  payload: BacktestUniverseUpdatePayload,
+): Promise<BacktestUniverseMember> {
+  const response = await apiClient.patch<BacktestUniverseMember>(
+    `/backtest/universe/${ticker}`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function deactivateBacktestUniverseMember(ticker: string): Promise<void> {
+  await apiClient.delete(`/backtest/universe/${ticker}`);
 }

@@ -18,7 +18,7 @@ from scripts.backtest.engine import (
     aggregate,
     build_combined,
 )
-from scripts.backtest.universe import DEFAULT_UNIVERSE_PATH, load_universe
+from scripts.backtest.universe import load_active_universe, load_universe
 from scripts.rule_scorer.features import Features, extract_features_asof
 from scripts.rule_scorer.score import score_features
 
@@ -328,7 +328,7 @@ def run_analysis_similarity_backtest(
     *,
     threshold: int,
     warmup: int = WARMUP_WEEKS,
-    universe_path=DEFAULT_UNIVERSE_PATH,
+    universe_path=None,
 ) -> AnalysisBacktestResult:
     if threshold not in SIMILARITY_THRESHOLDS:
         raise ValueError(f"Unsupported similarity threshold: {threshold}")
@@ -348,7 +348,8 @@ def run_analysis_similarity_backtest(
     data_end: date | None = None
     processed = 0
 
-    for code, name in load_universe(universe_path):
+    universe = load_universe(universe_path) if universe_path is not None else load_active_universe(db)
+    for code, name in universe:
         weekly = load_weekly_ohlcv(db, code)
         if weekly.empty or len(weekly) <= warmup + 1:
             continue
@@ -386,7 +387,7 @@ def run_analysis_contract_backtest(
     *,
     threshold: int = 10,
     warmup: int = WARMUP_WEEKS,
-    universe_path=DEFAULT_UNIVERSE_PATH,
+    universe_path=None,
 ) -> AnalysisBacktestResult:
     if threshold not in SIMILARITY_THRESHOLDS:
         raise ValueError(f"Unsupported similarity threshold: {threshold}")
@@ -422,7 +423,8 @@ def run_analysis_contract_backtest(
     data_end: date | None = None
     processed = 0
 
-    for code, name in load_universe(universe_path):
+    universe = load_universe(universe_path) if universe_path is not None else load_active_universe(db)
+    for code, name in universe:
         weekly = load_weekly_ohlcv(db, code)
         daily = load_daily_ohlcv(db, code)
         if weekly.empty or len(weekly) <= warmup + 1 or daily.empty:

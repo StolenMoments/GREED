@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.database import Base
@@ -152,6 +152,31 @@ class BacktestRun(Base):
     source_analysis_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     strategy_kind: Mapped[str | None] = mapped_column(String(50), nullable=True)
     similarity_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class BacktestUniverseMember(Base):
+    __tablename__ = "backtest_universe_members"
+    __table_args__ = (
+        Index("ix_backtest_universe_members_active_order", "active", "sort_order", "ticker"),
+    )
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    market: Mapped[str] = mapped_column(String(20), default="KR", nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        onupdate=seoul_now,
+        nullable=False,
+    )
 
 
 class AnalysisBacktestJob(Base):

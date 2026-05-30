@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Analysis, BacktestRun, BacktestSignal, BacktestStat
+from backend.models import Analysis, BacktestRun, BacktestSignal, BacktestStat, BacktestUniverseMember
 from backend.schemas import (
     BacktestEventSummary,
     BacktestHistogram,
@@ -15,8 +15,12 @@ from backend.schemas import (
     BacktestSignalPage,
     BacktestSignalRead,
     BacktestStatRead,
+    BacktestUniverseMemberCreate,
+    BacktestUniverseMemberRead,
+    BacktestUniverseMemberUpdate,
     HistogramBin,
 )
+from scripts.backtest.universe import normalize_korean_ticker
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -26,6 +30,93 @@ _RET_COLUMN = {
     12: BacktestSignal.ret_12w,
     26: BacktestSignal.ret_26w,
 }
+
+
+def _universe_member_or_404(db: Session, ticker: str) -> BacktestUniverseMember:
+    normalized = _normalize_universe_ticker(ticker)
+    member = db.get(BacktestUniverseMember, normalized)
+    if member is None:
+        raise HTTPException(status_code=404, detail="Backtest universe member not found")
+    return member
+
+
+def _normalize_universe_ticker(ticker: str) -> str:
+    try:
+        return normalize_korean_ticker(ticker)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/universe", response_model=list[BacktestUniverseMemberRead])
+def list_universe_members(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+) -> list[BacktestUniverseMemberRead]:
+    stmt = select(BacktestUniverseMember).where(BacktestUniverseMember.market == "KR")
+    if not include_inactive:
+        stmt = stmt.where(BacktestUniverseMember.active.is_(True))
+    members = list(
+        db.scalars(
+            stmt.order_by(BacktestUniverseMember.sort_order, BacktestUniverseMember.ticker)
+        ).all()
+    )
+    return [BacktestUniverseMemberRead.model_validate(member) for member in members]
+
+
+@router.post(
+    "/universe",
+    response_model=BacktestUniverseMemberRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_universe_member(
+    payload: BacktestUniverseMemberCreate,
+    db: Session = Depends(get_db),
+) -> BacktestUniverseMemberRead:
+    ticker = _normalize_universe_ticker(payload.ticker)
+    if db.get(BacktestUniverseMember, ticker) is not None:
+        raise HTTPException(status_code=409, detail="Backtest universe member already exists")
+
+    member = BacktestUniverseMember(
+        ticker=ticker,
+        name=payload.name.strip(),
+        market=payload.market,
+        active=payload.active,
+        sort_order=payload.sort_order,
+        source=payload.source.strip() or "manual",
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return BacktestUniverseMemberRead.model_validate(member)
+
+
+@router.patch("/universe/{ticker}", response_model=BacktestUniverseMemberRead)
+def update_universe_member(
+    ticker: str,
+    payload: BacktestUniverseMemberUpdate,
+    db: Session = Depends(get_db),
+) -> BacktestUniverseMemberRead:
+    member = _universe_member_or_404(db, ticker)
+    if payload.name is not None:
+        member.name = payload.name.strip()
+    if payload.active is not None:
+        member.active = payload.active
+    if payload.sort_order is not None:
+        member.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(member)
+    return BacktestUniverseMemberRead.model_validate(member)
+
+
+@router.delete("/universe/{ticker}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_universe_member(
+    ticker: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    member = _universe_member_or_404(db, ticker)
+    member.active = False
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:

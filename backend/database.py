@@ -91,6 +91,7 @@ def _migrate_mariadb() -> None:
         for tbl in [
             "analyses", "analysis_jobs", "backtest_runs",
             "analysis_backtest_jobs", "backtest_signals", "backtest_stats",
+            "backtest_universe_members",
         ]:
             rows = conn.execute(text(
                 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
@@ -153,6 +154,24 @@ def _migrate_mariadb() -> None:
             ("similarity_threshold", "INTEGER NULL"),
         ]:
             conn.execute(text(f"ALTER TABLE backtest_runs ADD COLUMN IF NOT EXISTS {col} {typedef}"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS backtest_universe_members (
+                    ticker VARCHAR(20) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    market VARCHAR(20) NOT NULL DEFAULT 'KR',
+                    active BOOL NOT NULL DEFAULT TRUE,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    source VARCHAR(50) NOT NULL DEFAULT 'manual',
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    PRIMARY KEY (ticker),
+                    INDEX ix_backtest_universe_members_active_order (active, sort_order, ticker)
+                )
+                """
+            )
+        )
         conn.execute(
             text(
                 """
