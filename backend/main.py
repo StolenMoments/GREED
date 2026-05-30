@@ -11,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, OperationalError
 
-from backend.crud import mark_analysis_backtest_job_failed
 from backend.database import (
     DATABASE_UNAVAILABLE_MESSAGE,
     SessionLocal,
@@ -67,12 +66,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 def _mark_orphaned_backtest_jobs_failed() -> None:
-    from backend.models import AnalysisBacktestJob
+    from backend.timezone import seoul_now
+    from sqlalchemy import text
 
     with SessionLocal() as db:
-        orphaned = db.query(AnalysisBacktestJob).filter_by(status="running").all()
-        for job in orphaned:
-            mark_analysis_backtest_job_failed(db, job, error_message="서버 재시작으로 인해 중단됨")
+        db.execute(
+            text(
+                "UPDATE analysis_backtest_jobs"
+                " SET status='failed',"
+                " error_message='서버 재시작으로 인해 중단됨',"
+                " completed_at=:now"
+                " WHERE status='running'"
+            ),
+            {"now": seoul_now()},
+        )
+        db.commit()
 
 
 _cors_origin = os.getenv("CORS_ORIGIN", "http://localhost:5173")
