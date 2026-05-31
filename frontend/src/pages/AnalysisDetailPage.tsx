@@ -412,6 +412,14 @@ function AnalysisDetailPage() {
               >
                 {analysis.judgment}
               </span>
+              {analysis.judgment === '매수' ? (
+                <Link
+                  className="rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+                  to={`/candidates?analysis_id=${analysis.id}`}
+                >
+                  후보 종목 →
+                </Link>
+              ) : null}
               <button
                 className="rounded-md border border-rose-300/25 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/70 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={deleteAnalysisMutation.isPending}
