@@ -1,5 +1,6 @@
 from backend.routers.analyses import router as analyses_router
 from backend.routers.backtest import router as backtest_router
+from backend.routers.candidates import router as candidates_router
 from backend.routers.jobs import router as jobs_router
 from backend.routers.runs import router as runs_router
 from backend.routers.stats import router as stats_router
@@ -10,6 +11,7 @@ from backend.routers.tickers import router as tickers_router
 __all__ = [
     "runs_router",
     "analyses_router",
+    "candidates_router",
     "stock_router",
     "stocks_router",
     "jobs_router",

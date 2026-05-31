@@ -394,3 +394,37 @@ class BacktestUniverseMemberUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     active: bool | None = None
     sort_order: int | None = None
+
+
+class CandidateRead(BaseModel):
+    id: int
+    analysis_id: int
+    scan_date: date
+    ticker: str
+    name: str
+    score: int
+    current_close: float
+    entry_price: float
+    target_price: float
+    stop_price: float
+    entry_gap_pct: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateScanJobCreate(BaseModel):
+    threshold: int = 12
+
+
+class CandidateScanJobRead(BaseModel):
+    id: int
+    analysis_id: int
+    threshold: int
+    status: str
+    candidate_count: int | None
+    scan_date: date | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)

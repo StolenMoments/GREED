@@ -22,6 +22,7 @@ from backend.database import (
 from backend.routers import (
     analyses_router,
     backtest_router,
+    candidates_router,
     jobs_router,
     runs_router,
     stats_router,
@@ -116,6 +117,7 @@ app.include_router(runs_router)
 app.include_router(analyses_router)
 app.include_router(stats_router)
 app.include_router(backtest_router)
+app.include_router(candidates_router)
 app.include_router(stock_router)
 app.include_router(stocks_router)
 app.include_router(jobs_router)
