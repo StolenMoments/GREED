@@ -99,6 +99,16 @@ def _mark_orphaned_backtest_jobs_failed() -> None:
             ),
             {"now": seoul_now()},
         )
+        db.execute(
+            text(
+                "UPDATE candidate_scan_jobs"
+                " SET status='failed',"
+                " error_message='서버 재시작으로 인해 중단됨',"
+                " completed_at=:now"
+                " WHERE status='running'"
+            ),
+            {"now": seoul_now()},
+        )
         db.commit()
 
 
