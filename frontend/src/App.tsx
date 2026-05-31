@@ -9,6 +9,7 @@ import RunListPage from './pages/RunListPage';
 import StatsPage from './pages/StatsPage';
 import StockListPage from './pages/StockListPage';
 import StockSummaryPage from './pages/StockSummaryPage';
+import CandidatesPage from './pages/CandidatesPage';
 
 const navItems = [
   { to: '/runs', label: 'Runs' },
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/backtest', label: 'Backtest', end: true },
   { to: '/backtest/universe', label: 'Universe' },
   { to: '/jobs', label: 'Jobs' },
+  { to: '/candidates', label: 'Scan' },
   { to: '/stocks', label: 'Stocks' },
 ];
 
@@ -69,6 +71,7 @@ function App() {
           <Route element={<BacktestPage />} path="/backtest" />
           <Route element={<BacktestUniversePage />} path="/backtest/universe" />
           <Route element={<JobsPage />} path="/jobs" />
+          <Route element={<CandidatesPage />} path="/candidates" />
           <Route element={<StockSummaryPage />} path="/stocks" />
           <Route element={<Navigate replace to="/runs" />} path="*" />
         </Routes>
