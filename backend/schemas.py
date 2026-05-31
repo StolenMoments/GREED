@@ -131,7 +131,7 @@ class JobRead(BaseModel):
 
 
 class JobOverviewRead(BaseModel):
-    kind: Literal["analysis", "analysis_backtest", "backtest_preload", "backtest_strategy"]
+    kind: Literal["analysis", "analysis_backtest", "backtest_preload", "backtest_strategy", "candidate_scan"]
     id: int
     ticker: str
     run_id: int | None
@@ -410,6 +410,17 @@ class CandidateRead(BaseModel):
     entry_gap_pct: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ScanSummaryItem(BaseModel):
+    analysis_id: int
+    ticker: str
+    name: str
+    latest_scan_date: date | None
+    threshold: int | None
+    candidate_count: int | None
+    status: str
+    latest_job_id: int | None
 
 
 class CandidateScanJobCreate(BaseModel):

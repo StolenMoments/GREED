@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal, get_db
 from backend.models import Analysis, CandidateScanJob, CurrentCandidate
-from backend.schemas import CandidateRead, CandidateScanJobCreate, CandidateScanJobRead
+from backend.schemas import CandidateRead, CandidateScanJobCreate, CandidateScanJobRead, ScanSummaryItem
 from backend.timezone import seoul_now
 
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
@@ -131,6 +132,34 @@ def get_scan_job(
     if job is None or job.analysis_id != analysis_id:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.get("/scan-summary", response_model=list[ScanSummaryItem])
+def list_scan_summary(db: Session = Depends(get_db)) -> list[ScanSummaryItem]:
+    latest_sq = (
+        select(CandidateScanJob.analysis_id, func.max(CandidateScanJob.id).label("max_id"))
+        .group_by(CandidateScanJob.analysis_id)
+        .subquery()
+    )
+    stmt = (
+        select(CandidateScanJob, Analysis)
+        .join(latest_sq, CandidateScanJob.id == latest_sq.c.max_id)
+        .join(Analysis, Analysis.id == CandidateScanJob.analysis_id)
+        .order_by(CandidateScanJob.created_at.desc())
+    )
+    return [
+        ScanSummaryItem(
+            analysis_id=analysis.id,
+            ticker=analysis.ticker,
+            name=analysis.name,
+            latest_scan_date=job.scan_date,
+            threshold=job.threshold,
+            candidate_count=job.candidate_count,
+            status=job.status,
+            latest_job_id=job.id,
+        )
+        for job, analysis in db.execute(stmt).all()
+    ]
 
 
 @router.get("", response_model=list[CandidateRead])

@@ -72,7 +72,9 @@ function jobIdLabel(job: JobOverview): string {
   if (job.kind === 'backtest_preload') {
     return `Preload #${job.id}`;
   }
-  return job.kind === 'analysis_backtest' ? `BT #${job.id}` : `#${job.id}`;
+  if (job.kind === 'analysis_backtest') return `BT #${job.id}`;
+  if (job.kind === 'candidate_scan') return `Scan #${job.id}`;
+  return `#${job.id}`;
 }
 
 function modelLabel(job: JobOverview): string {
@@ -86,6 +88,11 @@ function modelLabel(job: JobOverview): string {
     return job.similarity_threshold === null
       ? 'backtest'
       : `similarity >= ${job.similarity_threshold}`;
+  }
+  if (job.kind === 'candidate_scan') {
+    return job.similarity_threshold !== null
+      ? `threshold ≥ ${job.similarity_threshold}`
+      : 'scan';
   }
   return job.model;
 }
@@ -117,6 +124,17 @@ function JobDetail({ job }: { job: JobOverview }) {
         to={`/backtest?runId=${job.backtest_run_id}`}
       >
         Backtest #{job.backtest_run_id}
+      </Link>
+    );
+  }
+
+  if (job.kind === 'candidate_scan' && job.analysis_id !== null) {
+    return (
+      <Link
+        className="mt-1 inline-flex rounded-md border border-amber-200/20 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-100/10 lg:mt-0"
+        to={`/candidates?analysis_id=${job.analysis_id}`}
+      >
+        후보 보기
       </Link>
     );
   }

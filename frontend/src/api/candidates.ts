@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { Candidate, CandidateScanJob } from '../types';
+import type { Candidate, CandidateScanJob, ScanSummaryItem } from '../types';
 
 export async function triggerScan(
   analysisId: number,
@@ -38,5 +38,10 @@ export async function fetchCandidates(
   const response = await apiClient.get<Candidate[]>('/candidates', {
     params: { analysis_id: analysisId, min_score: minScore },
   });
+  return response.data;
+}
+
+export async function fetchScanSummary(): Promise<ScanSummaryItem[]> {
+  const response = await apiClient.get<ScanSummaryItem[]>('/candidates/scan-summary');
   return response.data;
 }

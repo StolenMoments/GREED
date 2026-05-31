@@ -106,7 +106,7 @@ export type AnalysisBacktestJobStatus = 'pending' | 'running' | 'done' | 'failed
 
 export type JobOverviewStatus = JobStatus | 'running';
 
-export type JobKind = 'analysis' | 'analysis_backtest' | 'backtest_preload' | 'backtest_strategy';
+export type JobKind = 'analysis' | 'analysis_backtest' | 'backtest_preload' | 'backtest_strategy' | 'candidate_scan';
 
 export interface AnalysisBacktestJob {
   id: number;
@@ -203,4 +203,15 @@ export interface Candidate {
   target_price: number;
   stop_price: number;
   entry_gap_pct: number;
+}
+
+export interface ScanSummaryItem {
+  analysis_id: number;
+  ticker: string;
+  name: string;
+  latest_scan_date: string | null;
+  threshold: number | null;
+  candidate_count: number | null;
+  status: CandidateScanJobStatus;
+  latest_job_id: number | null;
 }

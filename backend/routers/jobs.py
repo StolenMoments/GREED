@@ -30,7 +30,7 @@ from backend.crud import (
 )
 from backend.database import SessionLocal, get_db
 from backend.fundamentals import get_or_fetch_fundamental, get_or_fetch_history, valuation_band
-from backend.models import Analysis, AnalysisBacktestJob, AnalysisJob, BacktestPreloadJob, BacktestStrategyJob, FundamentalHistory, FundamentalSnapshot
+from backend.models import Analysis, AnalysisBacktestJob, AnalysisJob, BacktestPreloadJob, BacktestStrategyJob, CandidateScanJob, FundamentalHistory, FundamentalSnapshot
 from backend.parser import parse_markdown
 from backend.schemas import AnalysisCreate, JobOverviewRead, JobRead, JobTriggerRequest
 from backend.stock_price import fetch_and_store_latest_close
@@ -389,6 +389,32 @@ def list_job_overview_endpoint(
                 analysis_id=None,
                 backtest_run_id=job.backtest_run_id,
                 similarity_threshold=None,
+                upserted_rows=None,
+                created_at=job.created_at,
+            )
+        )
+
+    scan_stmt = (
+        select(CandidateScanJob, Analysis)
+        .join(Analysis, Analysis.id == CandidateScanJob.analysis_id)
+        .order_by(CandidateScanJob.id.desc())
+    )
+    if allowed_statuses:
+        scan_stmt = scan_stmt.where(CandidateScanJob.status.in_(allowed_statuses))
+
+    for job, analysis in db.execute(scan_stmt).all():
+        rows.append(
+            JobOverviewRead(
+                kind="candidate_scan",
+                id=job.id,
+                ticker=analysis.ticker,
+                run_id=None,
+                model="candidate_scan",
+                status=job.status,
+                error_message=job.error_message,
+                analysis_id=job.analysis_id,
+                backtest_run_id=None,
+                similarity_threshold=job.threshold,
                 upserted_rows=None,
                 created_at=job.created_at,
             )

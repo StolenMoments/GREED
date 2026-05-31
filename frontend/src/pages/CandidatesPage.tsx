@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAllAnalyses } from '../api/analyses';
+import { MODEL_OPTIONS } from '../constants/analysisModels';
 import { useAnalysis } from '../hooks/useAnalyses';
 import {
   useCandidates,
   useLatestScanJob,
   useScanJobPolling,
+  useScanSummary,
   useTriggerScan,
 } from '../hooks/useCandidates';
 import { useTriggerAnalysis } from '../hooks/useJobs';
 import { useRuns } from '../hooks/useRuns';
 import { formatDateOnly } from '../utils/formatDate';
-import type { CandidateScanJobStatus } from '../types';
+import type { AnalysisModel, CandidateScanJobStatus } from '../types';
 
 const THRESHOLDS = [12, 13, 14] as const;
 type Threshold = (typeof THRESHOLDS)[number];
@@ -21,6 +23,13 @@ const scanStatusStyles: Record<CandidateScanJobStatus, string> = {
   running: 'border-sky-200/25 bg-sky-400/10 text-sky-100',
   done: 'border-emerald-200/25 bg-emerald-400/10 text-emerald-100',
   failed: 'border-rose-200/25 bg-rose-400/10 text-rose-100',
+};
+
+const scanStatusLabel: Record<CandidateScanJobStatus, string> = {
+  pending: '대기 중',
+  running: '스캔 중',
+  done: '완료',
+  failed: '실패',
 };
 
 function LoadingRows() {
@@ -43,6 +52,90 @@ function LoadingRows() {
   );
 }
 
+function ScanOverview() {
+  const { data: items = [], isLoading, isError } = useScanSummary();
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="border-b border-amber-100/10 pb-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
+          Candidates
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">
+          스캔 이력
+        </h2>
+      </div>
+
+      {isLoading ? (
+        <div className="divide-y divide-amber-100/10 overflow-hidden rounded-lg border border-amber-100/10 bg-slate-950/45">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div className="grid gap-4 px-5 py-4 lg:grid-cols-[5rem_minmax(0,1fr)_6rem_6rem_6rem_7rem] lg:items-center" key={i}>
+              {Array.from({ length: 6 }, (_, j) => (
+                <div className="h-4 animate-pulse rounded bg-slate-800/80" key={j} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-rose-200/20 bg-rose-950/20 px-5 py-4">
+          <p className="text-sm font-semibold text-rose-100">이력을 불러오지 못했습니다.</p>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-lg border border-amber-100/10 bg-slate-950/45 px-6 py-16 text-center">
+          <p className="text-sm font-semibold text-slate-100">아직 스캔한 분석이 없습니다.</p>
+          <p className="mt-2 text-sm text-slate-400">
+            분석 상세 페이지에서 스캔을 시작하세요.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-amber-100/10 bg-slate-950/45">
+          <div className="hidden grid-cols-[5rem_minmax(0,1fr)_6rem_6rem_6rem_7rem] gap-4 border-b border-amber-100/10 px-5 py-3 lg:grid">
+            {['티커', '종목명', '스캔일', 'Threshold', '후보수', '상태'].map((label) => (
+              <span
+                className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+                key={label}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className="divide-y divide-amber-100/10">
+            {items.map((item) => (
+              <Link
+                className="grid w-full gap-4 px-5 py-4 transition hover:bg-amber-100/[0.035] lg:grid-cols-[5rem_minmax(0,1fr)_6rem_6rem_6rem_7rem] lg:items-center"
+                key={item.analysis_id}
+                to={`/candidates?analysis_id=${item.analysis_id}`}
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">
+                  {item.ticker}
+                </span>
+                <span className="text-sm font-semibold text-slate-100">{item.name}</span>
+                <span className="text-sm tabular-nums text-slate-300">
+                  {item.latest_scan_date ? formatDateOnly(item.latest_scan_date) : '-'}
+                </span>
+                <span className="text-sm tabular-nums text-slate-300">
+                  {item.threshold ?? '-'}
+                </span>
+                <span className="text-sm tabular-nums text-slate-300">
+                  {item.candidate_count ?? '-'}
+                </span>
+                <span
+                  className={[
+                    'inline-flex max-w-fit items-center rounded border px-2 py-0.5 text-xs font-semibold',
+                    scanStatusStyles[item.status],
+                  ].join(' ')}
+                >
+                  {scanStatusLabel[item.status]}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CandidatesPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -61,6 +154,7 @@ function CandidatesPage() {
   const [tickerConfirm, setTickerConfirm] = useState<{
     ticker: string;
     name: string;
+    model: AnalysisModel;
   } | null>(null);
 
   const { data: analysis, isError: isAnalysisError, isLoading: isAnalysisLoading } =
@@ -90,7 +184,7 @@ function CandidatesPage() {
     scanJob?.status === 'pending' || scanJob?.status === 'running';
 
   if (!analysisId) {
-    return <Navigate replace to="/analyses" />;
+    return <ScanOverview />;
   }
 
   async function handleScan() {
@@ -113,18 +207,18 @@ function CandidatesPage() {
     } catch {
       // fall through to confirm dialog
     }
-    setTickerConfirm({ ticker, name });
+    setTickerConfirm({ ticker, name, model: 'claude' });
   }
 
   async function handleConfirmAnalysis() {
     if (!tickerConfirm || !runs?.[0]) return;
-    const { ticker } = tickerConfirm;
+    const { ticker, model } = tickerConfirm;
     setTickerConfirm(null);
     try {
       await triggerAnalysisMutation.mutateAsync({
         ticker,
         run_id: runs[0].id,
-        model: 'claude',
+        model,
       });
     } catch {
       // navigate to jobs regardless
@@ -343,6 +437,34 @@ function CandidatesPage() {
               </span>{' '}
               {tickerConfirm.name}의 분석 기록이 없습니다. 분석을 시작하시겠습니까?
             </p>
+
+            {/* Model selector */}
+            <div className="mt-4">
+              <span className="mb-2 block text-sm font-semibold text-slate-200">분석 엔진</span>
+              <div className={['grid grid-cols-3 gap-2', triggerAnalysisMutation.isPending ? 'pointer-events-none opacity-60' : ''].join(' ')}>
+                {MODEL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setTickerConfirm((prev) =>
+                        prev ? { ...prev, model: opt.id } : null,
+                      );
+                    }}
+                    className={[
+                      'rounded-lg border px-3 py-2.5 text-left transition duration-150',
+                      tickerConfirm.model === opt.id
+                        ? 'border-amber-300/80 bg-amber-300/10 text-amber-50'
+                        : 'border-slate-800 bg-slate-950/50 text-slate-300 hover:border-slate-600 hover:bg-slate-900/40',
+                    ].join(' ')}
+                  >
+                    <span className="block text-sm font-semibold leading-none">{opt.label}</span>
+                    <span className="mt-1 block text-xs text-slate-400">{opt.provider}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-5 flex justify-end gap-3">
               <button
                 className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"

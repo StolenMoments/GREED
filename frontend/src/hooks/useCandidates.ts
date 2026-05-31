@@ -4,12 +4,14 @@ import {
   fetchCandidates,
   fetchLatestScanJob,
   fetchScanJob,
+  fetchScanSummary,
   triggerScan,
 } from '../api/candidates';
 import type { CandidateScanJob } from '../types';
 
 export const candidateKeys = {
   all: ['candidates'] as const,
+  summary: ['candidates', 'scan-summary'] as const,
   scanJobs: (analysisId: number) =>
     [...candidateKeys.all, 'scan-jobs', analysisId] as const,
   scanJob: (analysisId: number, jobId: number) =>
@@ -82,5 +84,12 @@ export function useLatestScanJob(analysisId: number | undefined) {
     queryKey: candidateKeys.scanJobs(analysisId ?? 0),
     queryFn: () => fetchLatestScanJob(analysisId as number),
     enabled: analysisId !== undefined,
+  });
+}
+
+export function useScanSummary() {
+  return useQuery({
+    queryKey: candidateKeys.summary,
+    queryFn: fetchScanSummary,
   });
 }
