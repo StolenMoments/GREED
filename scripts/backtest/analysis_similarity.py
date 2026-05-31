@@ -486,3 +486,101 @@ def run_analysis_contract_backtest(
         base_judgment=base_judgment,
         base_profile=base_profile,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateRecord:
+    ticker: str
+    name: str
+    score: int
+    current_close: float
+    entry_price: float
+    target_price: float
+    stop_price: float
+    entry_gap_pct: float
+
+
+def scan_current_candidates(
+    db: Session,
+    analysis: Analysis,
+    *,
+    threshold: int = 12,
+    warmup: int = WARMUP_WEEKS,
+) -> tuple[list[CandidateRecord], date]:
+    """KOSPI200-DB 유니버스에서 최신 주봉 기준 similarity >= threshold 종목을 반환."""
+    if threshold not in SIMILARITY_THRESHOLDS:
+        raise ValueError(f"Unsupported threshold: {threshold}")
+    _validate_contract_analysis(analysis)
+
+    base_weekly = load_weekly_ohlcv(db, analysis.ticker)
+    if base_weekly.empty or len(base_weekly) <= warmup + 1:
+        raise ValueError(f"Not enough weekly data for base ticker: {analysis.ticker}")
+
+    base_daily = load_daily_ohlcv(db, analysis.ticker, fetch_missing=True)
+    if base_daily.empty:
+        raise ValueError(f"No daily data for base ticker: {analysis.ticker}")
+
+    base_combined = build_combined(base_weekly, analysis.ticker, analysis.name)
+    base_index = analysis_asof_index(base_combined, analysis.created_at)
+    base_signal_date = _to_date(
+        base_combined[base_combined["close"].notna()].reset_index(drop=True)["date"].iloc[base_index]
+    )
+    base_close = _asof_close(base_daily, base_signal_date)
+
+    assert analysis.entry_price is not None
+    assert analysis.target_price is not None
+    assert analysis.stop_loss is not None
+    entry_ratio = analysis.entry_price / base_close
+    target_return = analysis.target_price / analysis.entry_price - 1
+    stop_return = analysis.stop_loss / analysis.entry_price - 1
+
+    base_profile, _, _ = profile_from_features(extract_features_asof(base_combined, base_index))
+    base_profile = _profile_with_analysis_fields(base_profile, analysis)
+
+    results: list[CandidateRecord] = []
+    latest_scan_date: date | None = None
+
+    universe = load_active_universe(db)
+    for code, name in universe:
+        weekly = load_weekly_ohlcv(db, code)
+        if weekly.empty:
+            continue
+        combined = build_combined(weekly, code, name)
+        price = combined[combined["close"].notna()].reset_index(drop=True)
+        n = len(price)
+        if n <= warmup:
+            continue
+
+        i = n - 1  # 최신 완성 주봉
+        features = extract_features_asof(combined, i)
+        candidate_profile, _, _ = profile_from_features(features)
+        score = similarity_score(base_profile, candidate_profile)
+        if score < threshold:
+            continue
+
+        current_close = _f(price["close"].iloc[i])
+        if current_close is None or current_close <= 0:
+            continue
+
+        bar_date = _to_date(price["date"].iloc[i])
+        if latest_scan_date is None or bar_date > latest_scan_date:
+            latest_scan_date = bar_date
+
+        ep = current_close * entry_ratio
+        tp = ep * (1 + target_return)
+        sp = ep * (1 + stop_return)
+        gap = (ep - current_close) / current_close * 100
+
+        results.append(CandidateRecord(
+            ticker=code,
+            name=name,
+            score=score,
+            current_close=current_close,
+            entry_price=ep,
+            target_price=tp,
+            stop_price=sp,
+            entry_gap_pct=gap,
+        ))
+
+    from datetime import date as _date_cls
+    return results, latest_scan_date or _date_cls.today()

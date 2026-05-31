@@ -370,3 +370,71 @@ def test_similarity_backtest_uses_db_universe_by_default(monkeypatch) -> None:
 
     assert calls == ["005930", "000660"]
     assert result.ticker_count == 1
+
+
+def _make_analysis_with_prices() -> Analysis:
+    return Analysis(
+        id=1,
+        run_id=1,
+        ticker="000001",
+        name="TestCo",
+        name_initials="TC",
+        model="claude",
+        markdown="",
+        judgment="매수",
+        trend="상승",
+        cloud_position="구름 위",
+        ma_alignment="정배열",
+        entry_price=105.0,
+        target_price=145.0,
+        stop_loss=88.0,
+        created_at=pd.Timestamp("2022-07-11"),
+    )
+
+
+def test_scan_current_candidates_returns_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.backtest.analysis_similarity import scan_current_candidates
+
+    analysis = _make_analysis_with_prices()
+
+    def fake_load_weekly(db, ticker):
+        rows = []
+        for i in range(150):
+            close = 100.0 + i
+            rows.append({
+                "open": close,
+                "high": close + 1,
+                "low": close - 1,
+                "close": close,
+                "volume": 1000.0,
+                "trading_value": 1000.0 * close,
+            })
+        idx = pd.date_range("2020-01-06", periods=150, freq="W-MON")
+        df = pd.DataFrame(rows, index=idx)
+        df.index.name = "date"
+        return df
+
+    def fake_load_daily(db, ticker, **kwargs):
+        rows = []
+        for i in range(150 * 5):
+            close = 100.0 + i / 5
+            rows.append({
+                "open": close, "high": close + 1, "low": close - 1,
+                "close": close, "volume": 500.0, "trading_value": 500.0 * close,
+            })
+        idx = pd.date_range("2020-01-02", periods=150 * 5, freq="B")
+        df = pd.DataFrame(rows, index=idx)
+        df.index.name = "date"
+        return df
+
+    monkeypatch.setattr(analysis_similarity_module, "load_weekly_ohlcv", fake_load_weekly)
+    monkeypatch.setattr(analysis_similarity_module, "load_daily_ohlcv", fake_load_daily)
+    monkeypatch.setattr(
+        analysis_similarity_module,
+        "load_active_universe",
+        lambda db: [("000001", "TestCo")],
+    )
+
+    candidates, scan_date = scan_current_candidates(None, analysis, threshold=10)
+    assert isinstance(candidates, list)
+    assert scan_date is not None
