@@ -289,6 +289,42 @@ def _migrate_mariadb() -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS fundamental_snapshots (
+                    ticker VARCHAR(20) NOT NULL,
+                    snapshot_date DATE NOT NULL,
+                    per FLOAT NULL,
+                    pbr FLOAT NULL,
+                    eps FLOAT NULL,
+                    bps FLOAT NULL,
+                    div_yield FLOAT NULL,
+                    market_cap FLOAT NULL,
+                    fetched_at DATETIME NOT NULL,
+                    PRIMARY KEY (ticker)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS fundamental_history (
+                    ticker VARCHAR(20) NOT NULL,
+                    snapshot_date DATE NOT NULL,
+                    per FLOAT NULL,
+                    pbr FLOAT NULL,
+                    eps FLOAT NULL,
+                    bps FLOAT NULL,
+                    div_yield FLOAT NULL,
+                    fetched_at DATETIME NOT NULL,
+                    PRIMARY KEY (ticker, snapshot_date),
+                    INDEX ix_fundamental_history_lookup (ticker, snapshot_date)
+                )
+                """
+            )
+        )
         conn.commit()
 
 

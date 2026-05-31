@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, BacktestStrategyJob, KrxStock
+from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, BacktestStrategyJob, FundamentalHistory, FundamentalSnapshot, KrxStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -1619,3 +1619,158 @@ def test_run_gemini_passes_yolo_flag(
     assert "--yolo" in payload["cmd"]
     yolo_idx = payload["cmd"].index("--yolo")
     assert payload["cmd"][yolo_idx + 1 : yolo_idx + 4] == ["-p", "", "--output-format"]
+
+
+def _make_snapshot(**overrides: object) -> FundamentalSnapshot:
+    values: dict[str, object] = {
+        "ticker": "005930",
+        "snapshot_date": date(2026, 5, 29),
+        "per": 12.3,
+        "pbr": 0.9,
+        "eps": 8200.0,
+        "bps": 110000.0,
+        "div_yield": 2.5,
+        "market_cap": 450_000_000_000.0,
+    }
+    values.update(overrides)
+    return FundamentalSnapshot(**values)
+
+
+def test_kr_system_prompt_allows_provided_fundamentals() -> None:
+    assert "재무 보조 지표 해석" in jobs.KR_SYSTEM_PROMPT
+    assert "기술적 분석 외 펀더멘털, 뉴스, 경제 이슈 언급 금지" not in jobs.KR_SYSTEM_PROMPT
+    assert "재무 수치를 임의로 언급 금지" in jobs.KR_SYSTEM_PROMPT
+
+
+def test_build_fundamentals_block_skips_us_tickers() -> None:
+    assert jobs._build_fundamentals_block(object(), "AAPL") == ""
+
+
+def test_build_fundamentals_block_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(_db: object, _ticker: str) -> FundamentalSnapshot:
+        raise RuntimeError("pykrx down")
+
+    monkeypatch.setattr(jobs, "get_or_fetch_fundamental", boom)
+    block = jobs._build_fundamentals_block(object(), "005930")
+    assert "조회 실패" in block
+
+
+def test_format_fundamentals_block_renders_na_for_missing() -> None:
+    snapshot = _make_snapshot(per=None, pbr=-1.0, eps=None, market_cap=None)
+    block = jobs._format_fundamentals_block(snapshot)
+    assert "스냅샷일자 2026-05-29" in block
+    assert "PER: N/A" in block
+    assert "PBR: N/A" in block  # non-positive treated as N/A
+    assert "EPS: N/A" in block
+    assert "시가총액: N/A" in block
+    assert "배당수익률: 2.50%" in block
+
+
+def _make_history() -> list[FundamentalHistory]:
+    points = [
+        (date(2025, 3, 31), 8.0, 0.6, 7000.0, 100000.0),
+        (date(2025, 6, 30), 10.0, 0.7, 7500.0, 104000.0),
+        (date(2025, 9, 30), 14.0, 0.85, 7900.0, 107000.0),
+        (date(2025, 12, 31), 25.0, 1.1, 8100.0, 109000.0),
+    ]
+    return [
+        FundamentalHistory(
+            ticker="005930",
+            snapshot_date=d,
+            per=per,
+            pbr=pbr,
+            eps=eps,
+            bps=bps,
+            div_yield=2.5,
+        )
+        for d, per, pbr, eps, bps in points
+    ]
+
+
+def test_format_fundamentals_trend_renders_table_and_band() -> None:
+    section = jobs._format_fundamentals_trend(_make_history(), _make_snapshot(per=9.0, pbr=0.6))
+    assert "재무 추이 (분기말, 최근 3년)" in section
+    assert "2025Q1" in section and "2025Q4" in section
+    assert "밸류에이션 밴드" in section
+    assert "저평가 영역" in section  # current PER 9 sits at the 25th pct of the 8~25 band
+
+
+def test_format_fundamentals_trend_empty_for_no_history() -> None:
+    assert jobs._format_fundamentals_trend([], _make_snapshot()) == ""
+
+
+def test_run_analysis_pipeline_injects_fundamentals_for_kr(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="fundamentals")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    captured: dict[str, object] = {}
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv")
+
+    def fake_runner(csv_text, system_prompt, *args) -> FakeProcess:
+        captured["system_prompt"] = system_prompt
+        return FakeProcess()
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+    monkeypatch.setattr(jobs, "get_or_fetch_fundamental", lambda db, ticker: _make_snapshot())
+    monkeypatch.setattr(jobs, "get_or_fetch_history", lambda db, ticker: _make_history())
+
+    run_analysis_pipeline(job.id)
+
+    system_prompt = str(captured["system_prompt"])
+    assert "스냅샷일자 2026-05-29" in system_prompt
+    assert "PER: 12.30" in system_prompt
+    assert "재무 추이 (분기말, 최근 3년)" in system_prompt
+    assert "밸류에이션 밴드" in system_prompt
+
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "pending"
+
+
+def test_run_analysis_pipeline_survives_fundamentals_failure(
+    test_db: sessionmaker[Session],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        run = crud.create_run(db, memo="fundamentals failure")
+        job = crud.create_job(db, ticker="005930", run_id=run.id)
+
+    captured: dict[str, object] = {}
+
+    def fake_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
+        _write_csv(output_dir, "KOSPI_005930_Samsung_weekly_20260507.csv")
+
+    def fake_runner(csv_text, system_prompt, *args) -> FakeProcess:
+        captured["system_prompt"] = system_prompt
+        return FakeProcess()
+
+    def boom(_db: object, _ticker: str) -> FundamentalSnapshot:
+        raise RuntimeError("pykrx down")
+
+    monkeypatch.setattr(jobs, "SessionLocal", test_db)
+    monkeypatch.setattr(jobs, "PICK_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(jobs, "_resolve_stock_name", lambda db, ticker: "Samsung")
+    monkeypatch.setattr(jobs, "_run_pick", fake_pick)
+    monkeypatch.setattr(jobs, "_run_claude", fake_runner)
+    monkeypatch.setattr(jobs, "get_or_fetch_fundamental", boom)
+
+    run_analysis_pipeline(job.id)
+
+    assert "조회 실패" in str(captured["system_prompt"])
+    with test_db() as db:
+        saved_job = crud.get_job(db, job.id)
+        assert saved_job is not None
+        assert saved_job.status == "pending"  # job not failed by fundamentals error

@@ -8,4 +8,5 @@ click
 httpx
 pytest
 finance-datareader
+pykrx
 tzdata

@@ -16,6 +16,8 @@ from backend.models import (
     AnalysisBacktestJob,
     AnalysisJob,
     BacktestRun,
+    FundamentalHistory,
+    FundamentalSnapshot,
     KrxStock,
     Run,
     StockPrice,
@@ -549,6 +551,81 @@ def upsert_stock_price(
     db.commit()
     db.refresh(row)
     return row
+
+
+def get_fundamental_snapshot(db: Session, ticker: str) -> FundamentalSnapshot | None:
+    return db.get(FundamentalSnapshot, normalize_ticker(ticker))
+
+
+def upsert_fundamental_snapshot(
+    db: Session,
+    ticker: str,
+    snapshot_date: date,
+    per: float | None = None,
+    pbr: float | None = None,
+    eps: float | None = None,
+    bps: float | None = None,
+    div_yield: float | None = None,
+    market_cap: float | None = None,
+) -> FundamentalSnapshot:
+    ticker = normalize_ticker(ticker)
+    row = db.get(FundamentalSnapshot, ticker)
+    if row is None:
+        row = FundamentalSnapshot(ticker=ticker)
+        db.add(row)
+    row.snapshot_date = snapshot_date
+    row.per = per
+    row.pbr = pbr
+    row.eps = eps
+    row.bps = bps
+    row.div_yield = div_yield
+    row.market_cap = market_cap
+    row.fetched_at = seoul_now()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_fundamental_history(
+    db: Session,
+    ticker: str,
+    since: date | None = None,
+) -> list[FundamentalHistory]:
+    stmt = select(FundamentalHistory).where(
+        FundamentalHistory.ticker == normalize_ticker(ticker)
+    )
+    if since is not None:
+        stmt = stmt.where(FundamentalHistory.snapshot_date >= since)
+    stmt = stmt.order_by(FundamentalHistory.snapshot_date)
+    return list(db.scalars(stmt).all())
+
+
+def upsert_fundamental_history_rows(
+    db: Session,
+    ticker: str,
+    rows: list[dict[str, object]],
+) -> int:
+    """Upsert a batch of history points. Each row dict has snapshot_date + metrics."""
+    ticker = normalize_ticker(ticker)
+    now = seoul_now()
+    count = 0
+    for data in rows:
+        snapshot_date = data.get("snapshot_date")
+        if snapshot_date is None:
+            continue
+        row = db.get(FundamentalHistory, (ticker, snapshot_date))
+        if row is None:
+            row = FundamentalHistory(ticker=ticker, snapshot_date=snapshot_date)
+            db.add(row)
+        row.per = data.get("per")
+        row.pbr = data.get("pbr")
+        row.eps = data.get("eps")
+        row.bps = data.get("bps")
+        row.div_yield = data.get("div_yield")
+        row.fetched_at = now
+        count += 1
+    db.commit()
+    return count
 
 
 def _run_with_count_stmt() -> Select[tuple[Run, int]]:

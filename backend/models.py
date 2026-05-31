@@ -89,6 +89,36 @@ class StockPrice(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class FundamentalSnapshot(Base):
+    __tablename__ = "fundamental_snapshots"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    per: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pbr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    div_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FundamentalHistory(Base):
+    __tablename__ = "fundamental_history"
+    __table_args__ = (
+        Index("ix_fundamental_history_lookup", "ticker", "snapshot_date"),
+    )
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    per: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pbr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    div_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PriceBar(Base):
     __tablename__ = "price_bars"
     __table_args__ = (
