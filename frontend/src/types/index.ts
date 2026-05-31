@@ -176,3 +176,31 @@ export interface StockSummary {
   stop_loss_count: number;
   latest_at: string;
 }
+
+export type CandidateScanJobStatus = 'pending' | 'running' | 'done' | 'failed';
+
+export interface CandidateScanJob {
+  id: number;
+  analysis_id: number;
+  threshold: number;
+  status: CandidateScanJobStatus;
+  candidate_count: number | null;
+  scan_date: string | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface Candidate {
+  id: number;
+  analysis_id: number;
+  scan_date: string;
+  ticker: string;
+  name: string;
+  score: number;
+  current_close: number;
+  entry_price: number;
+  target_price: number;
+  stop_price: number;
+  entry_gap_pct: number;
+}
