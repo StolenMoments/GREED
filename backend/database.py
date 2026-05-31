@@ -325,6 +325,49 @@ def _migrate_mariadb() -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS current_candidates (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    analysis_id INTEGER NOT NULL,
+                    scan_date DATE NOT NULL,
+                    ticker VARCHAR(20) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    score INTEGER NOT NULL,
+                    current_close FLOAT NOT NULL,
+                    entry_price FLOAT NOT NULL,
+                    target_price FLOAT NOT NULL,
+                    stop_price FLOAT NOT NULL,
+                    entry_gap_pct FLOAT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_current_candidates_lookup (analysis_id, scan_date),
+                    UNIQUE KEY uq_current_candidates_key (analysis_id, scan_date, ticker)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS candidate_scan_jobs (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    analysis_id INTEGER NOT NULL,
+                    threshold INTEGER NOT NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    candidate_count INTEGER NULL,
+                    scan_date DATE NULL,
+                    error_message TEXT NULL,
+                    created_at DATETIME NOT NULL,
+                    completed_at DATETIME NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_candidate_scan_jobs_status_created (status, created_at),
+                    INDEX ix_candidate_scan_jobs_analysis_created (analysis_id, created_at)
+                )
+                """
+            )
+        )
         conn.commit()
 
 

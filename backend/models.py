@@ -314,3 +314,45 @@ class BacktestStat(Base):
     p75: Mapped[float | None] = mapped_column(Float, nullable=True)
     min: Mapped[float | None] = mapped_column(Float, nullable=True)
     max: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class CandidateScanJob(Base):
+    __tablename__ = "candidate_scan_jobs"
+    __table_args__ = (
+        Index("ix_candidate_scan_jobs_status_created", "status", "created_at"),
+        Index("ix_candidate_scan_jobs_analysis_created", "analysis_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    analysis_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    candidate_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scan_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=seoul_now, nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CurrentCandidate(Base):
+    __tablename__ = "current_candidates"
+    __table_args__ = (
+        Index("ix_current_candidates_lookup", "analysis_id", "scan_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    analysis_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    scan_date: Mapped[date] = mapped_column(Date, nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_close: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    target_price: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_price: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_gap_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=seoul_now, nullable=False
+    )
