@@ -508,8 +508,8 @@ def scan_current_candidates(
     warmup: int = WARMUP_WEEKS,
 ) -> tuple[list[CandidateRecord], date]:
     """KOSPI200-DB 유니버스에서 최신 주봉 기준 similarity >= threshold 종목을 반환."""
-    if threshold not in SIMILARITY_THRESHOLDS:
-        raise ValueError(f"Unsupported threshold: {threshold}")
+    if not (10 <= threshold <= 14):
+        raise ValueError(f"threshold must be 10–14, got {threshold}")
     _validate_contract_analysis(analysis)
 
     base_weekly = load_weekly_ohlcv(db, analysis.ticker)
