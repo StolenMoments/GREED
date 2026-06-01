@@ -15,6 +15,10 @@ import {
   type ContractTickerBreakdownItem,
 } from '../api/backtest';
 import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
+import {
+  nextCompletedStrategySelection,
+  type CompletedStrategySelectionState,
+} from './backtestStrategySelection';
 
 const HORIZONS = [4, 8, 12, 26] as const;
 const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
@@ -779,7 +783,10 @@ function BacktestPage() {
     queryFn: fetchBacktestRuns,
   });
   const [runId, setRunId] = useState<number | null>(null);
-  const latestAppliedStrategyJobRef = useRef<number | null>(null);
+  const completedStrategySelectionRef = useRef<CompletedStrategySelectionState>({
+    hydrated: false,
+    appliedJobId: null,
+  });
 
   const {
     data: strategyJobs = [],
@@ -834,19 +841,19 @@ function BacktestPage() {
   }, [runs, runId]);
 
   useEffect(() => {
-    if (
-      !latestStrategyJob ||
-      latestStrategyJob.status !== 'done' ||
-      latestStrategyJob.backtest_run_id === null ||
-      latestAppliedStrategyJobRef.current === latestStrategyJob.id
-    ) {
+    const selection = nextCompletedStrategySelection(
+      completedStrategySelectionRef.current,
+      latestStrategyJob,
+    );
+    completedStrategySelectionRef.current = selection.state;
+
+    if (selection.runId === null) {
       return;
     }
 
-    latestAppliedStrategyJobRef.current = latestStrategyJob.id;
     void queryClient.invalidateQueries({ queryKey: ['backtest', 'runs'] });
-    setRunId(latestStrategyJob.backtest_run_id);
-    navigate(`/backtest?runId=${latestStrategyJob.backtest_run_id}`, { replace: true });
+    setRunId(selection.runId);
+    navigate(`/backtest?runId=${selection.runId}`, { replace: true });
   }, [latestStrategyJob, navigate, queryClient]);
 
   const {
