@@ -165,13 +165,19 @@ def _profile_with_analysis_fields(profile: SimilarityProfile, analysis: Analysis
     )
 
 
-def _is_buy_judgment(value: str) -> bool:
-    return value in {"buy", "\ub9e4\uc218", "留ㅼ닔"}
+def _is_contract_judgment(value: str) -> bool:
+    return value in {
+        "buy",
+        "hold",
+        "\ub9e4\uc218",
+        "\ud640\ub4dc",
+        "\uf9cd\u313c\u3145\ub2d4",
+    }
 
 
 def _validate_contract_analysis(analysis: Analysis) -> None:
-    if not _is_buy_judgment(analysis.judgment):
-        raise ValueError("Contract backtest requires a buy analysis")
+    if not _is_contract_judgment(analysis.judgment):
+        raise ValueError("Contract backtest requires a buy or hold analysis")
     required = {
         "entry_price": analysis.entry_price,
         "target_price": analysis.target_price,

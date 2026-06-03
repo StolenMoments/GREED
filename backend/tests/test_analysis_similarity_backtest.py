@@ -306,7 +306,7 @@ def test_contract_event_changes_when_contract_levels_change_on_same_prices() -> 
     assert stop_first.exit_reason == "stop"
 
 
-def test_contract_backtest_requires_buy_analysis_and_contract_prices() -> None:
+def test_contract_backtest_allows_hold_analysis_but_requires_contract_prices() -> None:
     analysis = Analysis(
         run_id=1,
         ticker="005930",
@@ -323,11 +323,28 @@ def test_contract_backtest_requires_buy_analysis_and_contract_prices() -> None:
         stop_loss=90,
     )
 
-    with pytest.raises(ValueError, match="requires a buy analysis"):
+    with pytest.raises(ValueError, match="entry_price"):
         run_analysis_contract_backtest(None, analysis)
 
-    analysis.judgment = "buy"
-    with pytest.raises(ValueError, match="entry_price"):
+
+def test_contract_backtest_rejects_sell_analysis() -> None:
+    analysis = Analysis(
+        run_id=1,
+        ticker="005930",
+        name="Samsung",
+        name_initials="SS",
+        model="rule",
+        markdown="body",
+        judgment="sell",
+        trend="up",
+        cloud_position="above",
+        ma_alignment="bullish",
+        entry_price=100,
+        target_price=120,
+        stop_loss=90,
+    )
+
+    with pytest.raises(ValueError, match="requires a buy or hold analysis"):
         run_analysis_contract_backtest(None, analysis)
 
 
