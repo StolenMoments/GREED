@@ -16,6 +16,7 @@ from scripts.backtest.analysis_similarity import (
     run_similarity_ticker,
     similarity_score,
 )
+from scripts.backtest.engine import SignalRecord
 import scripts.backtest.analysis_similarity as analysis_similarity_module
 from scripts.rule_scorer.features import extract_features_asof
 
@@ -407,6 +408,163 @@ def _make_analysis_with_prices() -> Analysis:
         stop_loss=88.0,
         created_at=pd.Timestamp("2022-07-11"),
     )
+
+
+def test_contract_backtest_clamps_reversed_stop_loss_to_five_percent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis = _make_analysis_with_prices()
+    analysis.entry_price = 100.0
+    analysis.target_price = 120.0
+    analysis.stop_loss = 110.0
+
+    weekly = pd.DataFrame(
+        {"close": [100.0, 101.0, 102.0]},
+        index=pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15"]),
+    )
+    daily = _daily_frame(
+        [
+            ("2024-01-02", 100.0, 101.0, 99.0, 100.0),
+            ("2024-01-03", 100.0, 101.0, 94.0, 100.0),
+        ]
+    )
+    combined = pd.DataFrame(
+        {
+            "date": ["2024-01-02"],
+            "close": [100.0],
+        }
+    )
+
+    monkeypatch.setattr(analysis_similarity_module, "load_weekly_ohlcv", lambda db, ticker: weekly)
+    monkeypatch.setattr(analysis_similarity_module, "load_daily_ohlcv", lambda db, ticker, **kwargs: daily)
+    monkeypatch.setattr(analysis_similarity_module, "build_combined", lambda frame, ticker, name: combined)
+    monkeypatch.setattr(analysis_similarity_module, "analysis_asof_index", lambda frame, created_at: 0)
+    monkeypatch.setattr(analysis_similarity_module, "extract_features_asof", lambda frame, idx: object())
+    monkeypatch.setattr(
+        analysis_similarity_module,
+        "profile_from_features",
+        lambda features: (_profile(), 14, "buy"),
+    )
+    monkeypatch.setattr(analysis_similarity_module, "load_active_universe", lambda db: [("000002", "Candidate")])
+    monkeypatch.setattr(
+        analysis_similarity_module,
+        "run_similarity_ticker",
+        lambda *args, **kwargs: [
+            SignalRecord(
+                ticker="000002",
+                name="Candidate",
+                signal_date=pd.Timestamp("2024-01-02").date(),
+                score=14,
+                score_bucket="14",
+                entry_date=pd.Timestamp("2024-01-03").date(),
+                entry_price=100.0,
+            )
+        ],
+    )
+
+    result = run_analysis_contract_backtest(object(), analysis, threshold=10, warmup=1)
+
+    assert len(result.records) == 1
+    assert result.records[0].exit_reason == "stop"
+    assert result.records[0].exit_price == pytest.approx(95.0)
+    assert result.records[0].event_return == pytest.approx(-0.05)
+
+
+def test_scan_current_candidates_clamps_reversed_stop_loss_to_five_percent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.backtest.analysis_similarity import scan_current_candidates
+
+    analysis = _make_analysis_with_prices()
+    analysis.entry_price = 100.0
+    analysis.target_price = 120.0
+    analysis.stop_loss = 110.0
+
+    weekly = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "volume": [1000.0, 1000.0, 1000.0],
+            "trading_value": [100000.0, 100000.0, 100000.0],
+        },
+        index=pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15"]),
+    )
+    daily = _daily_frame([("2024-01-01", 100.0, 101.0, 99.0, 100.0)])
+    combined = pd.DataFrame(
+        {
+            "date": ["2024-01-01", "2024-01-08", "2024-01-15"],
+            "close": [100.0, 100.0, 100.0],
+        }
+    )
+
+    monkeypatch.setattr(analysis_similarity_module, "load_weekly_ohlcv", lambda db, ticker: weekly)
+    monkeypatch.setattr(analysis_similarity_module, "load_daily_ohlcv", lambda db, ticker, **kwargs: daily)
+    monkeypatch.setattr(analysis_similarity_module, "load_active_universe", lambda db: [("000002", "Candidate")])
+    monkeypatch.setattr(analysis_similarity_module, "build_combined", lambda frame, ticker, name: combined)
+    monkeypatch.setattr(analysis_similarity_module, "analysis_asof_index", lambda frame, created_at: 0)
+    monkeypatch.setattr(analysis_similarity_module, "extract_features_asof", lambda frame, idx: object())
+    monkeypatch.setattr(
+        analysis_similarity_module,
+        "profile_from_features",
+        lambda features: (_profile(), 14, "buy"),
+    )
+    monkeypatch.setattr(analysis_similarity_module, "similarity_score", lambda base, candidate: 14)
+
+    candidates, _scan_date = scan_current_candidates(object(), analysis, threshold=10, warmup=1)
+
+    assert len(candidates) == 1
+    assert candidates[0].entry_price == pytest.approx(100.0)
+    assert candidates[0].stop_price == pytest.approx(95.0)
+
+
+def test_scan_current_candidates_keeps_valid_stop_loss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.backtest.analysis_similarity import scan_current_candidates
+
+    analysis = _make_analysis_with_prices()
+    analysis.entry_price = 100.0
+    analysis.target_price = 120.0
+    analysis.stop_loss = 90.0
+
+    weekly = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0],
+            "close": [100.0, 100.0, 100.0],
+            "volume": [1000.0, 1000.0, 1000.0],
+            "trading_value": [100000.0, 100000.0, 100000.0],
+        },
+        index=pd.to_datetime(["2024-01-01", "2024-01-08", "2024-01-15"]),
+    )
+    daily = _daily_frame([("2024-01-01", 100.0, 101.0, 99.0, 100.0)])
+    combined = pd.DataFrame(
+        {
+            "date": ["2024-01-01", "2024-01-08", "2024-01-15"],
+            "close": [100.0, 100.0, 100.0],
+        }
+    )
+
+    monkeypatch.setattr(analysis_similarity_module, "load_weekly_ohlcv", lambda db, ticker: weekly)
+    monkeypatch.setattr(analysis_similarity_module, "load_daily_ohlcv", lambda db, ticker, **kwargs: daily)
+    monkeypatch.setattr(analysis_similarity_module, "load_active_universe", lambda db: [("000002", "Candidate")])
+    monkeypatch.setattr(analysis_similarity_module, "build_combined", lambda frame, ticker, name: combined)
+    monkeypatch.setattr(analysis_similarity_module, "analysis_asof_index", lambda frame, created_at: 0)
+    monkeypatch.setattr(analysis_similarity_module, "extract_features_asof", lambda frame, idx: object())
+    monkeypatch.setattr(
+        analysis_similarity_module,
+        "profile_from_features",
+        lambda features: (_profile(), 14, "buy"),
+    )
+    monkeypatch.setattr(analysis_similarity_module, "similarity_score", lambda base, candidate: 14)
+
+    candidates, _scan_date = scan_current_candidates(object(), analysis, threshold=10, warmup=1)
+
+    assert len(candidates) == 1
+    assert candidates[0].stop_price == pytest.approx(90.0)
 
 
 def test_scan_current_candidates_returns_candidates(monkeypatch: pytest.MonkeyPatch) -> None:

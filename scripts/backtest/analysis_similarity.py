@@ -191,6 +191,14 @@ def _validate_contract_analysis(analysis: Analysis) -> None:
         )
 
 
+def _effective_contract_stop_loss(analysis: Analysis) -> float:
+    assert analysis.entry_price is not None
+    assert analysis.stop_loss is not None
+    if analysis.stop_loss >= analysis.entry_price:
+        return analysis.entry_price * 0.95
+    return analysis.stop_loss
+
+
 def _asof_close(daily: pd.DataFrame, asof_date: date) -> float:
     price = daily[daily["close"].notna()].copy()
     if price.empty:
@@ -415,9 +423,10 @@ def run_analysis_contract_backtest(
     assert analysis.entry_price is not None
     assert analysis.target_price is not None
     assert analysis.stop_loss is not None
+    effective_stop_loss = _effective_contract_stop_loss(analysis)
     entry_ratio = analysis.entry_price / base_close
     target_return = analysis.target_price / analysis.entry_price - 1
-    stop_return = analysis.stop_loss / analysis.entry_price - 1
+    stop_return = effective_stop_loss / analysis.entry_price - 1
 
     base_profile, base_score, base_judgment = profile_from_features(
         extract_features_asof(base_combined, base_index)
@@ -536,9 +545,10 @@ def scan_current_candidates(
     assert analysis.entry_price is not None
     assert analysis.target_price is not None
     assert analysis.stop_loss is not None
+    effective_stop_loss = _effective_contract_stop_loss(analysis)
     entry_ratio = analysis.entry_price / base_close
     target_return = analysis.target_price / analysis.entry_price - 1
-    stop_return = analysis.stop_loss / analysis.entry_price - 1
+    stop_return = effective_stop_loss / analysis.entry_price - 1
 
     base_profile, _, _ = profile_from_features(extract_features_asof(base_combined, base_index))
     base_profile = _profile_with_analysis_fields(base_profile, analysis)
