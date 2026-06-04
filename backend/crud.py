@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Literal, NamedTuple
 
 from sqlalchemy import Select, case, desc, func, or_, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.orm import Session
 
 from backend.korean_search import (
@@ -608,11 +609,46 @@ def upsert_fundamental_history_rows(
     """Upsert a batch of history points. Each row dict has snapshot_date + metrics."""
     ticker = normalize_ticker(ticker)
     now = seoul_now()
-    count = 0
+    deduped: dict[date, dict[str, object]] = {}
     for data in rows:
         snapshot_date = data.get("snapshot_date")
-        if snapshot_date is None:
+        if not isinstance(snapshot_date, date):
             continue
+        deduped[snapshot_date] = data
+    if not deduped:
+        return 0
+
+    bind = db.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+    if dialect_name in {"mysql", "mariadb"}:
+        values = [
+            {
+                "ticker": ticker,
+                "snapshot_date": snapshot_date,
+                "per": data.get("per"),
+                "pbr": data.get("pbr"),
+                "eps": data.get("eps"),
+                "bps": data.get("bps"),
+                "div_yield": data.get("div_yield"),
+                "fetched_at": now,
+            }
+            for snapshot_date, data in deduped.items()
+        ]
+        stmt = mysql_insert(FundamentalHistory).values(values)
+        update_columns = {
+            column: getattr(stmt.inserted, column)
+            for column in ("per", "pbr", "eps", "bps", "div_yield", "fetched_at")
+        }
+        try:
+            db.execute(stmt.on_duplicate_key_update(**update_columns))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return len(values)
+
+    count = 0
+    for snapshot_date, data in deduped.items():
         row = db.get(FundamentalHistory, (ticker, snapshot_date))
         if row is None:
             row = FundamentalHistory(ticker=ticker, snapshot_date=snapshot_date)
@@ -624,7 +660,11 @@ def upsert_fundamental_history_rows(
         row.div_yield = data.get("div_yield")
         row.fetched_at = now
         count += 1
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return count
 
 

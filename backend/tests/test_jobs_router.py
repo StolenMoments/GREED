@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -1740,6 +1741,45 @@ def test_format_fundamentals_trend_renders_table_and_band() -> None:
 
 def test_format_fundamentals_trend_empty_for_no_history() -> None:
     assert jobs._format_fundamentals_trend([], _make_snapshot()) == ""
+
+
+def test_build_fundamentals_block_rolls_back_history_failure(
+    test_db: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with test_db() as db:
+        existing = FundamentalHistory(
+            ticker="005930",
+            snapshot_date=date(2025, 3, 31),
+            per=8.0,
+            fetched_at=seoul_now(),
+        )
+        db.add(existing)
+        db.commit()
+        db.expunge(existing)
+
+        def fail_with_pending_rollback(_db: Session, _ticker: str) -> list[FundamentalHistory]:
+            duplicate = FundamentalHistory(
+                ticker="005930",
+                snapshot_date=date(2025, 3, 31),
+                per=9.0,
+                fetched_at=seoul_now(),
+            )
+            _db.add(duplicate)
+            try:
+                _db.flush()
+            except IntegrityError:
+                raise
+            raise AssertionError("duplicate flush should fail")
+
+        monkeypatch.setattr(jobs, "get_or_fetch_fundamental", lambda db, ticker: _make_snapshot())
+        monkeypatch.setattr(jobs, "get_or_fetch_history", fail_with_pending_rollback)
+
+        block = jobs._build_fundamentals_block(db, "005930")
+
+        assert "PER: 12.30" in block
+        assert "?щТ 異붿씠" not in block
+        assert crud.get_fundamental_history(db, "005930")[0].per == 8.0
 
 
 def test_run_analysis_pipeline_injects_fundamentals_for_kr(

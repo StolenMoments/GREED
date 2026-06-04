@@ -151,6 +151,55 @@ def test_fetch_and_store_history_persists_rows(db: Session) -> None:
     assert stored[0].per == 8.0
 
 
+def test_upsert_fundamental_history_deduplicates_snapshot_dates(db: Session) -> None:
+    rows = [
+        {
+            "snapshot_date": date(2025, 3, 31),
+            "per": 8.0,
+            "pbr": 0.6,
+            "eps": 7000.0,
+            "bps": 100000.0,
+            "div_yield": 3.0,
+        },
+        {
+            "snapshot_date": date(2025, 3, 31),
+            "per": 9.0,
+            "pbr": 0.7,
+            "eps": 7100.0,
+            "bps": 101000.0,
+            "div_yield": 2.9,
+        },
+    ]
+
+    count = crud.upsert_fundamental_history_rows(db, "5930", rows)
+
+    stored = crud.get_fundamental_history(db, "005930")
+    assert count == 1
+    assert len(stored) == 1
+    assert stored[0].per == 9.0
+    assert stored[0].pbr == 0.7
+
+
+def test_upsert_fundamental_history_updates_existing_row(db: Session) -> None:
+    crud.upsert_fundamental_history_rows(
+        db,
+        "005930",
+        [{"snapshot_date": date(2025, 3, 31), "per": 8.0, "pbr": 0.6}],
+    )
+
+    count = crud.upsert_fundamental_history_rows(
+        db,
+        "005930",
+        [{"snapshot_date": date(2025, 3, 31), "per": 11.0, "pbr": 0.9}],
+    )
+
+    stored = crud.get_fundamental_history(db, "005930")
+    assert count == 1
+    assert len(stored) == 1
+    assert stored[0].per == 11.0
+    assert stored[0].pbr == 0.9
+
+
 def test_get_or_fetch_history_reuses_todays_cache(db: Session) -> None:
     calls: list[str] = []
 

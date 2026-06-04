@@ -699,6 +699,7 @@ def _build_fundamentals_block(db: Session, ticker: str, market: str | None = Non
     try:
         snapshot = get_or_fetch_fundamental(db, ticker)
     except Exception as exc:
+        _safe_rollback(db)
         logger.warning("fundamentals unavailable for %s: %s", ticker, exc)
         return _FUNDAMENTALS_UNAVAILABLE_BLOCK
     if snapshot is None:
@@ -708,12 +709,23 @@ def _build_fundamentals_block(db: Session, ticker: str, market: str | None = Non
     try:
         history = get_or_fetch_history(db, ticker)
     except Exception as exc:
+        _safe_rollback(db)
         logger.warning("fundamentals history unavailable for %s: %s", ticker, exc)
         history = []
     trend_section = _format_fundamentals_trend(history, snapshot)
     if trend_section:
         block = f"{block}\n\n{trend_section}"
     return block
+
+
+def _safe_rollback(db: object) -> None:
+    rollback = getattr(db, "rollback", None)
+    if not callable(rollback):
+        return
+    try:
+        rollback()
+    except Exception as exc:
+        logger.warning("db rollback failed after fundamentals error: %s", exc)
 
 
 def _format_fundamentals_block(snapshot: FundamentalSnapshot) -> str:
