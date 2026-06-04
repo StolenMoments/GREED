@@ -642,8 +642,9 @@ def _escape_like(value: str) -> str:
 
 
 def search_krx_stocks(db: Session, q: str) -> list[KrxStock]:
-    pattern = _escape_like(q)
-    if q.isdigit():
+    query = q.strip().upper()
+    pattern = _escape_like(query)
+    if query.isalnum() and any(char.isdigit() for char in query):
         return db.query(KrxStock).filter(
             KrxStock.code.ilike(f"{pattern}%", escape="\\")
         ).order_by(KrxStock.code).limit(10).all()

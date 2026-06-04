@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base, get_db
 from backend.models import KrxStock, UsStock
 from backend.routers import tickers
+from backend.tickers import is_potential_krx_ticker, market_for_ticker, normalize_ticker
 from backend.timezone import seoul_now
 
 
@@ -111,6 +112,15 @@ def test_get_ticker_returns_us_stock_by_code(
     assert response.json() == {"code": "AAPL", "name": "Apple Inc", "market": "US"}
 
 
+def test_ticker_policy_normalizes_and_detects_alphanumeric_krx_candidates() -> None:
+    assert normalize_ticker("5930") == "005930"
+    assert normalize_ticker("a12345") == "A12345"
+    assert is_potential_krx_ticker("A12345") is True
+    assert is_potential_krx_ticker("ABCDEF") is False
+    assert is_potential_krx_ticker("1234567") is False
+    assert market_for_ticker("A12345") == "KR"
+
+
 def test_search_tickers_keeps_korean_name_search(
     client: TestClient,
     seeded_krx_stock: None,
@@ -192,6 +202,63 @@ def test_search_tickers_returns_us_stock_by_symbol(
 
     assert response.status_code == 200
     assert response.json() == [{"code": "AAPL", "name": "Apple Inc", "market": "US"}]
+
+
+def test_search_tickers_returns_alphanumeric_krx_prefix_before_us(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add_all(
+        [
+            KrxStock(code="A12345", name="Alpha KRX", name_initials="", updated_at=seoul_now()),
+            UsStock(code="A12345", name="Alpha US", market="NASDAQ", updated_at=seoul_now()),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/tickers/search", params={"q": "A1"})
+
+    assert response.status_code == 200
+    assert response.json()[:2] == [
+        {"code": "A12345", "name": "Alpha KRX", "market": "KR"},
+        {"code": "A12345", "name": "Alpha US", "market": "US"},
+    ]
+
+
+def test_get_ticker_prefers_alphanumeric_krx_exact_over_us(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add_all(
+        [
+            KrxStock(code="A12345", name="Alpha KRX", name_initials="", updated_at=seoul_now()),
+            UsStock(code="A12345", name="Alpha US", market="NASDAQ", updated_at=seoul_now()),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/tickers/A12345")
+
+    assert response.status_code == 200
+    assert response.json() == {"code": "A12345", "name": "Alpha KRX", "market": "KR"}
+
+
+def test_get_ticker_falls_back_to_us_when_alphanumeric_krx_missing(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add(UsStock(code="A12345", name="Alpha US", market="NASDAQ", updated_at=seoul_now()))
+    db_session.commit()
+
+    response = client.get("/api/tickers/A12345")
+
+    assert response.status_code == 200
+    assert response.json() == {"code": "A12345", "name": "Alpha US", "market": "US"}
+
+
+def test_get_ticker_rejects_invalid_code_formats(client: TestClient) -> None:
+    assert client.get("/api/tickers/1234567").status_code == 400
+    assert client.get("/api/tickers/ABC$12").status_code == 400
 
 
 def test_search_tickers_returns_us_stock_by_company_name(

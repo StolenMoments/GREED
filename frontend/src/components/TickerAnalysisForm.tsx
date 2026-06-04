@@ -13,8 +13,9 @@ function isKorean(text: string): boolean {
   return /[가-힣ㄱ-ㅎ]/.test(text);
 }
 
-function isSixDigitTicker(text: string): boolean {
-  return /^\d{6}$/.test(text.trim());
+function isPotentialKrxTicker(text: string): boolean {
+  const normalized = text.trim().toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(normalized) && /\d/.test(normalized);
 }
 
 function isSingleLetterTicker(text: string): boolean {
@@ -194,7 +195,7 @@ function TickerAnalysisForm({
       setShowSuggestions(false);
     }
 
-    if (isSixDigitTicker(nextTrimmed)) {
+    if (isPotentialKrxTicker(nextTrimmed)) {
       setTickerLookup({ status: 'loading', code: nextTrimmed });
       lookupDebounceRef.current = setTimeout(() => {
         getTicker(nextTrimmed)

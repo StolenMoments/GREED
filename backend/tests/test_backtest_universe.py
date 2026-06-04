@@ -32,6 +32,15 @@ def test_load_universe_parses_code_name(tmp_path):
     assert rows == [("005930", "삼성전자"), ("000660", "SK하이닉스")]
 
 
+def test_load_universe_accepts_alphanumeric_krx_tickers(tmp_path):
+    csv = tmp_path / "u.csv"
+    csv.write_text("code,name\nA12345,Alpha KRX\nABCDEF,Letters Only\n", encoding="utf-8-sig")
+
+    rows = load_universe(csv)
+
+    assert rows == [("A12345", "Alpha KRX")]
+
+
 def test_load_universe_missing_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_universe(tmp_path / "nope.csv")

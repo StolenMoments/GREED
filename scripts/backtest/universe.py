@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models import BacktestUniverseMember
-from backend.tickers import normalize_ticker
+from backend.tickers import is_potential_krx_ticker, normalize_ticker
 
 DEFAULT_UNIVERSE_PATH = Path(__file__).resolve().parent / "kospi200.csv"
 
@@ -29,9 +29,9 @@ def load_universe(path: Path | str = DEFAULT_UNIVERSE_PATH) -> list[tuple[str, s
         for row in reader:
             if len(row) < 2:
                 continue
-            code = row[0].strip().zfill(6)
+            code = normalize_ticker(row[0])
             name = row[1].strip()
-            if code.isdigit() and len(code) == 6:
+            if is_potential_krx_ticker(code):
                 rows.append((code, name))
 
     if not rows:
@@ -41,8 +41,8 @@ def load_universe(path: Path | str = DEFAULT_UNIVERSE_PATH) -> list[tuple[str, s
 
 def normalize_korean_ticker(ticker: str) -> str:
     normalized = normalize_ticker(ticker)
-    if not normalized.isdigit() or len(normalized) != 6:
-        raise ValueError(f"6-digit Korean ticker required: {ticker}")
+    if not is_potential_krx_ticker(normalized):
+        raise ValueError(f"6-character Korean ticker required: {ticker}")
     return normalized
 
 

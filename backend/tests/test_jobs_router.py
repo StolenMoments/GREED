@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend import crud
 from backend.database import Base, get_db
-from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, BacktestStrategyJob, FundamentalHistory, FundamentalSnapshot, KrxStock
+from backend.models import Analysis, AnalysisBacktestJob, BacktestPreloadJob, BacktestStrategyJob, FundamentalHistory, FundamentalSnapshot, KrxStock, UsStock
 from backend.routers import jobs
 from backend.routers.jobs import router, run_analysis_pipeline
 from backend.timezone import seoul_now
@@ -217,6 +217,49 @@ def test_trigger_analysis_resolves_exact_krx_name(
     body = response.json()
     assert body["ticker"] == "003550"
     assert called_job_ids == [body["id"]]
+
+
+def test_trigger_analysis_accepts_alphanumeric_krx_code(
+    client: TestClient,
+    test_db: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(jobs, "run_analysis_pipeline", lambda job_id: called_job_ids.append(job_id))
+    with test_db() as db:
+        run = crud.create_run(db, memo="alnum krx trigger")
+        db.add(KrxStock(code="A12345", name="Alpha KRX", name_initials="", updated_at=seoul_now()))
+        db.commit()
+
+    response = client.post("/api/jobs/trigger-analysis", json={"ticker": "a12345", "run_id": run.id})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["ticker"] == "A12345"
+    assert called_job_ids == [body["id"]]
+
+
+def test_market_for_ticker_db_prefers_krx_exact_over_us(test_db: sessionmaker[Session]) -> None:
+    with test_db() as db:
+        db.add_all(
+            [
+                KrxStock(code="A12345", name="Alpha KRX", name_initials="", updated_at=seoul_now()),
+                UsStock(code="A12345", name="Alpha US", market="NASDAQ", updated_at=seoul_now()),
+            ]
+        )
+        db.commit()
+
+        assert jobs._market_for_ticker(db, "A12345") == "KR"
+        assert jobs._stock_name_from_db(db, "A12345") == "Alpha KRX"
+
+
+def test_market_for_ticker_db_falls_back_to_us_exact(test_db: sessionmaker[Session]) -> None:
+    with test_db() as db:
+        db.add(UsStock(code="A12345", name="Alpha US", market="NASDAQ", updated_at=seoul_now()))
+        db.commit()
+
+        assert jobs._market_for_ticker(db, "A12345") == "US"
+        assert jobs._stock_name_from_db(db, "A12345") == "Alpha US"
 
 
 def test_trigger_analysis_returns_404_when_run_missing(client: TestClient) -> None:

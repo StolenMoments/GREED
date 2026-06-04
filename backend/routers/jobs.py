@@ -453,8 +453,9 @@ def run_analysis_pipeline(job_id: int) -> None:
                 pass
 
         try:
+            market = _market_for_ticker(db, ticker)
             stock_name = _resolve_stock_name(db, ticker)
-            _prepare_job_csv(ticker, stock_name, job_output_dir)
+            _prepare_job_csv(ticker, stock_name, job_output_dir, market)
         except Exception as exc:
             update_job_failed(db, job, f"pick: {exc}")
             return
@@ -465,8 +466,8 @@ def run_analysis_pipeline(job_id: int) -> None:
             return
 
         selected_model = job.model or "claude"
-        system_prompt = _system_prompt_for_ticker(ticker)
-        fundamentals_block = _build_fundamentals_block(db, ticker)
+        system_prompt = _system_prompt_for_ticker(ticker, market)
+        fundamentals_block = _build_fundamentals_block(db, ticker, market)
         if fundamentals_block:
             system_prompt = f"{system_prompt}\n\n{fundamentals_block}"
         runner = _runner_for_model(selected_model)
@@ -627,8 +628,18 @@ def _refresh_stock_price_after_analysis(db: Session, ticker: str) -> None:
         logger.warning("stock price refresh failed after analysis finalize: ticker=%s", ticker, exc_info=True)
 
 
-def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
-    if market_for_ticker(ticker) == "US":
+def _market_for_ticker(db: Session, ticker: str) -> str:
+    normalized = normalize_ticker(ticker)
+    if get_krx_stock_by_code(db, normalized) is not None:
+        return "KR"
+    if get_us_stock_by_code(db, normalized) is not None:
+        return "US"
+    return market_for_ticker(normalized)
+
+
+def _run_pick(ticker: str, stock_name: str, output_dir: Path, market: str | None = None) -> None:
+    resolved_market = market or market_for_ticker(ticker)
+    if resolved_market == "US":
         from scripts.pick_us import run_pick_us
 
         run_pick_us(ticker, years=3, output_dir=str(output_dir), stock_name=stock_name)
@@ -639,13 +650,14 @@ def _run_pick(ticker: str, stock_name: str, output_dir: Path) -> None:
     run_pick(ticker, years=3, output_dir=str(output_dir), stock_name=stock_name)
 
 
-def _resolve_stock_name(db: Session, ticker: str) -> str:
-    db_stock_name = _stock_name_from_db(db, ticker)
+def _resolve_stock_name(db: Session, ticker: str, market: str | None = None) -> str:
+    resolved_market = market or _market_for_ticker(db, ticker)
+    db_stock_name = _stock_name_from_db(db, ticker, resolved_market)
     if db_stock_name:
         return db_stock_name
 
     normalized = normalize_ticker(ticker)
-    if market_for_ticker(normalized) == "US":
+    if resolved_market == "US":
         from scripts.pick_us import resolve_stock_name
 
         return resolve_stock_name(normalized)
@@ -654,9 +666,10 @@ def _resolve_stock_name(db: Session, ticker: str) -> str:
     return resolve_stock_name(normalized)
 
 
-def _stock_name_from_db(db: Session, ticker: str) -> str:
+def _stock_name_from_db(db: Session, ticker: str, market: str | None = None) -> str:
     normalized = normalize_ticker(ticker)
-    if market_for_ticker(normalized) == "US":
+    resolved_market = market or _market_for_ticker(db, normalized)
+    if resolved_market == "US":
         stock = get_us_stock_by_code(db, normalized)
         return stock.name if stock is not None else ""
 
@@ -664,8 +677,9 @@ def _stock_name_from_db(db: Session, ticker: str) -> str:
     return stock.name if stock is not None else ""
 
 
-def _system_prompt_for_ticker(ticker: str) -> str:
-    return US_SYSTEM_PROMPT if market_for_ticker(ticker) == "US" else KR_SYSTEM_PROMPT
+def _system_prompt_for_ticker(ticker: str, market: str | None = None) -> str:
+    resolved_market = market or market_for_ticker(ticker)
+    return US_SYSTEM_PROMPT if resolved_market == "US" else KR_SYSTEM_PROMPT
 
 
 _FUNDAMENTALS_UNAVAILABLE_BLOCK = (
@@ -673,13 +687,14 @@ _FUNDAMENTALS_UNAVAILABLE_BLOCK = (
 )
 
 
-def _build_fundamentals_block(db: Session, ticker: str) -> str:
+def _build_fundamentals_block(db: Session, ticker: str, market: str | None = None) -> str:
     """Return a Korean fundamentals block for KR tickers; empty string for US.
 
     Never raises: a fetch failure yields an explicit 'unavailable' notice so the
     analysis job proceeds on technicals alone.
     """
-    if market_for_ticker(ticker) != "KR":
+    resolved_market = market or market_for_ticker(ticker)
+    if resolved_market != "KR":
         return ""
     try:
         snapshot = get_or_fetch_fundamental(db, ticker)
@@ -1031,7 +1046,12 @@ def _latest_csv_path(ticker: str, output_dir: Path, stock_name: str = "") -> Pat
     return files[-1]
 
 
-def _prepare_job_csv(ticker: str, stock_name: str, job_output_dir: Path) -> Path:
+def _prepare_job_csv(
+    ticker: str,
+    stock_name: str,
+    job_output_dir: Path,
+    market: str | None = None,
+) -> Path:
     today_str = seoul_now().strftime("%Y%m%d")
     reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str, stock_name=stock_name)
     if reusable_csv_path is None:
@@ -1039,13 +1059,25 @@ def _prepare_job_csv(ticker: str, stock_name: str, job_output_dir: Path) -> Path
             reusable_csv_path = _today_reusable_csv_path(ticker, today_str=today_str, stock_name=stock_name)
             if reusable_csv_path is None:
                 cache_dir = _chart_cache_dir(today_str)
-                _run_pick(ticker, stock_name, cache_dir)
+                _call_run_pick(ticker, stock_name, cache_dir, market)
                 reusable_csv_path = _latest_csv_path(ticker, cache_dir, stock_name=stock_name)
                 if reusable_csv_path is None:
                     raise RuntimeError("CSV file was not created")
 
     cached_csv_path = _ensure_chart_cache_csv(reusable_csv_path, today_str)
     return _copy_csv_to_job_output(cached_csv_path, job_output_dir)
+
+
+def _call_run_pick(ticker: str, stock_name: str, output_dir: Path, market: str | None = None) -> None:
+    try:
+        code = _run_pick.__code__
+        accepts_varargs = bool(code.co_flags & 0x04)
+        if code.co_argcount >= 4 or accepts_varargs:
+            _run_pick(ticker, stock_name, output_dir, market)
+            return
+    except AttributeError:
+        pass
+    _run_pick(ticker, stock_name, output_dir)
 
 
 def _chart_csv_lock(ticker: str, today_str: str) -> Lock:

@@ -811,3 +811,20 @@ def test_universe_api_rejects_non_kr_ticker(client: TestClient) -> None:
     resp = client.post("/api/backtest/universe", json={"ticker": "AAPL", "name": "Apple"})
 
     assert resp.status_code == 400
+
+
+def test_universe_api_accepts_alphanumeric_krx_ticker(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backtest, "run_backtest_preload_pipeline", lambda job_id: None)
+
+    resp = client.post(
+        "/api/backtest/universe",
+        json={"ticker": "a12345", "name": "Alpha KRX"},
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["ticker"] == "A12345"
+    assert db_session.get(BacktestUniverseMember, "A12345") is not None

@@ -8,7 +8,8 @@ const usdFormatter = new Intl.NumberFormat('en-US', {
 });
 
 export function isKoreanTicker(ticker: string): boolean {
-  return /^\d+$/.test(ticker.trim());
+  const normalized = ticker.trim().toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(normalized) && /\d/.test(normalized);
 }
 
 export function formatPriceByTicker(

@@ -3,9 +3,11 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
+import re
 
 
 US_MARKETS = ("NASDAQ", "NYSE", "AMEX")
+_POTENTIAL_KRX_TICKER_RE = re.compile(r"^[A-Z0-9]{6}$")
 
 
 @dataclass(frozen=True)
@@ -16,7 +18,14 @@ class UsStockListing:
 
 
 def is_korean_ticker(ticker: str) -> bool:
-    return ticker.strip().isdigit()
+    return is_potential_krx_ticker(normalize_ticker(ticker))
+
+
+def is_potential_krx_ticker(ticker: str) -> bool:
+    normalized = ticker.strip().upper()
+    return bool(_POTENTIAL_KRX_TICKER_RE.fullmatch(normalized)) and any(
+        char.isdigit() for char in normalized
+    )
 
 
 def is_korean_text(text: str) -> bool:
@@ -25,7 +34,7 @@ def is_korean_text(text: str) -> bool:
 
 def normalize_ticker(ticker: str) -> str:
     normalized = ticker.strip().upper()
-    if normalized.isdigit():
+    if normalized.isdigit() and len(normalized) <= 6:
         return normalized.zfill(6)
     return normalized
 
