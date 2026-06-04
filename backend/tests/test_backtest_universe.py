@@ -18,6 +18,11 @@ from backtest.universe import (  # noqa: E402
     load_active_universe,
     load_universe,
 )
+from scripts.backtest.sync_kosdaq150 import (  # noqa: E402
+    KOSDAQ150_SOURCE,
+    fetch_kosdaq150_members,
+    sync_kosdaq150_members,
+)
 
 
 def test_load_universe_parses_code_name(tmp_path):
@@ -180,3 +185,121 @@ def test_ensure_default_universe_seeded_preserves_existing_members(db_session, t
     assert samsung.active is False
     assert samsung.sort_order == 7
     assert samsung.source == "manual"
+
+
+class FakeKosdaq150StockClient:
+    def __init__(self, members: list[str] | None = None):
+        self.members = members or [f"{ticker:06d}" for ticker in range(1, 151)]
+
+    def get_index_ticker_list(self, date: str, market: str):
+        assert date == "20260604"
+        assert market == "KOSDAQ"
+        return ["2001", "2002"]
+
+    def get_index_ticker_name(self, index_code: str):
+        return {"2001": "코스닥 150", "2002": "Other Index"}[index_code]
+
+    def get_index_portfolio_deposit_file(
+        self,
+        index_code: str,
+        date: str,
+        alternative: bool = False,
+    ):
+        assert index_code == "2001"
+        assert date == "20260604"
+        assert alternative is True
+        return self.members
+
+    def get_market_ticker_name(self, ticker: str):
+        return f"Name {ticker}"
+
+
+def test_fetch_kosdaq150_members_returns_150_named_members():
+    rows = fetch_kosdaq150_members("20260604", stock_client=FakeKosdaq150StockClient())
+
+    assert len(rows) == 150
+    assert rows[0] == ("000001", "Name 000001")
+    assert rows[-1] == ("000150", "Name 000150")
+
+
+def test_fetch_kosdaq150_members_accepts_six_character_krx_codes():
+    members = ["0009K0"] + [f"{ticker:06d}" for ticker in range(1, 150)]
+
+    rows = fetch_kosdaq150_members(
+        "20260604",
+        stock_client=FakeKosdaq150StockClient(members),
+    )
+
+    assert rows[0] == ("0009K0", "Name 0009K0")
+
+
+def test_sync_kosdaq150_members_inserts_active_auto_source_rows(db_session):
+    count = sync_kosdaq150_members(
+        db_session,
+        "20260604",
+        stock_client=FakeKosdaq150StockClient(),
+    )
+
+    rows = db_session.query(BacktestUniverseMember).order_by(BacktestUniverseMember.ticker).all()
+    assert count == 150
+    assert len(rows) == 150
+    assert all(row.active is True for row in rows)
+    assert all(row.source == KOSDAQ150_SOURCE for row in rows)
+    assert rows[0].ticker == "000001"
+    assert rows[0].sort_order == 0
+    assert rows[-1].ticker == "000150"
+    assert rows[-1].sort_order == 149
+
+
+def test_sync_kosdaq150_members_reactivates_existing_matching_ticker(db_session):
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="000001",
+            name="Old Name",
+            market="KR",
+            active=False,
+            sort_order=12,
+            source="manual",
+        )
+    )
+    db_session.commit()
+
+    count = sync_kosdaq150_members(
+        db_session,
+        "20260604",
+        stock_client=FakeKosdaq150StockClient(),
+    )
+
+    existing = db_session.get(BacktestUniverseMember, "000001")
+    assert count == 150
+    assert existing is not None
+    assert existing.name == "Name 000001"
+    assert existing.active is True
+    assert existing.source == KOSDAQ150_SOURCE
+    assert existing.sort_order == 12
+
+
+def test_sync_kosdaq150_members_non_150_count_raises_without_commit(db_session):
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="999999",
+            name="Existing",
+            market="KR",
+            active=True,
+            sort_order=3,
+            source="manual",
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(ValueError, match="Expected 150 KOSDAQ150 members"):
+        sync_kosdaq150_members(
+            db_session,
+            "20260604",
+            stock_client=FakeKosdaq150StockClient(["000001", "000002"]),
+        )
+
+    rows = db_session.query(BacktestUniverseMember).all()
+    assert [(row.ticker, row.name, row.source) for row in rows] == [
+        ("999999", "Existing", "manual")
+    ]
