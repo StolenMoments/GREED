@@ -8,9 +8,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "npm run test:backtestStrategySelection && npm run test:backtestHighlights",
+    "test": "npm run test:backtestStrategySelection && npm run test:backtestHighlights && npm run test:dailyRallyPanels",
     "test:backtestStrategySelection": "tsx src/pages/backtestStrategySelection.test.ts",
-    "test:backtestHighlights": "tsx src/pages/backtestHighlights.test.ts"
+    "test:backtestHighlights": "tsx src/pages/backtestHighlights.test.ts",
+    "test:dailyRallyPanels": "tsx src/pages/DailyRallyPanels.test.tsx"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.5",

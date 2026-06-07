@@ -3,8 +3,11 @@ import type {
   DailyRallyCandidate,
   DailyRallyCandidates,
   DailyRallyInsights,
+  DailyRallyPatternStat,
+  DailyRallyPatternStats,
   DailyRallyRuleStat,
 } from '../api/backtest';
+import React from 'react';
 import { formatPriceByTicker } from '../utils/formatPrice';
 import {
   classifyDailyRallyRule,
@@ -107,7 +110,7 @@ function ruleStrengthTone(rule: DailyRallyRuleStat): string {
   return 'border-slate-700 bg-slate-900/80 text-slate-300';
 }
 
-export function DailyRallyPatternBriefing({
+function DailyRallyStrictRulePatternBriefing({
   insights,
   isError,
 }: {
@@ -162,6 +165,82 @@ export function DailyRallyPatternBriefing({
   );
 }
 
+function patternReturnMean(pattern: DailyRallyPatternStat, horizon: number): number | null {
+  return pattern.return_stats.find((stat) => stat.horizon === horizon)?.mean ?? null;
+}
+
+function patternStrengthTone(pattern: DailyRallyPatternStat): string {
+  if (pattern.lift >= 3) return 'border-amber-200/40 bg-amber-300/10 text-amber-100';
+  if (pattern.lift >= 2) return 'border-emerald-200/30 bg-emerald-300/10 text-emerald-100';
+  return 'border-slate-700 bg-slate-900/80 text-slate-300';
+}
+
+export function DailyRallyPatternBriefing({
+  insights,
+  isError,
+  patternStats,
+  patternStatsIsError = false,
+}: {
+  insights: DailyRallyInsights | undefined;
+  isError: boolean;
+  patternStats?: DailyRallyPatternStats;
+  patternStatsIsError?: boolean;
+}) {
+  const topRules = insights?.rules.slice(0, 3) ?? [];
+  const topPatterns = patternStats?.patterns.slice(0, 3) ?? [];
+
+  if (topRules.length > 0 || isError) {
+    return <DailyRallyStrictRulePatternBriefing insights={insights} isError={isError} />;
+  }
+
+  return (
+    <PanelShell title="pattern briefing">
+      {patternStatsIsError ? (
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          Could not load daily rally pattern stats.
+        </p>
+      ) : topPatterns.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          No strict rules yet. Check Pattern Stats after the next Daily Rally run.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-4">
+          {topPatterns.map((pattern, index) => (
+            <article
+              className="rounded-lg border border-slate-800 bg-slate-950/70 p-5"
+              key={pattern.id}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-md bg-amber-300 px-2.5 py-1 text-xs font-bold text-slate-950">
+                  #{index + 1}
+                </span>
+                <span
+                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${patternStrengthTone(
+                    pattern,
+                  )}`}
+                >
+                  Exploratory pattern
+                </span>
+                <span className="text-xs text-slate-500">
+                  lift {decimal(pattern.lift)} 쨌 score {decimal(pattern.score)}
+                </span>
+              </div>
+              <h3 className="mt-4 text-xl font-semibold leading-snug text-slate-50">
+                {translateDailyRallyRule(pattern.pattern_key)}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">{pattern.pattern_label}</p>
+              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
+                Matches {count(pattern.total_matches)} samples, with {count(pattern.support)} positive events.
+                Precision {ratio(pattern.precision)} versus base rate {ratio(pattern.base_rate)}.
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
 function candidateReason(candidate: DailyRallyCandidate): string {
   if (candidate.matched_rules.length === 0) {
     return '매칭된 패턴이 없습니다.';
@@ -189,7 +268,7 @@ export function DailyRallyCandidateBriefing({
         </p>
       ) : topCandidates.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">
-          현재 데이터 기준으로 매칭된 후보가 없습니다.
+          No strict-rule candidates right now. Use Pattern Stats to inspect exploratory conditions.
         </p>
       ) : (
         <div className="mt-5 grid gap-3 xl:grid-cols-2">
@@ -238,6 +317,80 @@ export function DailyRallyCandidateBriefing({
               </div>
             </article>
           ))}
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
+export function DailyRallyPatternStatsTable({
+  patternStats,
+  isError,
+}: {
+  patternStats: DailyRallyPatternStats | undefined;
+  isError: boolean;
+}) {
+  return (
+    <PanelShell title="Pattern Stats">
+      {isError ? (
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          Could not load daily rally pattern stats.
+        </p>
+      ) : !patternStats || patternStats.patterns.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">No pattern stats for this run.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
+            <thead>
+              <tr className="text-slate-400">
+                <th className="px-3 py-2 text-left">Pattern</th>
+                <th className="px-3 py-2 text-right">Support</th>
+                <th className="px-3 py-2 text-right">Matches</th>
+                <th className="px-3 py-2 text-right">Precision</th>
+                <th className="px-3 py-2 text-right">Base Rate</th>
+                <th className="px-3 py-2 text-right">Lift</th>
+                <th className="px-3 py-2 text-right">20d Mean</th>
+                <th className="px-3 py-2 text-right">40d Mean</th>
+                <th className="px-3 py-2 text-right">60d Mean</th>
+                <th className="px-3 py-2 text-right">120d Mean</th>
+              </tr>
+            </thead>
+            <tbody>
+              {patternStats.patterns.map((pattern) => (
+                <tr className="border-t border-slate-800/70" key={pattern.id}>
+                  <td className="px-3 py-3">
+                    <p className="font-semibold text-slate-200">
+                      {translateDailyRallyRule(pattern.pattern_key)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{pattern.pattern_label}</p>
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {count(pattern.support)}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {count(pattern.total_matches)}
+                  </td>
+                  <td className="px-3 py-3 text-right font-semibold text-emerald-300">
+                    {ratio(pattern.precision)}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {ratio(pattern.base_rate)}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {decimal(pattern.lift)}
+                  </td>
+                  {[20, 40, 60, 120].map((horizon) => (
+                    <td
+                      className="px-3 py-3 text-right font-semibold text-slate-200"
+                      key={`${pattern.id}:${horizon}`}
+                    >
+                      {signedPct(patternReturnMean(pattern, horizon))}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </PanelShell>

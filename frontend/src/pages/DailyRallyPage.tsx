@@ -8,6 +8,7 @@ import {
   fetchBacktestStrategyJobs,
   fetchDailyRallyCandidates,
   fetchDailyRallyInsights,
+  fetchDailyRallyPatternStats,
   type BacktestRunDetail,
   type BacktestRunSummary,
   type BacktestStat,
@@ -17,6 +18,7 @@ import {
   DailyRallyCandidateBriefing,
   DailyRallyCandidatesTable,
   DailyRallyPatternBriefing,
+  DailyRallyPatternStatsTable,
   DailyRallyRulesTable,
   DailyRallySummaryPanel,
 } from './DailyRallyPanels';
@@ -343,6 +345,11 @@ function DailyRallyPage() {
     queryFn: () => fetchDailyRallyCandidates(runId as number),
     enabled: runId !== null,
   });
+  const dailyRallyPatternStatsQuery = useQuery({
+    queryKey: ['backtest', 'run', runId, 'daily-rally-pattern-stats'],
+    queryFn: () => fetchDailyRallyPatternStats(runId as number),
+    enabled: runId !== null,
+  });
 
   const setSelectedRun = (id: number) => {
     setRunId(id);
@@ -354,6 +361,7 @@ function DailyRallyPage() {
     if (runId !== null) void refetchDetail();
     void dailyRallyInsightsQuery.refetch();
     void dailyRallyCandidatesQuery.refetch();
+    void dailyRallyPatternStatsQuery.refetch();
   };
 
   return (
@@ -416,12 +424,18 @@ function DailyRallyPage() {
               <DailyRallyPatternBriefing
                 insights={dailyRallyInsightsQuery.data}
                 isError={dailyRallyInsightsQuery.isError}
+                patternStats={dailyRallyPatternStatsQuery.data}
+                patternStatsIsError={dailyRallyPatternStatsQuery.isError}
               />
               <DailyRallyCandidateBriefing
                 candidates={dailyRallyCandidatesQuery.data}
                 isError={dailyRallyCandidatesQuery.isError}
               />
               <ForwardReturnTable detail={detail} />
+              <DailyRallyPatternStatsTable
+                isError={dailyRallyPatternStatsQuery.isError}
+                patternStats={dailyRallyPatternStatsQuery.data}
+              />
               <DailyRallyRulesTable
                 insights={dailyRallyInsightsQuery.data}
                 isError={dailyRallyInsightsQuery.isError}

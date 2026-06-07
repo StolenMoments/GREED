@@ -93,7 +93,7 @@ def _migrate_mariadb() -> None:
             "analysis_backtest_jobs", "backtest_signals", "backtest_stats",
             "backtest_universe_members", "backtest_preload_jobs",
             "backtest_strategy_jobs", "daily_rally_rule_stats",
-            "daily_rally_current_candidates",
+            "daily_rally_pattern_stats", "daily_rally_current_candidates",
         ]:
             rows = conn.execute(text(
                 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
@@ -293,6 +293,28 @@ def _migrate_mariadb() -> None:
                     PRIMARY KEY (id),
                     INDEX ix_daily_rally_current_candidates_run_score (run_id, max_rule_score),
                     INDEX ix_daily_rally_current_candidates_run_ticker (run_id, ticker)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS daily_rally_pattern_stats (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    run_id INTEGER NOT NULL,
+                    pattern_key VARCHAR(255) NOT NULL,
+                    pattern_label VARCHAR(500) NOT NULL,
+                    support INTEGER NOT NULL,
+                    positives INTEGER NOT NULL,
+                    total_matches INTEGER NOT NULL,
+                    `precision` FLOAT NOT NULL,
+                    base_rate FLOAT NOT NULL,
+                    lift FLOAT NOT NULL,
+                    score FLOAT NOT NULL,
+                    return_stats_json TEXT NOT NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_daily_rally_pattern_stats_run_score (run_id, score)
                 )
                 """
             )

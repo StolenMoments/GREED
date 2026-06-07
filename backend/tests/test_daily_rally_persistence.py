@@ -13,13 +13,16 @@ from backend.models import (
     BacktestSignal,
     BacktestStat,
     DailyRallyCurrentCandidate,
+    DailyRallyPatternStat,
     DailyRallyRuleStat,
 )
 from scripts.backtest.daily_rally import (
     DailyRallyBacktestResult,
     DailyRallyCandidate,
+    DailyRallyPatternStat as EngineDailyRallyPatternStat,
     DailyRallyRule,
     DailyRallySample,
+    DailyRallyReturnStat,
 )
 from scripts.backtest.persistence import persist_daily_rally_run
 
@@ -40,8 +43,10 @@ def db_session() -> Session:
 
 def test_daily_rally_tables_are_created() -> None:
     assert "daily_rally_rule_stats" in Base.metadata.tables
+    assert "daily_rally_pattern_stats" in Base.metadata.tables
     assert "daily_rally_current_candidates" in Base.metadata.tables
     assert DailyRallyRuleStat.__table__.name == "daily_rally_rule_stats"
+    assert DailyRallyPatternStat.__table__.name == "daily_rally_pattern_stats"
     assert DailyRallyCurrentCandidate.__table__.name == "daily_rally_current_candidates"
 
 
@@ -91,6 +96,34 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
                 features={"ret_20d": 0.12, "ma5_gt_ma20": True, "weekly_cloud_position": "above_cloud"},
             )
         ],
+        pattern_stats=[
+            EngineDailyRallyPatternStat(
+                pattern_key="ret_20d>=0.10",
+                pattern_label="ret_20d >= 0.10",
+                support=1,
+                positives=1,
+                total_matches=2,
+                precision=0.5,
+                base_rate=0.25,
+                lift=2.0,
+                score=1.5,
+                return_stats={
+                    20: DailyRallyReturnStat(
+                        horizon=20,
+                        count=2,
+                        censored_count=0,
+                        win_rate=0.5,
+                        mean=0.15,
+                        median=0.15,
+                        std=0.25,
+                        p25=0.025,
+                        p75=0.275,
+                        min=-0.1,
+                        max=0.4,
+                    )
+                },
+            )
+        ],
         ticker_count=2,
         data_start=date(2024, 1, 1),
         data_end=date(2024, 2, 1),
@@ -128,6 +161,16 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
     assert rule is not None
     assert rule.rule_key == "ret_20d>=0.10"
     assert rule.score == pytest.approx(1.5)
+
+    pattern = db_session.scalar(
+        select(DailyRallyPatternStat).where(DailyRallyPatternStat.run_id == run_id)
+    )
+    assert pattern is not None
+    assert pattern.pattern_key == "ret_20d>=0.10"
+    assert pattern.score == pytest.approx(1.5)
+    return_stats = json.loads(pattern.return_stats_json)
+    assert return_stats["20"]["mean"] == pytest.approx(0.15)
+    assert return_stats["20"]["count"] == 2
 
     candidate = db_session.scalar(
         select(DailyRallyCurrentCandidate).where(DailyRallyCurrentCandidate.run_id == run_id)

@@ -335,6 +335,26 @@ class DailyRallyRuleStat(Base):
     score: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class DailyRallyPatternStat(Base):
+    __tablename__ = "daily_rally_pattern_stats"
+    __table_args__ = (
+        Index("ix_daily_rally_pattern_stats_run_score", "run_id", "score"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    pattern_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    pattern_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    support: Mapped[int] = mapped_column(Integer, nullable=False)
+    positives: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_matches: Mapped[int] = mapped_column(Integer, nullable=False)
+    precision: Mapped[float] = mapped_column(Float, nullable=False)
+    base_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    return_stats_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class DailyRallyCurrentCandidate(Base):
     __tablename__ = "daily_rally_current_candidates"
     __table_args__ = (

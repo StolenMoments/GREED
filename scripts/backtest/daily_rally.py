@@ -71,6 +71,35 @@ class DailyRallyRule:
 
 
 @dataclass(slots=True)
+class DailyRallyReturnStat:
+    horizon: int
+    count: int
+    censored_count: int
+    win_rate: float | None
+    mean: float | None
+    median: float | None
+    std: float | None
+    p25: float | None
+    p75: float | None
+    min: float | None
+    max: float | None
+
+
+@dataclass(slots=True)
+class DailyRallyPatternStat:
+    pattern_key: str
+    pattern_label: str
+    support: int
+    positives: int
+    total_matches: int
+    precision: float
+    base_rate: float
+    lift: float
+    score: float
+    return_stats: dict[int, DailyRallyReturnStat] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class DailyRallyCandidate:
     ticker: str
     name: str
@@ -91,6 +120,7 @@ class DailyRallyBacktestResult:
     ticker_count: int
     data_start: date | None
     data_end: date | None
+    pattern_stats: list[DailyRallyPatternStat] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -505,6 +535,81 @@ def _rule_from_predicate(
     )
 
 
+def _return_stat(horizon: int, samples: list[DailyRallySample]) -> DailyRallyReturnStat:
+    values = [sample.forward_returns.get(horizon) for sample in samples]
+    returns = np.array([value for value in values if value is not None], dtype=float)
+    censored = sum(1 for value in values if value is None)
+
+    if returns.size == 0:
+        return DailyRallyReturnStat(
+            horizon=horizon,
+            count=0,
+            censored_count=censored,
+            win_rate=None,
+            mean=None,
+            median=None,
+            std=None,
+            p25=None,
+            p75=None,
+            min=None,
+            max=None,
+        )
+
+    return DailyRallyReturnStat(
+        horizon=horizon,
+        count=int(returns.size),
+        censored_count=censored,
+        win_rate=float((returns > 0).mean()),
+        mean=float(returns.mean()),
+        median=float(np.median(returns)),
+        std=float(returns.std(ddof=0)),
+        p25=float(np.percentile(returns, 25)),
+        p75=float(np.percentile(returns, 75)),
+        min=float(returns.min()),
+        max=float(returns.max()),
+    )
+
+
+def build_pattern_stats(samples: list[DailyRallySample]) -> list[DailyRallyPatternStat]:
+    if not samples:
+        return []
+
+    positive_count = sum(1 for sample in samples if sample.label == 1)
+    base_rate = positive_count / len(samples)
+    stats: list[DailyRallyPatternStat] = []
+
+    for predicate in build_rule_candidates(samples):
+        matches = [sample for sample in samples if predicate.matcher(sample)]
+        total_matches = len(matches)
+        if total_matches == 0:
+            continue
+        support = sum(1 for sample in matches if sample.label == 1)
+        precision = support / total_matches
+        lift = precision / base_rate if base_rate > 0 else 0
+        score = support * max(lift - 1, 0) * precision
+        stats.append(
+            DailyRallyPatternStat(
+                pattern_key=predicate.key,
+                pattern_label=predicate.label,
+                support=support,
+                positives=support,
+                total_matches=total_matches,
+                precision=precision,
+                base_rate=base_rate,
+                lift=lift,
+                score=score,
+                return_stats={
+                    horizon: _return_stat(horizon, matches) for horizon in FORWARD_RETURN_DAYS
+                },
+            )
+        )
+
+    return sorted(
+        stats,
+        key=lambda stat: (-stat.score, -stat.precision, -stat.support, stat.pattern_key),
+    )
+
+
 def _sort_rules(rules: list[DailyRallyRule]) -> list[DailyRallyRule]:
     return sorted(rules, key=lambda rule: (-rule.score, -rule.precision, -rule.support, rule.rule_key))
 
@@ -610,12 +715,14 @@ def find_current_candidates(
 
 def run_daily_rally_backtest(db, universe: list[tuple[str, str]] | None = None) -> DailyRallyBacktestResult:
     samples, ticker_count, data_start, data_end = _collect_daily_rally_samples(db, universe)
+    pattern_stats = build_pattern_stats(samples)
     rules = rank_rules(samples)
     current_candidates = find_current_candidates(samples, rules)
     return DailyRallyBacktestResult(
         samples=samples,
         rules=rules,
         current_candidates=current_candidates,
+        pattern_stats=pattern_stats,
         ticker_count=ticker_count,
         data_start=data_start,
         data_end=data_end,

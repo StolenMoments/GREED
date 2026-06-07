@@ -89,6 +89,41 @@ export interface DailyRallyInsights {
   rules: DailyRallyRuleStat[];
 }
 
+export interface DailyRallyReturnStat {
+  horizon: number;
+  count: number;
+  censored_count: number;
+  win_rate: number | null;
+  mean: number | null;
+  median: number | null;
+  std: number | null;
+  p25: number | null;
+  p75: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface DailyRallyPatternStat {
+  id: number;
+  run_id: number;
+  pattern_key: string;
+  pattern_label: string;
+  support: number;
+  positives: number;
+  total_matches: number;
+  precision: number;
+  base_rate: number;
+  lift: number;
+  score: number;
+  return_stats: DailyRallyReturnStat[];
+}
+
+export interface DailyRallyPatternStats {
+  run_id: number;
+  pattern_count: number;
+  patterns: DailyRallyPatternStat[];
+}
+
 export interface DailyRallyCandidate {
   id: number;
   run_id: number;
@@ -193,6 +228,13 @@ export async function fetchBacktestStrategyJobs(): Promise<BacktestStrategyJob[]
 export async function fetchDailyRallyInsights(runId: number): Promise<DailyRallyInsights> {
   const response = await apiClient.get<DailyRallyInsights>(
     `/backtest/runs/${runId}/daily-rally-insights`,
+  );
+  return response.data;
+}
+
+export async function fetchDailyRallyPatternStats(runId: number): Promise<DailyRallyPatternStats> {
+  const response = await apiClient.get<DailyRallyPatternStats>(
+    `/backtest/runs/${runId}/daily-rally-pattern-stats`,
   );
   return response.data;
 }

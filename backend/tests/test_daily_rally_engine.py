@@ -10,6 +10,7 @@ from scripts.backtest.daily_rally import (
     DailyRallyRule,
     DailyRallySample,
     build_daily_features,
+    build_pattern_stats,
     build_samples_for_ticker,
     build_weekly_asof_features,
     find_current_candidates,
@@ -140,6 +141,79 @@ def test_rank_rules_computes_support_precision_lift_and_score() -> None:
     assert rule.precision == pytest.approx(2 / 3)
     assert rule.lift == pytest.approx(2.0)
     assert rule.score == pytest.approx(2 * 1.0 * (2 / 3))
+
+
+def test_build_pattern_stats_keeps_unfiltered_single_patterns_with_return_stats() -> None:
+    samples = [
+        DailyRallySample(
+            "A",
+            "A",
+            date(2024, 1, 1),
+            100,
+            1,
+            forward_returns={20: 0.5, 40: 0.7, 60: None, 120: 1.0},
+            features={"ret_20d": 0.3},
+        ),
+        DailyRallySample(
+            "B",
+            "B",
+            date(2024, 1, 1),
+            100,
+            0,
+            forward_returns={20: -0.1, 40: 0.2, 60: 0.3, 120: None},
+            features={"ret_20d": 0.25},
+        ),
+        DailyRallySample(
+            "C",
+            "C",
+            date(2024, 1, 1),
+            100,
+            0,
+            forward_returns={20: 0.1, 40: None, 60: 0.4, 120: 0.6},
+            features={"ret_20d": 0.01},
+        ),
+    ]
+
+    stats = build_pattern_stats(samples)
+    stat = next(pattern for pattern in stats if pattern.pattern_key == "ret_20d>=0.20")
+
+    assert stat.support == 1
+    assert stat.positives == 1
+    assert stat.total_matches == 2
+    assert stat.base_rate == pytest.approx(1 / 3)
+    assert stat.precision == pytest.approx(1 / 2)
+    assert stat.lift == pytest.approx(1.5)
+    assert stat.score == pytest.approx(1 * 0.5 * 0.5)
+    assert stat.return_stats[20].count == 2
+    assert stat.return_stats[20].mean == pytest.approx(0.2)
+    assert stat.return_stats[40].count == 2
+    assert stat.return_stats[40].mean == pytest.approx(0.45)
+    assert stat.return_stats[60].count == 1
+    assert stat.return_stats[60].censored_count == 1
+    assert stat.return_stats[120].count == 1
+    assert stat.return_stats[120].censored_count == 1
+
+
+def test_run_daily_rally_backtest_returns_pattern_stats_when_strict_rules_are_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    samples = [
+        DailyRallySample("A", "A", date(2024, 1, 1), 100, 1, features={"ret_20d": 0.3}),
+        DailyRallySample("B", "B", date(2024, 1, 2), 100, 0, features={"ret_20d": 0.25}),
+    ]
+
+    monkeypatch.setattr(
+        daily_rally_module,
+        "_collect_daily_rally_samples",
+        lambda db, universe=None: (samples, 2, date(2024, 1, 1), date(2024, 1, 2)),
+    )
+    monkeypatch.setattr(daily_rally_module, "rank_rules", lambda samples: [])
+
+    result = run_daily_rally_backtest(object())
+
+    assert result.rules == []
+    assert result.current_candidates == []
+    assert any(pattern.pattern_key == "ret_20d>=0.20" for pattern in result.pattern_stats)
 
 
 def test_find_current_candidates_uses_latest_sample_per_ticker() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from backend.models import (  # noqa: E402
     BacktestSignal,
     BacktestStat,
     DailyRallyCurrentCandidate,
+    DailyRallyPatternStat,
     DailyRallyRuleStat,
 )
 
@@ -147,6 +149,30 @@ def persist_daily_rally_run(db: Session, result: DailyRallyBacktestResult) -> in
                 base_rate=rule.base_rate,
                 lift=rule.lift,
                 score=rule.score,
+            )
+        )
+
+    for pattern in result.pattern_stats:
+        db.add(
+            DailyRallyPatternStat(
+                run_id=run_id,
+                pattern_key=pattern.pattern_key,
+                pattern_label=pattern.pattern_label,
+                support=pattern.support,
+                positives=pattern.positives,
+                total_matches=pattern.total_matches,
+                precision=pattern.precision,
+                base_rate=pattern.base_rate,
+                lift=pattern.lift,
+                score=pattern.score,
+                return_stats_json=json.dumps(
+                    {
+                        str(horizon): asdict(stat)
+                        for horizon, stat in sorted(pattern.return_stats.items())
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
             )
         )
 

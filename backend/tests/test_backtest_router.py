@@ -22,6 +22,7 @@ from backend.models import (
     BacktestStrategyJob,
     BacktestUniverseMember,
     DailyRallyCurrentCandidate,
+    DailyRallyPatternStat,
     DailyRallyRuleStat,
 )
 from backend.routers import backtest
@@ -733,6 +734,64 @@ def test_get_daily_rally_candidates_decodes_json(
     candidate = body["candidates"][0]
     assert candidate["matched_rules"] == ["ret_20d>=0.10"]
     assert candidate["features"] == {"ma5_gt_ma20": True, "ret_20d": 0.12}
+
+
+def test_get_daily_rally_pattern_stats_decodes_return_stats(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=1,
+        signal_count=1,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        DailyRallyPatternStat(
+            run_id=run.id,
+            pattern_key="ret_20d>=0.20",
+            pattern_label="ret_20d >= 0.20",
+            support=2,
+            positives=2,
+            total_matches=3,
+            precision=2 / 3,
+            base_rate=0.25,
+            lift=(2 / 3) / 0.25,
+            score=2.2,
+            return_stats_json='{"20":{"horizon":20,"count":3,"censored_count":0,"win_rate":0.6666666667,"mean":0.2,"median":0.1,"std":0.3,"p25":0.0,"p75":0.35,"min":-0.1,"max":0.5}}',
+        )
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-pattern-stats")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == run.id
+    assert body["pattern_count"] == 1
+    pattern = body["patterns"][0]
+    assert pattern["pattern_key"] == "ret_20d>=0.20"
+    assert pattern["return_stats"][0]["horizon"] == 20
+    assert pattern["return_stats"][0]["mean"] == pytest.approx(0.2)
+
+
+def test_get_daily_rally_pattern_stats_rejects_non_daily_rally_run(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run_id = _seed(db_session)
+
+    resp = client.get(f"/api/backtest/runs/{run_id}/daily-rally-pattern-stats")
+
+    assert resp.status_code == 404
 
 
 def test_get_daily_rally_insights_rejects_non_daily_rally_run(

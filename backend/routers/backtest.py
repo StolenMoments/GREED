@@ -17,6 +17,7 @@ from backend.models import (
     BacktestStrategyJob,
     BacktestUniverseMember,
     DailyRallyCurrentCandidate,
+    DailyRallyPatternStat,
     DailyRallyRuleStat,
 )
 from backend.schemas import (
@@ -38,6 +39,9 @@ from backend.schemas import (
     DailyRallyCandidateRead,
     DailyRallyCandidatesRead,
     DailyRallyInsightsRead,
+    DailyRallyPatternStatRead,
+    DailyRallyPatternStatsRead,
+    DailyRallyReturnStatRead,
     DailyRallyRuleStatRead,
     HistogramBin,
 )
@@ -601,6 +605,57 @@ def get_daily_rally_insights(
         run_id=run_id,
         rule_count=len(rules),
         rules=[DailyRallyRuleStatRead.model_validate(rule) for rule in rules],
+    )
+
+
+@router.get(
+    "/runs/{run_id}/daily-rally-pattern-stats",
+    response_model=DailyRallyPatternStatsRead,
+)
+def get_daily_rally_pattern_stats(
+    run_id: int,
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> DailyRallyPatternStatsRead:
+    _daily_rally_run_or_404(db, run_id)
+    patterns = list(
+        db.scalars(
+            select(DailyRallyPatternStat)
+            .where(DailyRallyPatternStat.run_id == run_id)
+            .order_by(
+                DailyRallyPatternStat.score.desc(),
+                DailyRallyPatternStat.precision.desc(),
+                DailyRallyPatternStat.support.desc(),
+            )
+            .limit(limit)
+        ).all()
+    )
+    return DailyRallyPatternStatsRead(
+        run_id=run_id,
+        pattern_count=len(patterns),
+        patterns=[
+            DailyRallyPatternStatRead(
+                id=pattern.id,
+                run_id=pattern.run_id,
+                pattern_key=pattern.pattern_key,
+                pattern_label=pattern.pattern_label,
+                support=pattern.support,
+                positives=pattern.positives,
+                total_matches=pattern.total_matches,
+                precision=pattern.precision,
+                base_rate=pattern.base_rate,
+                lift=pattern.lift,
+                score=pattern.score,
+                return_stats=[
+                    DailyRallyReturnStatRead(**value)
+                    for _horizon, value in sorted(
+                        json.loads(pattern.return_stats_json).items(),
+                        key=lambda item: int(item[0]),
+                    )
+                ],
+            )
+            for pattern in patterns
+        ],
     )
 
 

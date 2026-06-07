@@ -274,6 +274,43 @@ class DailyRallyInsightsRead(BaseModel):
     rules: list[DailyRallyRuleStatRead]
 
 
+class DailyRallyReturnStatRead(BaseModel):
+    horizon: int
+    count: int
+    censored_count: int
+    win_rate: float | None
+    mean: float | None
+    median: float | None
+    std: float | None
+    p25: float | None
+    p75: float | None
+    min: float | None
+    max: float | None
+
+
+class DailyRallyPatternStatRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    run_id: int
+    pattern_key: str
+    pattern_label: str
+    support: int
+    positives: int
+    total_matches: int
+    precision: float
+    base_rate: float
+    lift: float
+    score: float
+    return_stats: list[DailyRallyReturnStatRead]
+
+
+class DailyRallyPatternStatsRead(BaseModel):
+    run_id: int
+    pattern_count: int
+    patterns: list[DailyRallyPatternStatRead]
+
+
 class DailyRallyCandidateRead(BaseModel):
     id: int
     run_id: int
