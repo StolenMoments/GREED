@@ -1,5 +1,10 @@
 import type { BacktestStat } from '../api/backtest';
-import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
+import {
+  bucketHorizonKey,
+  formatHorizonLabel,
+  formatScoreBucketLabel,
+  rankTopWinRateCells,
+} from './backtestHighlights';
 
 function stat(
   horizon: number,
@@ -51,4 +56,26 @@ if (actual !== expected) {
 
 if (ranks.has(bucketHorizonKey('10', 12))) {
   throw new Error('Null win-rate cell should not be ranked');
+}
+
+if (formatHorizonLabel({ strategy_kind: 'daily_20d_40pct_rally' }, 20) !== '20d') {
+  throw new Error('Daily rally horizon should be formatted in days');
+}
+
+if (formatHorizonLabel({ strategy_kind: 'ichimoku_span2_breakout' }, 20) !== '20주') {
+  throw new Error('Non-daily-rally horizon should keep weekly label');
+}
+
+const bucketLabels = {
+  positive: 'Positive Events',
+  control: 'Controls',
+  ALL: 'All Samples',
+  '8+': '8+',
+};
+
+for (const [bucket, expectedLabel] of Object.entries(bucketLabels)) {
+  const actualLabel = formatScoreBucketLabel(bucket);
+  if (actualLabel !== expectedLabel) {
+    throw new Error(`Expected ${bucket} bucket label ${expectedLabel}, received ${actualLabel}`);
+  }
 }

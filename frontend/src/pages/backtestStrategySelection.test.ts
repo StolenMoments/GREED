@@ -41,3 +41,25 @@ const finishedPending = nextCompletedStrategySelection(pending.state, {
 if (finishedPending.runId !== 37) {
   throw new Error(`Observed pending job should select run 37 when done, received ${finishedPending.runId}`);
 }
+
+const dailyRallyPending = nextCompletedStrategySelection(
+  { hydrated: false, appliedJobId: null },
+  {
+    id: 40,
+    strategy_kind: 'daily_20d_40pct_rally',
+    status: 'pending',
+    backtest_run_id: null,
+  },
+);
+const finishedDailyRally = nextCompletedStrategySelection(dailyRallyPending.state, {
+  id: 40,
+  strategy_kind: 'daily_20d_40pct_rally',
+  status: 'done',
+  backtest_run_id: 41,
+});
+
+if (finishedDailyRally.runId !== 41) {
+  throw new Error(
+    `Daily rally completed job should select run 41, received ${finishedDailyRally.runId}`,
+  );
+}

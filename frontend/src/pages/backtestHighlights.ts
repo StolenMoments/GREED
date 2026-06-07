@@ -4,6 +4,23 @@ export function bucketHorizonKey(bucket: string, horizon: number): string {
   return `${bucket}:${horizon}`;
 }
 
+export function formatHorizonLabel(
+  detail: Pick<{ strategy_kind: string | null }, 'strategy_kind'>,
+  horizon: number,
+): string {
+  if (detail.strategy_kind === 'daily_20d_40pct_rally') {
+    return `${horizon}d`;
+  }
+  return `${horizon}주`;
+}
+
+export function formatScoreBucketLabel(bucket: string): string {
+  if (bucket === 'positive') return 'Positive Events';
+  if (bucket === 'control') return 'Controls';
+  if (bucket === 'ALL') return 'All Samples';
+  return bucket;
+}
+
 export function rankTopWinRateCells(
   stats: BacktestStat[],
   buckets: readonly string[],

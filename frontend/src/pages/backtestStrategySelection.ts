@@ -5,9 +5,12 @@ export interface CompletedStrategySelectionState {
   appliedJobId: number | null;
 }
 
+type StrategySelectionJob = Pick<BacktestStrategyJob, 'id' | 'status' | 'backtest_run_id'> &
+  Partial<Pick<BacktestStrategyJob, 'strategy_kind'>>;
+
 export function nextCompletedStrategySelection(
   state: CompletedStrategySelectionState,
-  latestJob: Pick<BacktestStrategyJob, 'id' | 'status' | 'backtest_run_id'> | undefined,
+  latestJob: StrategySelectionJob | undefined,
 ): { state: CompletedStrategySelectionState; runId: number | null } {
   if (!latestJob) {
     return { state, runId: null };

@@ -62,3 +62,10 @@ def test_migrate_mariadb_creates_price_bars_table(monkeypatch: pytest.MonkeyPatc
     assert any("INDEX ix_price_bars_lookup" in statement for statement in statements)
     assert any("CREATE TABLE IF NOT EXISTS backtest_preload_jobs" in statement for statement in statements)
     assert any("INDEX ix_backtest_preload_jobs_status_created" in statement for statement in statements)
+    daily_rally_rule_stats = next(
+        statement
+        for statement in statements
+        if "CREATE TABLE IF NOT EXISTS daily_rally_rule_stats" in statement
+    )
+    assert "`precision` FLOAT NOT NULL" in daily_rally_rule_stats
+    assert " precision FLOAT NOT NULL" not in daily_rally_rule_stats

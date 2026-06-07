@@ -6,6 +6,8 @@ import {
   fetchBacktestRun,
   fetchBacktestRuns,
   fetchBacktestStrategyJobs,
+  fetchDailyRallyCandidates,
+  fetchDailyRallyInsights,
   type BacktestRunSummary,
   type BacktestRunDetail,
   type BacktestStat,
@@ -14,11 +16,21 @@ import {
   type ContractBreakdownItem,
   type ContractTickerBreakdownItem,
 } from '../api/backtest';
-import { bucketHorizonKey, rankTopWinRateCells } from './backtestHighlights';
+import {
+  bucketHorizonKey,
+  formatHorizonLabel,
+  formatScoreBucketLabel,
+  rankTopWinRateCells,
+} from './backtestHighlights';
 import {
   nextCompletedStrategySelection,
   type CompletedStrategySelectionState,
 } from './backtestStrategySelection';
+import {
+  DailyRallyCandidatesTable,
+  DailyRallyRulesTable,
+  DailyRallySummaryPanel,
+} from './DailyRallyPanels';
 
 const HORIZONS = [4, 8, 12, 26] as const;
 const LEGACY_BUCKETS = ['4-5', '6-7', '8+'] as const;
@@ -109,15 +121,19 @@ function EmptyState() {
 function StrategyJobPanel({
   latestJob,
   isRunning,
-  isStarting,
-  onRun,
+  isStartingDailyRally,
+  isStartingSpan2,
+  onRunDailyRally,
+  onRunSpan2,
 }: {
   latestJob: BacktestStrategyJob | undefined;
   isRunning: boolean;
-  isStarting: boolean;
-  onRun: () => void;
+  isStartingDailyRally: boolean;
+  isStartingSpan2: boolean;
+  onRunDailyRally: () => void;
+  onRunSpan2: () => void;
 }) {
-  const disabled = isRunning || isStarting;
+  const disabled = isRunning || isStartingSpan2 || isStartingDailyRally;
   const statusLabel = latestJob
     ? latestJob.status === 'done' && latestJob.backtest_run_id !== null
       ? `done · Backtest #${latestJob.backtest_run_id}`
@@ -128,10 +144,10 @@ function StrategyJobPanel({
     <div className="flex flex-col gap-4 rounded-lg border border-amber-100/10 bg-slate-950/45 px-5 py-4 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
-          ichimoku strategy
+          strategy backtests
         </p>
         <p className="mt-2 text-sm text-slate-300">
-          Span2 breakout · weekly close · KOSPI200-DB · 120w warmup
+          Span2 breakout and daily 20d +40% rally jobs share the strategy queue.
         </p>
         {latestJob?.status === 'failed' && latestJob.error_message && (
           <p className="mt-2 max-w-3xl truncate text-sm font-semibold text-rose-200">
@@ -151,10 +167,23 @@ function StrategyJobPanel({
               : 'border border-amber-200/40 bg-amber-300 text-slate-950 hover:bg-amber-200',
           ].join(' ')}
           disabled={disabled}
-          onClick={onRun}
+          onClick={onRunSpan2}
           type="button"
         >
-          {disabled ? 'Running...' : 'Run Span2 Breakout'}
+          {isStartingSpan2 ? 'Starting...' : 'Run Ichimoku Span2 Breakout'}
+        </button>
+        <button
+          className={[
+            'rounded-md px-4 py-2 text-sm font-semibold transition',
+            disabled
+              ? 'cursor-not-allowed border border-slate-700 bg-slate-900 text-slate-500'
+              : 'border border-emerald-200/40 bg-emerald-300 text-slate-950 hover:bg-emerald-200',
+          ].join(' ')}
+          disabled={disabled}
+          onClick={onRunDailyRally}
+          type="button"
+        >
+          {isStartingDailyRally ? 'Starting...' : 'Run Daily 20d +40% Rally'}
         </button>
       </div>
     </div>
@@ -617,7 +646,10 @@ function ContractBreakdownPanel({ detail }: { detail: BacktestRunDetail }) {
   );
 }
 
-function HorizonTable({ stats }: { stats: BacktestStat[] }) {
+function HorizonTable({ detail }: { detail: BacktestRunDetail }) {
+  const horizons =
+    detail.strategy_kind === 'daily_20d_40pct_rally' ? [20, 40, 60, 120] : [...HORIZONS];
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-sm">
@@ -634,11 +666,13 @@ function HorizonTable({ stats }: { stats: BacktestStat[] }) {
           </tr>
         </thead>
         <tbody>
-          {HORIZONS.map((horizon) => {
-            const stat = statOf(stats, horizon, 'ALL');
+          {horizons.map((horizon) => {
+            const stat = statOf(detail.stats, horizon, 'ALL');
             return (
               <tr className="border-t border-slate-800/70" key={horizon}>
-                <td className="px-4 py-3 font-semibold text-slate-200">{horizon}주</td>
+                <td className="px-4 py-3 font-semibold text-slate-200">
+                  {formatHorizonLabel(detail, horizon)}
+                </td>
                 <td className="px-4 py-3 text-right text-slate-300">{count(stat?.count)}</td>
                 <td className="px-4 py-3 text-right font-semibold text-slate-50">
                   {ratio(stat?.win_rate ?? null)}
@@ -712,7 +746,7 @@ function BucketComparison({ stats }: { stats: BacktestStat[] }) {
           >
             <div className="flex items-center">
               <span className="rounded-md bg-amber-300 px-2.5 py-1 text-sm font-semibold text-slate-950">
-                {bucket}
+                {formatScoreBucketLabel(bucket)}
               </span>
             </div>
             {HORIZONS.map((horizon, index) => {
@@ -811,6 +845,16 @@ function BacktestPage() {
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
+  const runDailyRallyMutation = useMutation({
+    mutationFn: () => createBacktestStrategyJob('daily_20d_40pct_rally'),
+    onSuccess: (job) => {
+      queryClient.setQueryData(['backtest', 'strategy-jobs'], (current: BacktestStrategyJob[] | undefined) => [
+        job,
+        ...(current ?? []).filter((item) => item.id !== job.id),
+      ]);
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
 
   useEffect(() => {
     if (runs.length === 0) {
@@ -866,10 +910,25 @@ function BacktestPage() {
     queryFn: () => fetchBacktestRun(runId as number),
     enabled: runId !== null,
   });
+  const isDailyRally = detail?.strategy_kind === 'daily_20d_40pct_rally';
+  const dailyRallyInsightsQuery = useQuery({
+    queryKey: ['backtest', 'run', runId, 'daily-rally-insights'],
+    queryFn: () => fetchDailyRallyInsights(runId as number),
+    enabled: runId !== null && isDailyRally,
+  });
+  const dailyRallyCandidatesQuery = useQuery({
+    queryKey: ['backtest', 'run', runId, 'daily-rally-candidates'],
+    queryFn: () => fetchDailyRallyCandidates(runId as number),
+    enabled: runId !== null && isDailyRally,
+  });
 
   const retry = () => {
     void refetchRuns();
     if (runId !== null) void refetchDetail();
+    if (isDailyRally) {
+      void dailyRallyInsightsQuery.refetch();
+      void dailyRallyCandidatesQuery.refetch();
+    }
   };
 
   return (
@@ -885,9 +944,11 @@ function BacktestPage() {
 
       <StrategyJobPanel
         isRunning={strategyJobRunning}
-        isStarting={runSpan2Mutation.isPending}
+        isStartingDailyRally={runDailyRallyMutation.isPending}
+        isStartingSpan2={runSpan2Mutation.isPending}
         latestJob={latestStrategyJob}
-        onRun={() => runSpan2Mutation.mutate()}
+        onRunDailyRally={() => runDailyRallyMutation.mutate()}
+        onRunSpan2={() => runSpan2Mutation.mutate()}
       />
 
       {runsError || detailError ? (
@@ -912,7 +973,27 @@ function BacktestPage() {
             </div>
           ) : (
             <>
-              {detail.strategy_kind === 'analysis_contract' && detail.event_summary ? (
+              {detail.strategy_kind === 'daily_20d_40pct_rally' ? (
+                <>
+                  <DailyRallySummaryPanel
+                    candidates={dailyRallyCandidatesQuery.data}
+                    detail={detail}
+                    insights={dailyRallyInsightsQuery.data}
+                    isLoading={
+                      dailyRallyInsightsQuery.isLoading || dailyRallyCandidatesQuery.isLoading
+                    }
+                  />
+                  <DailyRallyRulesTable
+                    insights={dailyRallyInsightsQuery.data}
+                    isError={dailyRallyInsightsQuery.isError}
+                  />
+                  <DailyRallyCandidatesTable
+                    candidates={dailyRallyCandidatesQuery.data}
+                    isError={dailyRallyCandidatesQuery.isError}
+                  />
+                  <HorizonTable detail={detail} />
+                </>
+              ) : detail.strategy_kind === 'analysis_contract' && detail.event_summary ? (
                 <>
                   <ContractBreakdownPanel detail={detail} />
                   <SummaryStrip detail={detail} />
@@ -923,7 +1004,7 @@ function BacktestPage() {
               ) : (
                 <>
                   <SummaryStrip detail={detail} />
-                  <HorizonTable stats={detail.stats} />
+                  <HorizonTable detail={detail} />
                   {detail.stats.length > 0 && <BucketComparison stats={detail.stats} />}
                 </>
               )}

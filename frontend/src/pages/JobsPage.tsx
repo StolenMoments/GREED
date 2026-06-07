@@ -79,7 +79,9 @@ function jobIdLabel(job: JobOverview): string {
 
 function modelLabel(job: JobOverview): string {
   if (job.kind === 'backtest_strategy') {
-    return job.model === 'ichimoku_span2_breakout' ? 'span2 breakout' : job.model;
+    if (job.model === 'ichimoku_span2_breakout') return 'span2 breakout';
+    if (job.model === 'daily_20d_40pct_rally') return 'daily rally';
+    return job.model;
   }
   if (job.kind === 'backtest_preload') {
     return 'daily preload';

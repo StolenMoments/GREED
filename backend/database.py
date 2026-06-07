@@ -265,7 +265,7 @@ def _migrate_mariadb() -> None:
                     support INTEGER NOT NULL,
                     positives INTEGER NOT NULL,
                     total_matches INTEGER NOT NULL,
-                    precision FLOAT NOT NULL,
+                    `precision` FLOAT NOT NULL,
                     base_rate FLOAT NOT NULL,
                     lift FLOAT NOT NULL,
                     score FLOAT NOT NULL,

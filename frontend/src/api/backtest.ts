@@ -57,7 +57,7 @@ export interface BacktestEventSummary {
   realized_payoff_ratio: number | null;
 }
 
-export type BacktestStrategyKind = 'ichimoku_span2_breakout';
+export type BacktestStrategyKind = 'ichimoku_span2_breakout' | 'daily_20d_40pct_rally';
 
 export interface BacktestStrategyJob {
   id: number;
@@ -67,6 +67,46 @@ export interface BacktestStrategyJob {
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export interface DailyRallyRuleStat {
+  id: number;
+  run_id: number;
+  rule_key: string;
+  rule_label: string;
+  support: number;
+  positives: number;
+  total_matches: number;
+  precision: number;
+  base_rate: number;
+  lift: number;
+  score: number;
+}
+
+export interface DailyRallyInsights {
+  run_id: number;
+  rule_count: number;
+  rules: DailyRallyRuleStat[];
+}
+
+export interface DailyRallyCandidate {
+  id: number;
+  run_id: number;
+  ticker: string;
+  name: string;
+  signal_date: string;
+  close_price: number;
+  matched_rules: string[];
+  matched_rule_count: number;
+  max_rule_score: number | null;
+  mean_rule_score: number | null;
+  features: Record<string, boolean | number | string | null>;
+}
+
+export interface DailyRallyCandidates {
+  run_id: number;
+  candidate_count: number;
+  candidates: DailyRallyCandidate[];
 }
 
 export interface ContractBreakdownItem {
@@ -147,6 +187,20 @@ export async function createBacktestStrategyJob(
 
 export async function fetchBacktestStrategyJobs(): Promise<BacktestStrategyJob[]> {
   const response = await apiClient.get<BacktestStrategyJob[]>('/backtest/strategy-jobs');
+  return response.data;
+}
+
+export async function fetchDailyRallyInsights(runId: number): Promise<DailyRallyInsights> {
+  const response = await apiClient.get<DailyRallyInsights>(
+    `/backtest/runs/${runId}/daily-rally-insights`,
+  );
+  return response.data;
+}
+
+export async function fetchDailyRallyCandidates(runId: number): Promise<DailyRallyCandidates> {
+  const response = await apiClient.get<DailyRallyCandidates>(
+    `/backtest/runs/${runId}/daily-rally-candidates`,
+  );
   return response.data;
 }
 
