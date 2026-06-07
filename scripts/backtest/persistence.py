@@ -19,6 +19,7 @@ from backend.models import (  # noqa: E402
     DailyRallyCurrentCandidate,
     DailyRallyPatternStat,
     DailyRallyRuleStat,
+    DailyRallyValidationSummary,
 )
 
 from .daily_rally import DAILY_RALLY_STRATEGY_KIND, DailyRallyBacktestResult  # noqa: E402
@@ -194,6 +195,18 @@ def persist_daily_rally_run(db: Session, result: DailyRallyBacktestResult) -> in
                 mean_rule_score=candidate.mean_rule_score,
                 features_json=json.dumps(
                     candidate.features,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+            )
+        )
+
+    if result.validation is not None:
+        db.add(
+            DailyRallyValidationSummary(
+                run_id=run_id,
+                summary_json=json.dumps(
+                    asdict(result.validation),
                     ensure_ascii=False,
                     sort_keys=True,
                 ),

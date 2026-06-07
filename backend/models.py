@@ -375,6 +375,22 @@ class DailyRallyCurrentCandidate(Base):
     features_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class DailyRallyValidationSummary(Base):
+    __tablename__ = "daily_rally_validation_summaries"
+    __table_args__ = (
+        Index("ix_daily_rally_validation_summaries_run", "run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=seoul_now,
+        nullable=False,
+    )
+
+
 class CandidateScanJob(Base):
     __tablename__ = "candidate_scan_jobs"
     __table_args__ = (

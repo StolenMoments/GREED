@@ -331,6 +331,65 @@ class DailyRallyCandidatesRead(BaseModel):
     candidates: list[DailyRallyCandidateRead]
 
 
+class DailyRallyYearValidationRead(BaseModel):
+    year: int
+    total: int
+    positives: int
+    base_rate: float
+    positive_forward_return_120d_mean: float | None
+    censored_120d_count: int
+    partial: bool
+
+
+class DailyRallyTickerConcentrationRead(BaseModel):
+    ticker: str
+    name: str
+    total_count: int
+    positive_count: int
+    positive_share: float
+
+
+class DailyRallyPatternStabilityRead(BaseModel):
+    pattern_key: str
+    pattern_label: str
+    total_matches: int
+    positives: int
+    full_period_lift: float
+    test_window_count: int
+    median_train_lift: float | None
+    median_test_lift: float | None
+    test_lift_gt_1_ratio: float | None
+    classification: Literal["stable", "fragile", "insufficient"]
+
+
+class DailyRallyWalkForwardWindowRead(BaseModel):
+    train_years: list[int]
+    test_year: int
+    pattern_key: str | None
+    pattern_label: str | None
+    train_support: int
+    train_total_matches: int
+    train_precision: float | None
+    train_base_rate: float | None
+    train_lift: float | None
+    test_matches: int
+    test_positives: int
+    test_precision: float | None
+    test_base_rate: float | None
+    test_lift: float | None
+    classification: Literal["stable", "fragile", "insufficient"]
+
+
+class DailyRallyValidationRead(BaseModel):
+    run_id: int
+    summary: dict[str, object]
+    year_breakdown: list[DailyRallyYearValidationRead]
+    ticker_concentration: list[DailyRallyTickerConcentrationRead]
+    pattern_stability: list[DailyRallyPatternStabilityRead]
+    walk_forward_windows: list[DailyRallyWalkForwardWindowRead]
+    warnings: list[str]
+
+
 class BacktestEventSummary(BaseModel):
     signal_count: int
     entered_count: int

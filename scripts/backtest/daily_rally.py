@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from itertools import combinations
+from statistics import median
 from typing import Any, Callable
 
 import numpy as np
@@ -100,6 +101,69 @@ class DailyRallyPatternStat:
 
 
 @dataclass(slots=True)
+class DailyRallyYearValidation:
+    year: int
+    total: int
+    positives: int
+    base_rate: float
+    positive_forward_return_120d_mean: float | None
+    censored_120d_count: int
+    partial: bool
+
+
+@dataclass(slots=True)
+class DailyRallyTickerConcentration:
+    ticker: str
+    name: str
+    total_count: int
+    positive_count: int
+    positive_share: float
+
+
+@dataclass(slots=True)
+class DailyRallyPatternStability:
+    pattern_key: str
+    pattern_label: str
+    total_matches: int
+    positives: int
+    full_period_lift: float
+    test_window_count: int
+    median_train_lift: float | None
+    median_test_lift: float | None
+    test_lift_gt_1_ratio: float | None
+    classification: str
+
+
+@dataclass(slots=True)
+class DailyRallyWalkForwardWindow:
+    train_years: list[int]
+    test_year: int
+    pattern_key: str | None
+    pattern_label: str | None
+    train_support: int
+    train_total_matches: int
+    train_precision: float | None
+    train_base_rate: float | None
+    train_lift: float | None
+    test_matches: int
+    test_positives: int
+    test_precision: float | None
+    test_base_rate: float | None
+    test_lift: float | None
+    classification: str
+
+
+@dataclass(slots=True)
+class DailyRallyValidationSummary:
+    summary: dict[str, Any]
+    year_breakdown: list[DailyRallyYearValidation]
+    ticker_concentration: list[DailyRallyTickerConcentration]
+    pattern_stability: list[DailyRallyPatternStability]
+    walk_forward_windows: list[DailyRallyWalkForwardWindow]
+    warnings: list[str]
+
+
+@dataclass(slots=True)
 class DailyRallyCandidate:
     ticker: str
     name: str
@@ -121,6 +185,7 @@ class DailyRallyBacktestResult:
     data_start: date | None
     data_end: date | None
     pattern_stats: list[DailyRallyPatternStat] = field(default_factory=list)
+    validation: DailyRallyValidationSummary | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,6 +675,327 @@ def build_pattern_stats(samples: list[DailyRallySample]) -> list[DailyRallyPatte
     )
 
 
+def _base_rate(samples: list[DailyRallySample]) -> float:
+    return (sum(1 for sample in samples if sample.label == 1) / len(samples)) if samples else 0.0
+
+
+def _mean(values: list[float]) -> float | None:
+    return float(np.mean(values)) if values else None
+
+
+def _pattern_metrics(
+    samples: list[DailyRallySample],
+    predicate: _Predicate,
+) -> dict[str, float | int | None]:
+    matches = [sample for sample in samples if predicate.matcher(sample)]
+    positives = sum(1 for sample in matches if sample.label == 1)
+    precision = positives / len(matches) if matches else None
+    base_rate = _base_rate(samples)
+    lift = (precision / base_rate) if precision is not None and base_rate > 0 else None
+    return {
+        "total_matches": len(matches),
+        "positives": positives,
+        "precision": precision,
+        "base_rate": base_rate,
+        "lift": lift,
+    }
+
+
+def _validation_classification(
+    *,
+    full_period_lift: float,
+    test_window_count: int,
+    median_test_lift: float | None,
+    test_lift_gt_1_ratio: float | None,
+) -> str:
+    if test_window_count < 5 or median_test_lift is None or test_lift_gt_1_ratio is None:
+        return "insufficient"
+    if median_test_lift >= 1.2 and test_lift_gt_1_ratio >= 0.6:
+        return "stable"
+    if full_period_lift > 1:
+        return "fragile"
+    return "insufficient"
+
+
+def _year_breakdown(samples: list[DailyRallySample]) -> list[DailyRallyYearValidation]:
+    items: list[DailyRallyYearValidation] = []
+    for year in sorted({sample.signal_date.year for sample in samples}):
+        year_samples = [sample for sample in samples if sample.signal_date.year == year]
+        positives = [sample for sample in year_samples if sample.label == 1]
+        positive_120d = [
+            float(value)
+            for sample in positives
+            if (value := sample.forward_returns.get(120)) is not None
+        ]
+        censored_120d = sum(1 for sample in year_samples if sample.forward_returns.get(120) is None)
+        items.append(
+            DailyRallyYearValidation(
+                year=year,
+                total=len(year_samples),
+                positives=len(positives),
+                base_rate=_base_rate(year_samples),
+                positive_forward_return_120d_mean=_mean(positive_120d),
+                censored_120d_count=censored_120d,
+                partial=censored_120d > 0,
+            )
+        )
+    return items
+
+
+def _ticker_concentration(samples: list[DailyRallySample]) -> list[DailyRallyTickerConcentration]:
+    positive_total = sum(1 for sample in samples if sample.label == 1)
+    items: list[DailyRallyTickerConcentration] = []
+    for ticker in sorted({sample.ticker for sample in samples}):
+        ticker_samples = [sample for sample in samples if sample.ticker == ticker]
+        positive_count = sum(1 for sample in ticker_samples if sample.label == 1)
+        if positive_count == 0:
+            continue
+        first = ticker_samples[0]
+        items.append(
+            DailyRallyTickerConcentration(
+                ticker=ticker,
+                name=first.name,
+                total_count=len(ticker_samples),
+                positive_count=positive_count,
+                positive_share=(positive_count / positive_total) if positive_total else 0.0,
+            )
+        )
+    return sorted(
+        items,
+        key=lambda item: (-item.positive_count, -item.positive_share, item.ticker),
+    )
+
+
+def _complete_years(samples: list[DailyRallySample]) -> list[int]:
+    return [
+        item.year
+        for item in _year_breakdown(samples)
+        if item.total > 0 and not item.partial
+    ]
+
+
+def _samples_for_years(samples: list[DailyRallySample], years: set[int]) -> list[DailyRallySample]:
+    return [sample for sample in samples if sample.signal_date.year in years]
+
+
+def _window_classification(test_lift: float | None) -> str:
+    if test_lift is None:
+        return "insufficient"
+    return "stable" if test_lift >= 1.2 else "fragile"
+
+
+def build_walk_forward_windows(
+    samples: list[DailyRallySample],
+    *,
+    min_train_support: int = 5,
+    min_test_matches: int = 3,
+) -> list[DailyRallyWalkForwardWindow]:
+    years = _complete_years(samples)
+    windows: list[DailyRallyWalkForwardWindow] = []
+    predicates = build_rule_candidates(samples)
+
+    for index in range(0, max(len(years) - 3, 0)):
+        train_years = years[index : index + 3]
+        test_year = years[index + 3]
+        train_samples = _samples_for_years(samples, set(train_years))
+        test_samples = _samples_for_years(samples, {test_year})
+        train_base_rate = _base_rate(train_samples)
+        test_base_rate = _base_rate(test_samples)
+
+        candidates: list[tuple[_Predicate, dict[str, float | int | None], float]] = []
+        for predicate in predicates:
+            metrics = _pattern_metrics(train_samples, predicate)
+            support = int(metrics["positives"] or 0)
+            total_matches = int(metrics["total_matches"] or 0)
+            precision = metrics["precision"]
+            lift = metrics["lift"]
+            if support < min_train_support or total_matches == 0 or precision is None or lift is None:
+                continue
+            score = support * max(float(lift) - 1, 0) * float(precision)
+            candidates.append((predicate, metrics, score))
+
+        if not candidates:
+            windows.append(
+                DailyRallyWalkForwardWindow(
+                    train_years=train_years,
+                    test_year=test_year,
+                    pattern_key=None,
+                    pattern_label=None,
+                    train_support=0,
+                    train_total_matches=0,
+                    train_precision=None,
+                    train_base_rate=train_base_rate,
+                    train_lift=None,
+                    test_matches=0,
+                    test_positives=0,
+                    test_precision=None,
+                    test_base_rate=test_base_rate,
+                    test_lift=None,
+                    classification="insufficient",
+                )
+            )
+            continue
+
+        predicate, train_metrics, _score = sorted(
+            candidates,
+            key=lambda item: (
+                -item[2],
+                -(float(item[1]["precision"] or 0)),
+                -(int(item[1]["positives"] or 0)),
+                item[0].key,
+            ),
+        )[0]
+        test_metrics = _pattern_metrics(test_samples, predicate)
+        test_matches = int(test_metrics["total_matches"] or 0)
+        test_lift = test_metrics["lift"] if test_matches >= min_test_matches else None
+        windows.append(
+            DailyRallyWalkForwardWindow(
+                train_years=train_years,
+                test_year=test_year,
+                pattern_key=predicate.key,
+                pattern_label=predicate.label,
+                train_support=int(train_metrics["positives"] or 0),
+                train_total_matches=int(train_metrics["total_matches"] or 0),
+                train_precision=train_metrics["precision"],
+                train_base_rate=train_metrics["base_rate"],
+                train_lift=train_metrics["lift"],
+                test_matches=test_matches,
+                test_positives=int(test_metrics["positives"] or 0),
+                test_precision=test_metrics["precision"] if test_matches >= min_test_matches else None,
+                test_base_rate=test_metrics["base_rate"],
+                test_lift=test_lift,
+                classification=_window_classification(test_lift),
+            )
+        )
+    return windows
+
+
+def _pattern_stability(
+    samples: list[DailyRallySample],
+    *,
+    min_train_support: int,
+    min_test_matches: int,
+) -> list[DailyRallyPatternStability]:
+    years = _complete_years(samples)
+    complete_samples = _samples_for_years(samples, set(years))
+    predicates = build_rule_candidates(complete_samples)
+    items: list[DailyRallyPatternStability] = []
+
+    for predicate in predicates:
+        full_metrics = _pattern_metrics(complete_samples, predicate)
+        if int(full_metrics["total_matches"] or 0) == 0:
+            continue
+
+        train_lifts: list[float] = []
+        test_lifts: list[float] = []
+        for index in range(0, max(len(years) - 3, 0)):
+            train_years = set(years[index : index + 3])
+            test_year = years[index + 3]
+            train_samples = _samples_for_years(complete_samples, train_years)
+            test_samples = _samples_for_years(complete_samples, {test_year})
+            train_metrics = _pattern_metrics(train_samples, predicate)
+            test_metrics = _pattern_metrics(test_samples, predicate)
+            if int(train_metrics["positives"] or 0) < min_train_support:
+                continue
+            if int(test_metrics["total_matches"] or 0) < min_test_matches:
+                continue
+            if train_metrics["lift"] is not None:
+                train_lifts.append(float(train_metrics["lift"]))
+            if test_metrics["lift"] is not None:
+                test_lifts.append(float(test_metrics["lift"]))
+
+        median_train_lift = float(median(train_lifts)) if train_lifts else None
+        median_test_lift = float(median(test_lifts)) if test_lifts else None
+        test_lift_gt_1_ratio = (
+            sum(1 for lift in test_lifts if lift > 1) / len(test_lifts)
+            if test_lifts
+            else None
+        )
+        full_period_lift = float(full_metrics["lift"] or 0.0)
+        items.append(
+            DailyRallyPatternStability(
+                pattern_key=predicate.key,
+                pattern_label=predicate.label,
+                total_matches=int(full_metrics["total_matches"] or 0),
+                positives=int(full_metrics["positives"] or 0),
+                full_period_lift=full_period_lift,
+                test_window_count=len(test_lifts),
+                median_train_lift=median_train_lift,
+                median_test_lift=median_test_lift,
+                test_lift_gt_1_ratio=test_lift_gt_1_ratio,
+                classification=_validation_classification(
+                    full_period_lift=full_period_lift,
+                    test_window_count=len(test_lifts),
+                    median_test_lift=median_test_lift,
+                    test_lift_gt_1_ratio=test_lift_gt_1_ratio,
+                ),
+            )
+        )
+
+    return sorted(
+        items,
+        key=lambda item: (
+            {"stable": 0, "fragile": 1, "insufficient": 2}.get(item.classification, 3),
+            -(item.median_test_lift or 0),
+            -item.full_period_lift,
+            item.pattern_key,
+        ),
+    )
+
+
+def build_daily_rally_validation(
+    samples: list[DailyRallySample],
+    *,
+    min_train_support: int = 5,
+    min_test_matches: int = 3,
+) -> DailyRallyValidationSummary:
+    years = _year_breakdown(samples)
+    partial_years = [item.year for item in years if item.partial]
+    complete_years = [item.year for item in years if not item.partial]
+    warnings = [
+        f"{year} has censored 120d returns and is excluded from stability checks."
+        for year in partial_years
+    ]
+    walk_forward_windows = build_walk_forward_windows(
+        samples,
+        min_train_support=min_train_support,
+        min_test_matches=min_test_matches,
+    )
+    pattern_stability = _pattern_stability(
+        samples,
+        min_train_support=min_train_support,
+        min_test_matches=min_test_matches,
+    )
+    median_test_lifts = [
+        item.median_test_lift
+        for item in pattern_stability
+        if item.median_test_lift is not None
+    ]
+    ticker_concentration = _ticker_concentration(samples)
+
+    return DailyRallyValidationSummary(
+        summary={
+            "sample_count": len(samples),
+            "positive_count": sum(1 for sample in samples if sample.label == 1),
+            "complete_years": complete_years,
+            "partial_years": partial_years,
+            "validation_start_year": complete_years[0] if complete_years else None,
+            "validation_end_year": complete_years[-1] if complete_years else None,
+            "top_positive_ticker_share": ticker_concentration[0].positive_share
+            if ticker_concentration
+            else None,
+            "walk_forward_median_lift": float(median(median_test_lifts))
+            if median_test_lifts
+            else None,
+        },
+        year_breakdown=years,
+        ticker_concentration=ticker_concentration,
+        pattern_stability=pattern_stability,
+        walk_forward_windows=walk_forward_windows,
+        warnings=warnings,
+    )
+
+
 def _sort_rules(rules: list[DailyRallyRule]) -> list[DailyRallyRule]:
     return sorted(rules, key=lambda rule: (-rule.score, -rule.precision, -rule.support, rule.rule_key))
 
@@ -716,6 +1102,7 @@ def find_current_candidates(
 def run_daily_rally_backtest(db, universe: list[tuple[str, str]] | None = None) -> DailyRallyBacktestResult:
     samples, ticker_count, data_start, data_end = _collect_daily_rally_samples(db, universe)
     pattern_stats = build_pattern_stats(samples)
+    validation = build_daily_rally_validation(samples)
     rules = rank_rules(samples)
     current_candidates = find_current_candidates(samples, rules)
     return DailyRallyBacktestResult(
@@ -723,6 +1110,7 @@ def run_daily_rally_backtest(db, universe: list[tuple[str, str]] | None = None) 
         rules=rules,
         current_candidates=current_candidates,
         pattern_stats=pattern_stats,
+        validation=validation,
         ticker_count=ticker_count,
         data_start=data_start,
         data_end=data_end,

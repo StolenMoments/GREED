@@ -9,6 +9,7 @@ import {
   fetchDailyRallyCandidates,
   fetchDailyRallyInsights,
   fetchDailyRallyPatternStats,
+  fetchDailyRallyValidation,
   type BacktestRunDetail,
   type BacktestRunSummary,
   type BacktestStat,
@@ -21,6 +22,7 @@ import {
   DailyRallyPatternStatsTable,
   DailyRallyRulesTable,
   DailyRallySummaryPanel,
+  DailyRallyValidationPanel,
 } from './DailyRallyPanels';
 import { formatHorizonLabel, formatScoreBucketLabel } from './backtestHighlights';
 import {
@@ -350,6 +352,11 @@ function DailyRallyPage() {
     queryFn: () => fetchDailyRallyPatternStats(runId as number),
     enabled: runId !== null,
   });
+  const dailyRallyValidationQuery = useQuery({
+    queryKey: ['backtest', 'run', runId, 'daily-rally-validation'],
+    queryFn: () => fetchDailyRallyValidation(runId as number),
+    enabled: runId !== null,
+  });
 
   const setSelectedRun = (id: number) => {
     setRunId(id);
@@ -362,6 +369,7 @@ function DailyRallyPage() {
     void dailyRallyInsightsQuery.refetch();
     void dailyRallyCandidatesQuery.refetch();
     void dailyRallyPatternStatsQuery.refetch();
+    void dailyRallyValidationQuery.refetch();
   };
 
   return (
@@ -430,6 +438,10 @@ function DailyRallyPage() {
               <DailyRallyCandidateBriefing
                 candidates={dailyRallyCandidatesQuery.data}
                 isError={dailyRallyCandidatesQuery.isError}
+              />
+              <DailyRallyValidationPanel
+                isError={dailyRallyValidationQuery.isError}
+                validation={dailyRallyValidationQuery.data}
               />
               <ForwardReturnTable detail={detail} />
               <DailyRallyPatternStatsTable

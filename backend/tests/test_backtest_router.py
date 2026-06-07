@@ -24,6 +24,7 @@ from backend.models import (
     DailyRallyCurrentCandidate,
     DailyRallyPatternStat,
     DailyRallyRuleStat,
+    DailyRallyValidationSummary,
 )
 from backend.routers import backtest
 from backend.routers.backtest import router
@@ -790,6 +791,73 @@ def test_get_daily_rally_pattern_stats_rejects_non_daily_rally_run(
     run_id = _seed(db_session)
 
     resp = client.get(f"/api/backtest/runs/{run_id}/daily-rally-pattern-stats")
+
+    assert resp.status_code == 404
+
+
+def test_get_daily_rally_validation_decodes_summary(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2026, 6, 5),
+        ticker_count=1,
+        signal_count=2,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        DailyRallyValidationSummary(
+            run_id=run.id,
+            summary_json=(
+                '{"summary":{"sample_count":2,"complete_years":[2024],"partial_years":[2026],'
+                '"top_positive_ticker_share":0.5,"walk_forward_median_lift":1.35},'
+                '"year_breakdown":[{"year":2026,"total":2,"positives":1,"base_rate":0.5,'
+                '"positive_forward_return_120d_mean":null,"censored_120d_count":2,"partial":true}],'
+                '"ticker_concentration":[{"ticker":"005930","name":"Samsung","total_count":2,'
+                '"positive_count":1,"positive_share":0.5}],'
+                '"pattern_stability":[{"pattern_key":"ret_20d>=0.20","pattern_label":"ret_20d >= 0.20",'
+                '"total_matches":10,"positives":3,"full_period_lift":1.4,"test_window_count":5,'
+                '"median_train_lift":1.5,"median_test_lift":1.3,"test_lift_gt_1_ratio":0.8,'
+                '"classification":"stable"}],'
+                '"walk_forward_windows":[{"train_years":[2021,2022,2023],"test_year":2024,'
+                '"pattern_key":"ret_20d>=0.20","pattern_label":"ret_20d >= 0.20","train_support":5,'
+                '"train_total_matches":12,"train_precision":0.4167,"train_base_rate":0.2,"train_lift":2.0835,'
+                '"test_matches":4,"test_positives":1,"test_precision":0.25,"test_base_rate":0.2,'
+                '"test_lift":1.25,"classification":"stable"}],'
+                '"warnings":["2026 has censored 120d returns and is excluded from stability checks."]}'
+            ),
+        )
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-validation")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == run.id
+    assert body["summary"]["partial_years"] == [2026]
+    assert body["year_breakdown"][0]["partial"] is True
+    assert body["ticker_concentration"][0]["ticker"] == "005930"
+    assert body["pattern_stability"][0]["classification"] == "stable"
+    assert body["walk_forward_windows"][0]["test_lift"] == pytest.approx(1.25)
+    assert "2026" in body["warnings"][0]
+
+
+def test_get_daily_rally_validation_rejects_non_daily_rally_run(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run_id = _seed(db_session)
+
+    resp = client.get(f"/api/backtest/runs/{run_id}/daily-rally-validation")
 
     assert resp.status_code == 404
 

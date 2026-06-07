@@ -144,6 +144,67 @@ export interface DailyRallyCandidates {
   candidates: DailyRallyCandidate[];
 }
 
+export interface DailyRallyYearValidation {
+  year: number;
+  total: number;
+  positives: number;
+  base_rate: number;
+  positive_forward_return_120d_mean: number | null;
+  censored_120d_count: number;
+  partial: boolean;
+}
+
+export interface DailyRallyTickerConcentration {
+  ticker: string;
+  name: string;
+  total_count: number;
+  positive_count: number;
+  positive_share: number;
+}
+
+export type DailyRallyValidationClassification = 'stable' | 'fragile' | 'insufficient';
+
+export interface DailyRallyPatternStability {
+  pattern_key: string;
+  pattern_label: string;
+  total_matches: number;
+  positives: number;
+  full_period_lift: number;
+  test_window_count: number;
+  median_train_lift: number | null;
+  median_test_lift: number | null;
+  test_lift_gt_1_ratio: number | null;
+  classification: DailyRallyValidationClassification;
+}
+
+export interface DailyRallyWalkForwardWindow {
+  train_years: number[];
+  test_year: number;
+  pattern_key: string | null;
+  pattern_label: string | null;
+  train_support: number;
+  train_total_matches: number;
+  train_precision: number | null;
+  train_base_rate: number | null;
+  train_lift: number | null;
+  test_matches: number;
+  test_positives: number;
+  test_precision: number | null;
+  test_base_rate: number | null;
+  test_lift: number | null;
+  classification: DailyRallyValidationClassification;
+}
+
+export interface DailyRallyValidation {
+  run_id: number;
+  summary: Record<string, unknown>;
+  year_breakdown: DailyRallyYearValidation[];
+  ticker_concentration: DailyRallyTickerConcentration[];
+  pattern_stability: DailyRallyPatternStability[];
+  walk_forward_windows: DailyRallyWalkForwardWindow[];
+  warnings: string[];
+}
+
 export interface ContractBreakdownItem {
   signal_count: number;
   entered_count: number;
@@ -242,6 +303,13 @@ export async function fetchDailyRallyPatternStats(runId: number): Promise<DailyR
 export async function fetchDailyRallyCandidates(runId: number): Promise<DailyRallyCandidates> {
   const response = await apiClient.get<DailyRallyCandidates>(
     `/backtest/runs/${runId}/daily-rally-candidates`,
+  );
+  return response.data;
+}
+
+export async function fetchDailyRallyValidation(runId: number): Promise<DailyRallyValidation> {
+  const response = await apiClient.get<DailyRallyValidation>(
+    `/backtest/runs/${runId}/daily-rally-validation`,
   );
   return response.data;
 }

@@ -9,6 +9,7 @@ from scripts.backtest import daily_rally as daily_rally_module
 from scripts.backtest.daily_rally import (
     DailyRallyRule,
     DailyRallySample,
+    build_daily_rally_validation,
     build_daily_features,
     build_pattern_stats,
     build_samples_for_ticker,
@@ -252,3 +253,123 @@ def test_run_daily_rally_backtest_returns_result_shape(monkeypatch: pytest.Monke
     assert result.samples
     assert result.data_start == daily.index.min().date()
     assert result.data_end == daily.index.max().date()
+
+
+def _validation_sample(
+    ticker: str,
+    signal_date: date,
+    label: int,
+    *,
+    ret_20d: float = 0.3,
+    ret_120d: float | None = 0.1,
+) -> DailyRallySample:
+    return DailyRallySample(
+        ticker=ticker,
+        name=f"Name {ticker}",
+        signal_date=signal_date,
+        close_price=100,
+        label=label,
+        forward_returns={120: ret_120d},
+        features={"ret_20d": ret_20d},
+    )
+
+
+def test_build_daily_rally_validation_marks_partial_year_and_excludes_it_from_windows() -> None:
+    samples = [
+        _validation_sample("A", date(2023, 1, 2), 1, ret_120d=0.4),
+        _validation_sample("B", date(2023, 1, 3), 0, ret_120d=-0.1),
+        _validation_sample("C", date(2026, 6, 1), 1, ret_120d=None),
+        _validation_sample("D", date(2026, 6, 2), 0, ret_120d=None),
+    ]
+
+    validation = build_daily_rally_validation(samples)
+
+    by_year = {item.year: item for item in validation.year_breakdown}
+    assert by_year[2023].partial is False
+    assert by_year[2023].base_rate == pytest.approx(0.5)
+    assert by_year[2023].positive_forward_return_120d_mean == pytest.approx(0.4)
+    assert by_year[2026].partial is True
+    assert by_year[2026].censored_120d_count == 2
+    assert any("2026" in warning for warning in validation.warnings)
+    assert validation.summary["partial_years"] == [2026]
+
+
+def test_build_daily_rally_validation_sorts_ticker_concentration_by_positive_share() -> None:
+    samples = [
+        _validation_sample("A", date(2022, 1, 1), 1),
+        _validation_sample("A", date(2022, 1, 2), 1),
+        _validation_sample("A", date(2022, 1, 3), 0),
+        _validation_sample("B", date(2022, 1, 1), 1),
+        _validation_sample("C", date(2022, 1, 1), 0),
+    ]
+
+    validation = build_daily_rally_validation(samples)
+
+    assert [item.ticker for item in validation.ticker_concentration[:2]] == ["A", "B"]
+    assert validation.ticker_concentration[0].positive_count == 2
+    assert validation.ticker_concentration[0].positive_share == pytest.approx(2 / 3)
+
+
+def test_build_daily_rally_validation_walk_forward_does_not_train_on_test_year() -> None:
+    samples: list[DailyRallySample] = []
+    for year in (2015, 2016, 2017):
+        samples.extend(
+            [
+                _validation_sample("A", date(year, 1, 2), 1, ret_20d=0.3),
+                _validation_sample("B", date(year, 1, 3), 0, ret_20d=0.01),
+            ]
+        )
+    samples.extend(
+        [
+            _validation_sample("C", date(2018, 1, 2), 1, ret_20d=0.01),
+            _validation_sample("D", date(2018, 1, 3), 0, ret_20d=0.3),
+        ]
+    )
+
+    validation = build_daily_rally_validation(samples, min_train_support=1, min_test_matches=1)
+
+    window = validation.walk_forward_windows[0]
+    assert window.train_years == [2015, 2016, 2017]
+    assert window.test_year == 2018
+    assert window.pattern_key == "ret_20d>=0.10"
+    assert window.train_lift == pytest.approx(2.0)
+    assert window.test_lift == pytest.approx(0.0)
+
+
+def test_build_daily_rally_validation_classifies_stable_fragile_and_insufficient_patterns() -> None:
+    samples: list[DailyRallySample] = []
+    for year in range(2015, 2023):
+        samples.extend(
+            [
+                _validation_sample("A", date(year, 1, 2), 1, ret_20d=0.3),
+                _validation_sample("B", date(year, 1, 3), 0, ret_20d=0.01),
+                _validation_sample("C", date(year, 1, 4), 0, ret_20d=0.01),
+            ]
+        )
+
+    stable = build_daily_rally_validation(samples, min_train_support=1, min_test_matches=1)
+    stable_ret20 = next(item for item in stable.pattern_stability if item.pattern_key == "ret_20d>=0.20")
+    assert stable_ret20.classification == "stable"
+    assert stable_ret20.test_window_count >= 5
+    assert stable_ret20.median_test_lift is not None
+    assert stable_ret20.median_test_lift >= 1.2
+
+    fragile_samples = samples.copy()
+    for year in range(2018, 2023):
+        fragile_samples.extend(
+            [
+                _validation_sample("D", date(year, 2, 1), 0, ret_20d=0.3),
+                _validation_sample("E", date(year, 2, 2), 0, ret_20d=0.3),
+                _validation_sample("F", date(year, 2, 3), 0, ret_20d=0.3),
+                _validation_sample("G", date(year, 2, 4), 1, ret_20d=0.01),
+            ]
+        )
+    fragile = build_daily_rally_validation(fragile_samples, min_train_support=1, min_test_matches=1)
+    fragile_ret20 = next(item for item in fragile.pattern_stability if item.pattern_key == "ret_20d>=0.20")
+    assert fragile_ret20.classification == "fragile"
+
+    insufficient = build_daily_rally_validation(samples[:4], min_train_support=1, min_test_matches=1)
+    insufficient_ret20 = next(
+        item for item in insufficient.pattern_stability if item.pattern_key == "ret_20d>=0.20"
+    )
+    assert insufficient_ret20.classification == "insufficient"

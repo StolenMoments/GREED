@@ -6,6 +6,7 @@ import type {
   DailyRallyPatternStat,
   DailyRallyPatternStats,
   DailyRallyRuleStat,
+  DailyRallyValidation,
 } from '../api/backtest';
 import React from 'react';
 import { formatPriceByTicker } from '../utils/formatPrice';
@@ -393,6 +394,226 @@ export function DailyRallyPatternStatsTable({
           </table>
         </div>
       )}
+    </PanelShell>
+  );
+}
+
+function summaryNumber(summary: Record<string, unknown>, key: string): number | null {
+  const value = summary[key];
+  return typeof value === 'number' ? value : null;
+}
+
+function summaryYears(summary: Record<string, unknown>, key: string): number[] {
+  const value = summary[key];
+  return Array.isArray(value) ? value.filter((item): item is number => typeof item === 'number') : [];
+}
+
+function validationTone(classification: string): string {
+  if (classification === 'stable') return 'text-emerald-300';
+  if (classification === 'fragile') return 'text-amber-200';
+  return 'text-slate-400';
+}
+
+export function DailyRallyValidationPanel({
+  validation,
+  isError,
+}: {
+  validation: DailyRallyValidation | undefined;
+  isError: boolean;
+}) {
+  if (isError) {
+    return (
+      <PanelShell title="Validation">
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          Could not load daily rally validation.
+        </p>
+      </PanelShell>
+    );
+  }
+
+  if (!validation) {
+    return (
+      <PanelShell title="Validation">
+        <p className="mt-4 text-sm text-slate-500">No validation summary for this run.</p>
+      </PanelShell>
+    );
+  }
+
+  const completeYears = summaryYears(validation.summary, 'complete_years');
+  const partialYears = summaryYears(validation.summary, 'partial_years');
+  const validationRange =
+    completeYears.length > 0 ? `${completeYears[0]} ~ ${completeYears[completeYears.length - 1]}` : '--';
+  const topShare = summaryNumber(validation.summary, 'top_positive_ticker_share');
+  const walkForwardMedianLift = summaryNumber(validation.summary, 'walk_forward_median_lift');
+
+  return (
+    <PanelShell title="Validation">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'validation years', value: validationRange },
+          { label: 'partial year', value: partialYears.length ? partialYears.join(', ') : '--' },
+          { label: 'positive concentration', value: ratio(topShare) },
+          { label: 'walk-forward median lift', value: decimal(walkForwardMedianLift) },
+        ].map((item) => (
+          <div
+            className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-4 py-3"
+            key={item.label}
+          >
+            <p className="text-xs text-slate-500">{item.label}</p>
+            <p className="mt-1 text-xl font-semibold text-slate-50">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {validation.warnings.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-200/20 bg-amber-300/10 px-4 py-3">
+          {validation.warnings.map((warning) => (
+            <p className="text-sm text-amber-100" key={warning}>
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] border-collapse text-sm">
+            <thead>
+              <tr className="text-slate-400">
+                <th className="px-3 py-2 text-left">Year</th>
+                <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2 text-right">Positives</th>
+                <th className="px-3 py-2 text-right">Base Rate</th>
+                <th className="px-3 py-2 text-right">Positive 120d</th>
+              </tr>
+            </thead>
+            <tbody>
+              {validation.year_breakdown.map((item) => (
+                <tr className="border-t border-slate-800/70" key={item.year}>
+                  <td className="px-3 py-3 font-semibold text-slate-200">
+                    {item.year}
+                    {item.partial ? <span className="ml-2 text-xs text-amber-200">partial</span> : null}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">{count(item.total)}</td>
+                  <td className="px-3 py-3 text-right text-slate-300">{count(item.positives)}</td>
+                  <td className="px-3 py-3 text-right text-slate-300">{ratio(item.base_rate)}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-slate-200">
+                    {signedPct(item.positive_forward_return_120d_mean)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] border-collapse text-sm">
+            <thead>
+              <tr className="text-slate-400">
+                <th className="px-3 py-2 text-left">Ticker</th>
+                <th className="px-3 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-right">Positives</th>
+                <th className="px-3 py-2 text-right">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {validation.ticker_concentration.slice(0, 8).map((item) => (
+                <tr className="border-t border-slate-800/70" key={item.ticker}>
+                  <td className="px-3 py-3 font-semibold text-amber-100">{item.ticker}</td>
+                  <td className="px-3 py-3 text-slate-200">{item.name}</td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {count(item.positive_count)}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-300">
+                    {ratio(item.positive_share)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[900px] border-collapse text-sm">
+          <thead>
+            <tr className="text-slate-400">
+              <th className="px-3 py-2 text-left">Pattern</th>
+              <th className="px-3 py-2 text-right">Full Lift</th>
+              <th className="px-3 py-2 text-right">Test Windows</th>
+              <th className="px-3 py-2 text-right">Median Test Lift</th>
+              <th className="px-3 py-2 text-right">Lift &gt; 1</th>
+              <th className="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {validation.pattern_stability.slice(0, 12).map((item) => (
+              <tr className="border-t border-slate-800/70" key={item.pattern_key}>
+                <td className="px-3 py-3">
+                  <p className="font-semibold text-slate-200">
+                    {translateDailyRallyRule(item.pattern_key)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{item.pattern_label}</p>
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {decimal(item.full_period_lift)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {count(item.test_window_count)}
+                </td>
+                <td className="px-3 py-3 text-right font-semibold text-slate-200">
+                  {decimal(item.median_test_lift)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {ratio(item.test_lift_gt_1_ratio)}
+                </td>
+                <td className={`px-3 py-3 text-right font-semibold ${validationTone(item.classification)}`}>
+                  {item.classification}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[940px] border-collapse text-sm">
+          <thead>
+            <tr className="text-slate-400">
+              <th className="px-3 py-2 text-left">Window</th>
+              <th className="px-3 py-2 text-left">Top Pattern</th>
+              <th className="px-3 py-2 text-right">Train Lift</th>
+              <th className="px-3 py-2 text-right">Test Matches</th>
+              <th className="px-3 py-2 text-right">Test Precision</th>
+              <th className="px-3 py-2 text-right">Test Lift</th>
+            </tr>
+          </thead>
+          <tbody>
+            {validation.walk_forward_windows.map((item) => (
+              <tr className="border-t border-slate-800/70" key={`${item.train_years.join('-')}:${item.test_year}`}>
+                <td className="px-3 py-3 font-semibold text-slate-200">
+                  {item.train_years.join('-')} &gt; {item.test_year}
+                </td>
+                <td className="px-3 py-3 text-slate-300">
+                  {item.pattern_key ? translateDailyRallyRule(item.pattern_key) : '--'}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {decimal(item.train_lift)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {count(item.test_matches)}
+                </td>
+                <td className="px-3 py-3 text-right text-slate-300">
+                  {ratio(item.test_precision)}
+                </td>
+                <td className="px-3 py-3 text-right font-semibold text-slate-200">
+                  {decimal(item.test_lift)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </PanelShell>
   );
 }

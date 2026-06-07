@@ -15,6 +15,7 @@ from backend.models import (
     DailyRallyCurrentCandidate,
     DailyRallyPatternStat,
     DailyRallyRuleStat,
+    DailyRallyValidationSummary,
 )
 from scripts.backtest.daily_rally import (
     DailyRallyBacktestResult,
@@ -23,6 +24,9 @@ from scripts.backtest.daily_rally import (
     DailyRallyRule,
     DailyRallySample,
     DailyRallyReturnStat,
+    DailyRallyValidationSummary as EngineDailyRallyValidationSummary,
+    DailyRallyWalkForwardWindow,
+    DailyRallyYearValidation,
 )
 from scripts.backtest.persistence import persist_daily_rally_run
 
@@ -45,9 +49,11 @@ def test_daily_rally_tables_are_created() -> None:
     assert "daily_rally_rule_stats" in Base.metadata.tables
     assert "daily_rally_pattern_stats" in Base.metadata.tables
     assert "daily_rally_current_candidates" in Base.metadata.tables
+    assert "daily_rally_validation_summaries" in Base.metadata.tables
     assert DailyRallyRuleStat.__table__.name == "daily_rally_rule_stats"
     assert DailyRallyPatternStat.__table__.name == "daily_rally_pattern_stats"
     assert DailyRallyCurrentCandidate.__table__.name == "daily_rally_current_candidates"
+    assert DailyRallyValidationSummary.__table__.name == "daily_rally_validation_summaries"
 
 
 def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Session) -> None:
@@ -124,6 +130,47 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
                 },
             )
         ],
+        validation=EngineDailyRallyValidationSummary(
+            summary={
+                "sample_count": 2,
+                "complete_years": [2024],
+                "partial_years": [],
+                "walk_forward_median_lift": 1.4,
+            },
+            year_breakdown=[
+                DailyRallyYearValidation(
+                    year=2024,
+                    total=2,
+                    positives=1,
+                    base_rate=0.5,
+                    positive_forward_return_120d_mean=0.8,
+                    censored_120d_count=1,
+                    partial=True,
+                )
+            ],
+            ticker_concentration=[],
+            pattern_stability=[],
+            walk_forward_windows=[
+                DailyRallyWalkForwardWindow(
+                    train_years=[2021, 2022, 2023],
+                    test_year=2024,
+                    pattern_key="ret_20d>=0.10",
+                    pattern_label="ret_20d >= 0.10",
+                    train_support=5,
+                    train_total_matches=10,
+                    train_precision=0.5,
+                    train_base_rate=0.25,
+                    train_lift=2.0,
+                    test_matches=3,
+                    test_positives=1,
+                    test_precision=1 / 3,
+                    test_base_rate=0.5,
+                    test_lift=2 / 3,
+                    classification="fragile",
+                )
+            ],
+            warnings=["2024 has censored 120d returns and is excluded from stability checks."],
+        ),
         ticker_count=2,
         data_start=date(2024, 1, 1),
         data_end=date(2024, 2, 1),
@@ -183,3 +230,13 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
         "ret_20d": 0.12,
         "weekly_cloud_position": "above_cloud",
     }
+
+    validation = db_session.scalar(
+        select(DailyRallyValidationSummary).where(DailyRallyValidationSummary.run_id == run_id)
+    )
+    assert validation is not None
+    payload = json.loads(validation.summary_json)
+    assert payload["summary"]["walk_forward_median_lift"] == pytest.approx(1.4)
+    assert payload["year_breakdown"][0]["year"] == 2024
+    assert payload["year_breakdown"][0]["partial"] is True
+    assert payload["walk_forward_windows"][0]["test_year"] == 2024

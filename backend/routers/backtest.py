@@ -19,6 +19,7 @@ from backend.models import (
     DailyRallyCurrentCandidate,
     DailyRallyPatternStat,
     DailyRallyRuleStat,
+    DailyRallyValidationSummary,
 )
 from backend.schemas import (
     BacktestStrategyJobCreate,
@@ -43,6 +44,7 @@ from backend.schemas import (
     DailyRallyPatternStatsRead,
     DailyRallyReturnStatRead,
     DailyRallyRuleStatRead,
+    DailyRallyValidationRead,
     HistogramBin,
 )
 from backend.timezone import seoul_now
@@ -698,6 +700,23 @@ def get_daily_rally_candidates(
             for candidate in candidates
         ],
     )
+
+
+@router.get("/runs/{run_id}/daily-rally-validation", response_model=DailyRallyValidationRead)
+def get_daily_rally_validation(
+    run_id: int,
+    db: Session = Depends(get_db),
+) -> DailyRallyValidationRead:
+    _daily_rally_run_or_404(db, run_id)
+    validation = db.scalar(
+        select(DailyRallyValidationSummary)
+        .where(DailyRallyValidationSummary.run_id == run_id)
+        .order_by(DailyRallyValidationSummary.id.desc())
+    )
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Daily Rally validation summary not found")
+    payload = json.loads(validation.summary_json)
+    return DailyRallyValidationRead(run_id=run_id, **payload)
 
 
 @router.get("/runs/{run_id}/signals", response_model=BacktestSignalPage)
