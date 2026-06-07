@@ -35,12 +35,14 @@ export function rankTopWinRateCells(
       if (!stat || stat.win_rate === null) {
         return [];
       }
-      return [{
-        key: bucketHorizonKey(bucket, horizon),
-        winRate: stat.win_rate,
-        count: stat.count,
-        displayOrder: bucketIndex * horizons.length + horizonIndex,
-      }];
+      return [
+        {
+          key: bucketHorizonKey(bucket, horizon),
+          winRate: stat.win_rate,
+          count: stat.count,
+          displayOrder: bucketIndex * horizons.length + horizonIndex,
+        },
+      ];
     }),
   );
 

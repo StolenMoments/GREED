@@ -4,6 +4,7 @@ import AnalysisDetailPage from './pages/AnalysisDetailPage';
 import AnalysisListPage from './pages/AnalysisListPage';
 import BacktestPage from './pages/BacktestPage';
 import BacktestUniversePage from './pages/BacktestUniversePage';
+import DailyRallyPage from './pages/DailyRallyPage';
 import JobsPage from './pages/JobsPage';
 import RunListPage from './pages/RunListPage';
 import StatsPage from './pages/StatsPage';
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/analyses', label: 'Analyses' },
   { to: '/stats', label: 'Stats' },
   { to: '/backtest', label: 'Backtest', end: true },
+  { to: '/daily-rally', label: 'Daily Rally' },
   { to: '/backtest/universe', label: 'Universe' },
   { to: '/jobs', label: 'Jobs' },
   { to: '/candidates', label: 'Scan' },
@@ -69,6 +71,7 @@ function App() {
           />
           <Route element={<StatsPage />} path="/stats" />
           <Route element={<BacktestPage />} path="/backtest" />
+          <Route element={<DailyRallyPage />} path="/daily-rally" />
           <Route element={<BacktestUniversePage />} path="/backtest/universe" />
           <Route element={<JobsPage />} path="/jobs" />
           <Route element={<CandidatesPage />} path="/candidates" />

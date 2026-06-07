@@ -1,9 +1,16 @@
 import type {
   BacktestRunDetail,
+  DailyRallyCandidate,
   DailyRallyCandidates,
   DailyRallyInsights,
+  DailyRallyRuleStat,
 } from '../api/backtest';
 import { formatPriceByTicker } from '../utils/formatPrice';
+import {
+  classifyDailyRallyRule,
+  explainDailyRallyRule,
+  translateDailyRallyRule,
+} from './dailyRallyInterpretation';
 
 function ratio(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined) return '--';
@@ -23,6 +30,11 @@ function date(value: string | null | undefined): string {
 function decimal(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined) return '--';
   return value.toFixed(digits);
+}
+
+function signedPct(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined) return '--';
+  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(digits)}%`;
 }
 
 function PanelShell({
@@ -89,6 +101,149 @@ export function DailyRallySummaryPanel({
   );
 }
 
+function ruleStrengthTone(rule: DailyRallyRuleStat): string {
+  if (rule.lift >= 3) return 'border-amber-200/40 bg-amber-300/10 text-amber-100';
+  if (rule.lift >= 2) return 'border-emerald-200/30 bg-emerald-300/10 text-emerald-100';
+  return 'border-slate-700 bg-slate-900/80 text-slate-300';
+}
+
+export function DailyRallyPatternBriefing({
+  insights,
+  isError,
+}: {
+  insights: DailyRallyInsights | undefined;
+  isError: boolean;
+}) {
+  const topRules = insights?.rules.slice(0, 3) ?? [];
+
+  return (
+    <PanelShell title="pattern briefing">
+      {isError ? (
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          패턴 요약을 불러오지 못했습니다.
+        </p>
+      ) : topRules.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          아직 반복 패턴으로 볼 만한 룰이 없습니다.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-4">
+          {topRules.map((rule, index) => (
+            <article
+              className="rounded-lg border border-slate-800 bg-slate-950/70 p-5"
+              key={rule.id}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-md bg-amber-300 px-2.5 py-1 text-xs font-bold text-slate-950">
+                  #{index + 1}
+                </span>
+                <span
+                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${ruleStrengthTone(
+                    rule,
+                  )}`}
+                >
+                  {classifyDailyRallyRule(rule)}
+                </span>
+                <span className="text-xs text-slate-500">
+                  lift {decimal(rule.lift)} · score {decimal(rule.score)}
+                </span>
+              </div>
+              <h3 className="mt-4 text-xl font-semibold leading-snug text-slate-50">
+                {translateDailyRallyRule(rule.rule_key)}
+              </h3>
+              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
+                {explainDailyRallyRule(rule)}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
+function candidateReason(candidate: DailyRallyCandidate): string {
+  if (candidate.matched_rules.length === 0) {
+    return '매칭된 패턴이 없습니다.';
+  }
+  return candidate.matched_rules
+    .slice(0, 2)
+    .map(translateDailyRallyRule)
+    .join(' / ');
+}
+
+export function DailyRallyCandidateBriefing({
+  candidates,
+  isError,
+}: {
+  candidates: DailyRallyCandidates | undefined;
+  isError: boolean;
+}) {
+  const topCandidates = candidates?.candidates.slice(0, 8) ?? [];
+
+  return (
+    <PanelShell title="candidate briefing">
+      {isError ? (
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          후보 요약을 불러오지 못했습니다.
+        </p>
+      ) : topCandidates.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">
+          현재 데이터 기준으로 매칭된 후보가 없습니다.
+        </p>
+      ) : (
+        <div className="mt-5 grid gap-3 xl:grid-cols-2">
+          {topCandidates.map((candidate) => (
+            <article
+              className="rounded-lg border border-slate-800 bg-slate-950/65 p-4"
+              key={candidate.id}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-lg font-semibold text-slate-50">
+                    {candidate.name}
+                    <span className="ml-2 text-sm text-amber-200">{candidate.ticker}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {date(candidate.signal_date)} · {formatPriceByTicker(
+                      candidate.close_price,
+                      candidate.ticker,
+                    ) ?? count(candidate.close_price)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-xs text-slate-500">max score</p>
+                  <p className="text-lg font-semibold text-amber-200">
+                    {decimal(candidate.max_rule_score)}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {candidateReason(candidate)}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                  매칭 룰 {count(candidate.matched_rule_count)}개
+                </span>
+                {typeof candidate.features.ret_20d === 'number' && (
+                  <span className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                    20일 {signedPct(candidate.features.ret_20d)}
+                  </span>
+                )}
+                {typeof candidate.features.volume_ratio_20d === 'number' && (
+                  <span className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
+                    거래량 {decimal(candidate.features.volume_ratio_20d)}배
+                  </span>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
 export function DailyRallyRulesTable({
   insights,
   isError,
@@ -120,7 +275,12 @@ export function DailyRallyRulesTable({
             <tbody>
               {insights.rules.map((rule) => (
                 <tr className="border-t border-slate-800/70" key={rule.id}>
-                  <td className="px-3 py-3 font-semibold text-slate-200">{rule.rule_label}</td>
+                  <td className="px-3 py-3">
+                    <p className="font-semibold text-slate-200">
+                      {translateDailyRallyRule(rule.rule_key)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{rule.rule_label}</p>
+                  </td>
                   <td className="px-3 py-3 text-right text-slate-300">
                     {count(rule.support)}
                   </td>
@@ -193,7 +353,7 @@ export function DailyRallyCandidatesTable({
                         count(candidate.close_price)}
                     </td>
                     <td className="px-3 py-3 text-slate-300">
-                      {visibleRules.join(', ')}
+                      {visibleRules.map(translateDailyRallyRule).join(', ')}
                       {hiddenRuleCount > 0 ? ` +${hiddenRuleCount}` : ''}
                     </td>
                     <td className="px-3 py-3 text-right font-semibold text-amber-200">
