@@ -21,6 +21,8 @@ from backend.models import (
     BacktestStat,
     BacktestStrategyJob,
     BacktestUniverseMember,
+    DailyRallyCurrentCandidate,
+    DailyRallyRuleStat,
 )
 from backend.routers import backtest
 from backend.routers.backtest import router
@@ -410,6 +412,27 @@ def test_create_strategy_job_rejects_duplicate_active_job(
     assert len(jobs) == 1
 
 
+def test_create_strategy_job_accepts_daily_rally_kind(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called_job_ids: list[int] = []
+    monkeypatch.setattr(
+        backtest,
+        "run_backtest_strategy_pipeline",
+        lambda job_id: called_job_ids.append(job_id),
+    )
+
+    resp = client.post(
+        "/api/backtest/strategy-jobs",
+        json={"strategy_kind": "daily_20d_40pct_rally"},
+    )
+
+    assert resp.status_code == 202
+    assert resp.json()["strategy_kind"] == "daily_20d_40pct_rally"
+    assert called_job_ids == [resp.json()["id"]]
+
+
 def test_run_backtest_strategy_pipeline_marks_done_with_run_id(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -457,6 +480,31 @@ def test_run_backtest_strategy_pipeline_marks_done_with_run_id(
     assert run.strategy_kind == "ichimoku_span2_breakout"
     assert run.horizons == "event"
     assert run.buy_threshold == 0
+
+
+def test_run_backtest_strategy_pipeline_daily_rally_marks_done_with_run_id(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job = BacktestStrategyJob(strategy_kind="daily_20d_40pct_rally")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    class FakeResult:
+        ticker_count = 1
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "run_daily_rally_backtest", lambda db: FakeResult())
+    monkeypatch.setattr(backtest, "persist_daily_rally_run", lambda db, result: 77)
+
+    backtest.run_backtest_strategy_pipeline(job_id)
+
+    saved = db_session.get(BacktestStrategyJob, job_id)
+    assert saved is not None
+    assert saved.status == "done"
+    assert saved.backtest_run_id == 77
+    assert saved.completed_at is not None
 
 
 def test_run_backtest_strategy_pipeline_marks_failed(
@@ -583,6 +631,119 @@ def test_histogram_returns_bins_for_horizon(client: TestClient, db_session: Sess
     assert body["horizon"] == 4
     assert body["score_bucket"] == "ALL"
     assert sum(bin_["count"] for bin_ in body["bins"]) == 2
+
+
+def test_get_daily_rally_insights_returns_rules_for_run(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=1,
+        signal_count=1,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyRallyRuleStat(
+                run_id=run.id,
+                rule_key="low",
+                rule_label="low",
+                support=10,
+                positives=10,
+                total_matches=30,
+                precision=0.3,
+                base_rate=0.1,
+                lift=3.0,
+                score=2.0,
+            ),
+            DailyRallyRuleStat(
+                run_id=run.id,
+                rule_key="high",
+                rule_label="high",
+                support=5,
+                positives=5,
+                total_matches=10,
+                precision=0.5,
+                base_rate=0.1,
+                lift=5.0,
+                score=8.0,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-insights", params={"limit": 1})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == run.id
+    assert body["rule_count"] == 1
+    assert [rule["rule_key"] for rule in body["rules"]] == ["high"]
+
+
+def test_get_daily_rally_candidates_decodes_json(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=1,
+        signal_count=1,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        DailyRallyCurrentCandidate(
+            run_id=run.id,
+            ticker="005930",
+            name="Samsung",
+            signal_date=date(2024, 2, 1),
+            close_price=140.0,
+            matched_rules_json='["ret_20d>=0.10"]',
+            matched_rule_count=1,
+            max_rule_score=1.5,
+            mean_rule_score=1.5,
+            features_json='{"ma5_gt_ma20": true, "ret_20d": 0.12}',
+        )
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-candidates")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == run.id
+    assert body["candidate_count"] == 1
+    candidate = body["candidates"][0]
+    assert candidate["matched_rules"] == ["ret_20d>=0.10"]
+    assert candidate["features"] == {"ma5_gt_ma20": True, "ret_20d": 0.12}
+
+
+def test_get_daily_rally_insights_rejects_non_daily_rally_run(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run_id = _seed(db_session)
+
+    resp = client.get(f"/api/backtest/runs/{run_id}/daily-rally-insights")
+
+    assert resp.status_code == 404
 
 
 def test_run_detail_404(client: TestClient) -> None:

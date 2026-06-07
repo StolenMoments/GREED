@@ -168,7 +168,7 @@ class AnalysisBacktestJobRead(BaseModel):
 
 
 class BacktestStrategyJobCreate(BaseModel):
-    strategy_kind: Literal["ichimoku_span2_breakout"]
+    strategy_kind: Literal["ichimoku_span2_breakout", "daily_20d_40pct_rally"]
 
 
 class BacktestStrategyJobRead(BaseModel):
@@ -250,6 +250,48 @@ class BacktestStatRead(BaseModel):
     p75: float | None
     min: float | None
     max: float | None
+
+
+class DailyRallyRuleStatRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    run_id: int
+    rule_key: str
+    rule_label: str
+    support: int
+    positives: int
+    total_matches: int
+    precision: float
+    base_rate: float
+    lift: float
+    score: float
+
+
+class DailyRallyInsightsRead(BaseModel):
+    run_id: int
+    rule_count: int
+    rules: list[DailyRallyRuleStatRead]
+
+
+class DailyRallyCandidateRead(BaseModel):
+    id: int
+    run_id: int
+    ticker: str
+    name: str
+    signal_date: date
+    close_price: float
+    matched_rules: list[str]
+    matched_rule_count: int
+    max_rule_score: float | None
+    mean_rule_score: float | None
+    features: dict[str, bool | int | float | str | None]
+
+
+class DailyRallyCandidatesRead(BaseModel):
+    run_id: int
+    candidate_count: int
+    candidates: list[DailyRallyCandidateRead]
 
 
 class BacktestEventSummary(BaseModel):

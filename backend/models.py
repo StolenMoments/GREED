@@ -316,6 +316,45 @@ class BacktestStat(Base):
     max: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+class DailyRallyRuleStat(Base):
+    __tablename__ = "daily_rally_rule_stats"
+    __table_args__ = (
+        Index("ix_daily_rally_rule_stats_run_score", "run_id", "score"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    rule_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    rule_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    support: Mapped[int] = mapped_column(Integer, nullable=False)
+    positives: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_matches: Mapped[int] = mapped_column(Integer, nullable=False)
+    precision: Mapped[float] = mapped_column(Float, nullable=False)
+    base_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class DailyRallyCurrentCandidate(Base):
+    __tablename__ = "daily_rally_current_candidates"
+    __table_args__ = (
+        Index("ix_daily_rally_current_candidates_run_score", "run_id", "max_rule_score"),
+        Index("ix_daily_rally_current_candidates_run_ticker", "run_id", "ticker"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    signal_date: Mapped[date] = mapped_column(Date, nullable=False)
+    close_price: Mapped[float] = mapped_column(Float, nullable=False)
+    matched_rules_json: Mapped[str] = mapped_column(Text, nullable=False)
+    matched_rule_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_rule_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mean_rule_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    features_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class CandidateScanJob(Base):
     __tablename__ = "candidate_scan_jobs"
     __table_args__ = (

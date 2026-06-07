@@ -92,7 +92,8 @@ def _migrate_mariadb() -> None:
             "analyses", "analysis_jobs", "backtest_runs",
             "analysis_backtest_jobs", "backtest_signals", "backtest_stats",
             "backtest_universe_members", "backtest_preload_jobs",
-            "backtest_strategy_jobs",
+            "backtest_strategy_jobs", "daily_rally_rule_stats",
+            "daily_rally_current_candidates",
         ]:
             rows = conn.execute(text(
                 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
@@ -249,6 +250,49 @@ def _migrate_mariadb() -> None:
                     min FLOAT NULL,
                     max FLOAT NULL,
                     PRIMARY KEY (run_id, horizon, score_bucket)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS daily_rally_rule_stats (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    run_id INTEGER NOT NULL,
+                    rule_key VARCHAR(255) NOT NULL,
+                    rule_label VARCHAR(500) NOT NULL,
+                    support INTEGER NOT NULL,
+                    positives INTEGER NOT NULL,
+                    total_matches INTEGER NOT NULL,
+                    precision FLOAT NOT NULL,
+                    base_rate FLOAT NOT NULL,
+                    lift FLOAT NOT NULL,
+                    score FLOAT NOT NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_daily_rally_rule_stats_run_score (run_id, score)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS daily_rally_current_candidates (
+                    id INTEGER NOT NULL AUTO_INCREMENT,
+                    run_id INTEGER NOT NULL,
+                    ticker VARCHAR(20) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    signal_date DATE NOT NULL,
+                    close_price FLOAT NOT NULL,
+                    matched_rules_json TEXT NOT NULL,
+                    matched_rule_count INTEGER NOT NULL,
+                    max_rule_score FLOAT NULL,
+                    mean_rule_score FLOAT NULL,
+                    features_json TEXT NOT NULL,
+                    PRIMARY KEY (id),
+                    INDEX ix_daily_rally_current_candidates_run_score (run_id, max_rule_score),
+                    INDEX ix_daily_rally_current_candidates_run_ticker (run_id, ticker)
                 )
                 """
             )

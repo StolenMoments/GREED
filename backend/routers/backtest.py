@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
@@ -14,6 +16,8 @@ from backend.models import (
     BacktestStat,
     BacktestStrategyJob,
     BacktestUniverseMember,
+    DailyRallyCurrentCandidate,
+    DailyRallyRuleStat,
 )
 from backend.schemas import (
     BacktestStrategyJobCreate,
@@ -31,11 +35,16 @@ from backend.schemas import (
     BacktestUniverseMemberCreate,
     BacktestUniverseMemberRead,
     BacktestUniverseMemberUpdate,
+    DailyRallyCandidateRead,
+    DailyRallyCandidatesRead,
+    DailyRallyInsightsRead,
+    DailyRallyRuleStatRead,
     HistogramBin,
 )
 from backend.timezone import seoul_now
+from scripts.backtest.daily_rally import DAILY_RALLY_STRATEGY_KIND, run_daily_rally_backtest
 from scripts.backtest.engine import SignalRecord, WARMUP_WEEKS, run_span2_breakout_backtest
-from scripts.backtest.persistence import persist_run
+from scripts.backtest.persistence import persist_daily_rally_run, persist_run
 from scripts.backtest.preload_daily import preload_daily_bars
 from scripts.backtest.universe import normalize_korean_ticker
 
@@ -50,6 +59,7 @@ _RET_COLUMN = {
 _ACTIVE_PRELOAD_JOB_STATUSES = ("pending", "running")
 _ACTIVE_STRATEGY_JOB_STATUSES = ("pending", "running")
 _SPAN2_STRATEGY_KIND = "ichimoku_span2_breakout"
+_DAILY_RALLY_STRATEGY_KIND = DAILY_RALLY_STRATEGY_KIND
 _CONTRACT_FOCUS_THRESHOLD = 12
 _CONTRACT_TICKER_MIN_ENTRIES = 5
 
@@ -234,24 +244,27 @@ def run_backtest_strategy_pipeline(job_id: int) -> None:
         job.error_message = None
         db.commit()
 
-        if job.strategy_kind != _SPAN2_STRATEGY_KIND:
+        if job.strategy_kind == _SPAN2_STRATEGY_KIND:
+            result = run_span2_breakout_backtest(db)
+            run_id = persist_run(
+                db,
+                buy_threshold=0,
+                warmup_weeks=WARMUP_WEEKS,
+                ticker_count=result.ticker_count,
+                records=result.records,
+                stats=result.stats,
+                data_start=result.data_start,
+                data_end=result.data_end,
+                notes="ichimoku span2 breakout; weekly close execution",
+                strategy_kind=_SPAN2_STRATEGY_KIND,
+                horizons="event",
+                universe="KOSPI200-DB",
+            )
+        elif job.strategy_kind == _DAILY_RALLY_STRATEGY_KIND:
+            result = run_daily_rally_backtest(db)
+            run_id = persist_daily_rally_run(db, result)
+        else:
             raise ValueError(f"Unsupported strategy_kind: {job.strategy_kind}")
-
-        result = run_span2_breakout_backtest(db)
-        run_id = persist_run(
-            db,
-            buy_threshold=0,
-            warmup_weeks=WARMUP_WEEKS,
-            ticker_count=result.ticker_count,
-            records=result.records,
-            stats=result.stats,
-            data_start=result.data_start,
-            data_end=result.data_end,
-            notes="ichimoku span2 breakout; weekly close execution",
-            strategy_kind=_SPAN2_STRATEGY_KIND,
-            horizons="event",
-            universe="KOSPI200-DB",
-        )
         job = db.get(BacktestStrategyJob, job_id)
         if job is not None:
             job.status = "done"
@@ -322,6 +335,13 @@ def _adj_signal_counts(db: Session, run_ids: list[int]) -> dict[int, int]:
         .group_by(BacktestStat.run_id)
     ).all()
     return {row[0]: int(row[1]) for row in rows}
+
+
+def _daily_rally_run_or_404(db: Session, run_id: int) -> BacktestRun:
+    run = db.get(BacktestRun, run_id)
+    if run is None or run.strategy_kind != _DAILY_RALLY_STRATEGY_KIND:
+        raise HTTPException(status_code=404, detail="Daily Rally backtest run not found")
+    return run
 
 
 def _planned_contract_returns(
@@ -555,6 +575,73 @@ def get_run(run_id: int, db: Session = Depends(get_db)) -> BacktestRunDetail:
         contract_breakdown=_contract_breakdown(db, run)
         if run.strategy_kind == "analysis_contract"
         else None,
+    )
+
+
+@router.get("/runs/{run_id}/daily-rally-insights", response_model=DailyRallyInsightsRead)
+def get_daily_rally_insights(
+    run_id: int,
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> DailyRallyInsightsRead:
+    _daily_rally_run_or_404(db, run_id)
+    rules = list(
+        db.scalars(
+            select(DailyRallyRuleStat)
+            .where(DailyRallyRuleStat.run_id == run_id)
+            .order_by(
+                DailyRallyRuleStat.score.desc(),
+                DailyRallyRuleStat.precision.desc(),
+                DailyRallyRuleStat.support.desc(),
+            )
+            .limit(limit)
+        ).all()
+    )
+    return DailyRallyInsightsRead(
+        run_id=run_id,
+        rule_count=len(rules),
+        rules=[DailyRallyRuleStatRead.model_validate(rule) for rule in rules],
+    )
+
+
+@router.get("/runs/{run_id}/daily-rally-candidates", response_model=DailyRallyCandidatesRead)
+def get_daily_rally_candidates(
+    run_id: int,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> DailyRallyCandidatesRead:
+    _daily_rally_run_or_404(db, run_id)
+    candidates = list(
+        db.scalars(
+            select(DailyRallyCurrentCandidate)
+            .where(DailyRallyCurrentCandidate.run_id == run_id)
+            .order_by(
+                DailyRallyCurrentCandidate.max_rule_score.desc(),
+                DailyRallyCurrentCandidate.matched_rule_count.desc(),
+                DailyRallyCurrentCandidate.ticker.asc(),
+            )
+            .limit(limit)
+        ).all()
+    )
+    return DailyRallyCandidatesRead(
+        run_id=run_id,
+        candidate_count=len(candidates),
+        candidates=[
+            DailyRallyCandidateRead(
+                id=candidate.id,
+                run_id=candidate.run_id,
+                ticker=candidate.ticker,
+                name=candidate.name,
+                signal_date=candidate.signal_date,
+                close_price=candidate.close_price,
+                matched_rules=json.loads(candidate.matched_rules_json),
+                matched_rule_count=candidate.matched_rule_count,
+                max_rule_score=candidate.max_rule_score,
+                mean_rule_score=candidate.mean_rule_score,
+                features=json.loads(candidate.features_json),
+            )
+            for candidate in candidates
+        ],
     )
 
 
