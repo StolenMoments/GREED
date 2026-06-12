@@ -132,7 +132,13 @@ def test_rank_rules_computes_support_precision_lift_and_score() -> None:
         DailyRallySample("F", "F", date(2024, 1, 1), 100, 0, features={"ret_20d": -0.01}),
     ]
 
-    rules = rank_rules(samples, min_support=1, min_precision=0.1)
+    rules = rank_rules(
+        samples,
+        min_support=1,
+        min_precision=0.1,
+        min_total_matches=1,
+        min_lift=0.0,
+    )
     rule = next(rule for rule in rules if rule.rule_key == "ret_20d>=0.20")
 
     assert rule.support == 2
@@ -142,6 +148,85 @@ def test_rank_rules_computes_support_precision_lift_and_score() -> None:
     assert rule.precision == pytest.approx(2 / 3)
     assert rule.lift == pytest.approx(2.0)
     assert rule.score == pytest.approx(2 * 1.0 * (2 / 3))
+
+
+def _combo_mining_samples() -> list[DailyRallySample]:
+    samples: list[DailyRallySample] = []
+    for index in range(1000):
+        features: dict[str, float | bool | str] = {"ret_20d": 0.0, "volume_ratio_20d": 1.0}
+        if index < 10:
+            label = 1
+        else:
+            label = 0
+
+        if index < 5 or 10 <= index < 200:
+            features["ret_20d"] = 0.12
+        if index < 5 or 10 <= index < 105 or 200 <= index < 295:
+            features["volume_ratio_20d"] = 2.5
+
+        samples.append(
+            DailyRallySample(
+                ticker=f"T{index:04d}",
+                name=f"Ticker {index}",
+                signal_date=date(2024, 1, 1),
+                close_price=100,
+                label=label,
+                features=features,
+            )
+        )
+    return samples
+
+
+def test_rank_rules_mines_combo_when_single_rules_are_below_precision_gate() -> None:
+    rules = rank_rules(_combo_mining_samples())
+
+    combo = next(
+        rule
+        for rule in rules
+        if rule.rule_key == "ret_20d>=0.10&volume_ratio_20d>=2.00"
+    )
+
+    assert combo.support == 5
+    assert combo.total_matches == 100
+    assert combo.precision == pytest.approx(0.05)
+    assert combo.base_rate == pytest.approx(0.01)
+    assert combo.lift == pytest.approx(5.0)
+
+
+def test_rank_rules_does_not_combine_thresholds_from_same_feature() -> None:
+    samples = [
+        DailyRallySample("A", "A", date(2024, 1, 1), 100, 1, features={"ret_20d": 0.3}),
+        DailyRallySample("B", "B", date(2024, 1, 1), 100, 0, features={"ret_20d": 0.25}),
+    ]
+
+    rules = rank_rules(samples, min_support=1, min_precision=0.0, min_lift=0.0, min_total_matches=1)
+
+    assert all(
+        "ret_20d>=0.10&ret_20d>=0.20" not in rule.rule_key
+        and "ret_20d>=0.20&ret_20d>=0.10" not in rule.rule_key
+        for rule in rules
+    )
+
+
+def test_rank_rules_includes_three_condition_combos_sorted_by_score() -> None:
+    samples = _combo_mining_samples()
+    for index, sample in enumerate(samples):
+        sample.features["range_pct"] = 0.02
+        if index < 5 or 10 <= index < 55:
+            sample.features["range_pct"] = 0.09
+
+    rules = rank_rules(samples)
+    keys = [rule.rule_key for rule in rules]
+    triple_key = "ret_20d>=0.10&volume_ratio_20d>=2.00&range_pct>=0.08"
+    double_key = "ret_20d>=0.10&volume_ratio_20d>=2.00"
+
+    triple = next(rule for rule in rules if rule.rule_key == triple_key)
+    double = next(rule for rule in rules if rule.rule_key == double_key)
+
+    assert triple.total_matches == 50
+    assert triple.precision == pytest.approx(0.10)
+    assert triple.score > double.score
+    assert keys.index(triple_key) < keys.index(double_key)
 
 
 def test_build_pattern_stats_keeps_unfiltered_single_patterns_with_return_stats() -> None:

@@ -1,6 +1,8 @@
 import type { DailyRallyRuleStat } from '../api/backtest';
 
 const FEATURE_LABELS: Record<string, string> = {
+  ret_1d: '최근 1거래일 수익률',
+  ret_5d: '최근 5거래일 수익률',
   ret_20d: '최근 20거래일 수익률',
   ret_60d: '최근 60거래일 수익률',
   volume_ratio_20d: '거래량 20일 평균 대비',

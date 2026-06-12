@@ -193,6 +193,7 @@ class _Predicate:
     key: str
     label: str
     matcher: Callable[[DailyRallySample], bool]
+    features: tuple[str, ...]
 
 
 def _to_date(value: Any) -> date:
@@ -517,6 +518,7 @@ def _threshold_predicate(feature: str, threshold: float) -> _Predicate:
             and not isinstance(value, str)
             and float(value) >= threshold
         ),
+        features=(feature,),
     )
 
 
@@ -528,26 +530,48 @@ def _equality_predicate(feature: str, expected: bool | str) -> _Predicate:
         label=label,
         matcher=lambda sample, feature=feature, expected=expected: sample.features.get(feature)
         == expected,
+        features=(feature,),
     )
 
 
 def build_rule_candidates(samples: list[DailyRallySample]) -> list[_Predicate]:
     del samples
     return [
+        _threshold_predicate("ret_1d", 0.03),
+        _threshold_predicate("ret_1d", 0.05),
+        _threshold_predicate("ret_1d", 0.08),
+        _threshold_predicate("ret_5d", 0.08),
+        _threshold_predicate("ret_5d", 0.12),
+        _threshold_predicate("ret_5d", 0.18),
         _threshold_predicate("ret_20d", 0.10),
         _threshold_predicate("ret_20d", 0.20),
+        _threshold_predicate("ret_20d", 0.30),
+        _threshold_predicate("ret_60d", 0.20),
         _threshold_predicate("ret_60d", 0.30),
+        _threshold_predicate("ret_60d", 0.50),
+        _threshold_predicate("volume_ratio_20d", 1.50),
         _threshold_predicate("volume_ratio_20d", 2.00),
         _threshold_predicate("volume_ratio_20d", 3.00),
+        _threshold_predicate("volume_ratio_20d", 5.00),
+        _threshold_predicate("trading_value_ratio_20d", 1.50),
         _threshold_predicate("trading_value_ratio_20d", 2.00),
         _threshold_predicate("trading_value_ratio_20d", 3.00),
+        _threshold_predicate("trading_value_ratio_20d", 5.00),
+        _threshold_predicate("close_to_20d_high", -0.10),
+        _threshold_predicate("close_to_20d_high", -0.05),
         _threshold_predicate("close_to_20d_high", -0.03),
         _threshold_predicate("close_to_60d_high", -0.05),
+        _threshold_predicate("close_to_20d_low", 0.10),
         _threshold_predicate("close_to_20d_low", 0.20),
+        _threshold_predicate("close_to_20d_low", 0.30),
+        _threshold_predicate("range_pct", 0.05),
         _threshold_predicate("range_pct", 0.08),
+        _threshold_predicate("range_pct", 0.12),
         _threshold_predicate("rsi14", 60.00),
         _threshold_predicate("rsi14", 70.00),
+        _threshold_predicate("atr_pct_14", 0.03),
         _threshold_predicate("atr_pct_14", 0.04),
+        _threshold_predicate("atr_pct_14", 0.06),
         _equality_predicate("ma5_gt_ma20", True),
         _equality_predicate("ma20_gt_ma60", True),
         _equality_predicate("ma60_up", True),
@@ -569,6 +593,36 @@ def predicate_matches(sample: DailyRallySample, predicate: _Predicate | DailyRal
     return predicate.matcher(sample)
 
 
+def _can_combine(predicates: tuple[_Predicate, ...]) -> bool:
+    features = [feature for predicate in predicates for feature in predicate.features]
+    return len(features) == len(set(features))
+
+
+def _compound_predicate(predicates: tuple[_Predicate, ...]) -> _Predicate:
+    return _Predicate(
+        key="&".join(predicate.key for predicate in predicates),
+        label=" AND ".join(predicate.label for predicate in predicates),
+        matcher=lambda sample, predicates=predicates: all(
+            predicate.matcher(sample) for predicate in predicates
+        ),
+        features=tuple(feature for predicate in predicates for feature in predicate.features),
+    )
+
+
+def _predicate_masks(
+    samples: list[DailyRallySample],
+    predicates: list[_Predicate],
+) -> dict[str, np.ndarray]:
+    return {
+        predicate.key: np.array([predicate.matcher(sample) for sample in samples], dtype=bool)
+        for predicate in predicates
+    }
+
+
+def _label_mask(samples: list[DailyRallySample]) -> np.ndarray:
+    return np.array([sample.label == 1 for sample in samples], dtype=bool)
+
+
 def _rule_from_predicate(
     samples: list[DailyRallySample],
     predicate: _Predicate,
@@ -576,16 +630,18 @@ def _rule_from_predicate(
     *,
     min_support: int,
     min_precision: float,
+    min_total_matches: int = 1,
+    min_lift: float = 0.0,
 ) -> DailyRallyRule | None:
     matches = [sample for sample in samples if predicate.matcher(sample)]
     total_matches = len(matches)
-    if total_matches == 0:
+    if total_matches < min_total_matches:
         return None
     support = sum(1 for sample in matches if sample.label == 1)
     precision = support / total_matches
-    if support < min_support or precision < min_precision:
-        return None
     lift = precision / base_rate if base_rate > 0 else 0
+    if support < min_support or precision < min_precision or lift < min_lift:
+        return None
     score = support * max(lift - 1, 0) * precision
     return DailyRallyRule(
         rule_key=predicate.key,
@@ -598,6 +654,57 @@ def _rule_from_predicate(
         lift=lift,
         score=score,
     )
+
+
+def _rule_from_mask(
+    predicate: _Predicate,
+    mask: np.ndarray,
+    label_mask: np.ndarray,
+    base_rate: float,
+    *,
+    min_support: int,
+    min_precision: float,
+    min_total_matches: int,
+    min_lift: float,
+) -> DailyRallyRule | None:
+    total_matches = int(mask.sum())
+    if total_matches < min_total_matches:
+        return None
+    support = int((mask & label_mask).sum())
+    precision = support / total_matches
+    lift = precision / base_rate if base_rate > 0 else 0.0
+    if support < min_support or precision < min_precision or lift < min_lift:
+        return None
+    score = support * max(lift - 1, 0) * precision
+    return DailyRallyRule(
+        rule_key=predicate.key,
+        rule_label=predicate.label,
+        support=support,
+        positives=support,
+        total_matches=total_matches,
+        precision=precision,
+        base_rate=base_rate,
+        lift=lift,
+        score=score,
+    )
+
+
+def _matched_samples_from_mask(
+    samples: list[DailyRallySample],
+    mask: np.ndarray,
+) -> list[DailyRallySample]:
+    return [sample for sample, matched in zip(samples, mask, strict=True) if matched]
+
+
+def _iter_compound_predicates(
+    predicates: list[_Predicate],
+    *,
+    max_width: int,
+):
+    for width in range(1, max_width + 1):
+        for predicate_group in combinations(predicates, width):
+            if _can_combine(predicate_group):
+                yield _compound_predicate(predicate_group)
 
 
 def _return_stat(horizon: int, samples: list[DailyRallySample]) -> DailyRallyReturnStat:
@@ -642,16 +749,21 @@ def build_pattern_stats(samples: list[DailyRallySample]) -> list[DailyRallyPatte
     positive_count = sum(1 for sample in samples if sample.label == 1)
     base_rate = positive_count / len(samples)
     stats: list[DailyRallyPatternStat] = []
+    predicates = build_rule_candidates(samples)
+    masks = _predicate_masks(samples, predicates)
+    label_mask = _label_mask(samples)
 
-    for predicate in build_rule_candidates(samples):
-        matches = [sample for sample in samples if predicate.matcher(sample)]
-        total_matches = len(matches)
+    for predicate in _iter_compound_predicates(predicates, max_width=3):
+        predicate_masks = [masks[key] for key in predicate.key.split("&")]
+        mask = np.logical_and.reduce(predicate_masks)
+        total_matches = int(mask.sum())
         if total_matches == 0:
             continue
-        support = sum(1 for sample in matches if sample.label == 1)
+        support = int((mask & label_mask).sum())
         precision = support / total_matches
         lift = precision / base_rate if base_rate > 0 else 0
         score = support * max(lift - 1, 0) * precision
+        matches = _matched_samples_from_mask(samples, mask)
         stats.append(
             DailyRallyPatternStat(
                 pattern_key=predicate.key,
@@ -1004,7 +1116,10 @@ def rank_rules(
     samples: list[DailyRallySample],
     *,
     min_support: int = 5,
-    min_precision: float = 0.15,
+    min_precision: float = 0.05,
+    min_total_matches: int = 20,
+    min_lift: float = 5.0,
+    max_width: int = 3,
 ) -> list[DailyRallyRule]:
     if not samples:
         return []
@@ -1014,45 +1129,27 @@ def rank_rules(
         return []
 
     predicates = build_rule_candidates(samples)
-    single_rules = [
-        rule
-        for predicate in predicates
-        if (
-            rule := _rule_from_predicate(
-                samples,
-                predicate,
-                base_rate,
-                min_support=min_support,
-                min_precision=min_precision,
-            )
-        )
-        is not None
-    ]
-    ranked_singles = _sort_rules(single_rules)
+    masks = _predicate_masks(samples, predicates)
+    labels = _label_mask(samples)
+    rules: list[DailyRallyRule] = []
 
-    predicate_by_key = {predicate.key: predicate for predicate in predicates}
-    combo_rules: list[DailyRallyRule] = []
-    for left, right in combinations(ranked_singles[:30], 2):
-        left_predicate = predicate_by_key[left.rule_key]
-        right_predicate = predicate_by_key[right.rule_key]
-        combo = _Predicate(
-            key=f"{left.rule_key}&{right.rule_key}",
-            label=f"{left.rule_label} AND {right.rule_label}",
-            matcher=lambda sample, left_predicate=left_predicate, right_predicate=right_predicate: (
-                left_predicate.matcher(sample) and right_predicate.matcher(sample)
-            ),
-        )
-        rule = _rule_from_predicate(
-            samples,
-            combo,
+    for predicate in _iter_compound_predicates(predicates, max_width=max_width):
+        predicate_masks = [masks[key] for key in predicate.key.split("&")]
+        mask = np.logical_and.reduce(predicate_masks)
+        rule = _rule_from_mask(
+            predicate,
+            mask,
+            labels,
             base_rate,
             min_support=min_support,
             min_precision=min_precision,
+            min_total_matches=min_total_matches,
+            min_lift=min_lift,
         )
         if rule is not None:
-            combo_rules.append(rule)
+            rules.append(rule)
 
-    return _sort_rules([*ranked_singles, *combo_rules])
+    return _sort_rules(rules)
 
 
 def find_current_candidates(

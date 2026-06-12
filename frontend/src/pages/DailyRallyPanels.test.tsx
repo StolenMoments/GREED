@@ -11,6 +11,7 @@ import {
   DailyRallyPatternStatsTable,
   DailyRallyValidationPanel,
 } from './DailyRallyPanels';
+import { translateDailyRallyRule } from './dailyRallyInterpretation';
 
 const emptyInsights: DailyRallyInsights = {
   run_id: 1,
@@ -182,4 +183,17 @@ const failedValidation = renderToStaticMarkup(
 
 if (!failedValidation.includes('Could not load')) {
   throw new Error('Validation API failure should render a local panel error');
+}
+
+const comboText = translateDailyRallyRule(
+  'ret_20d>=0.20&volume_ratio_20d>=2.00&weekly_cloud_position==above_cloud',
+);
+
+if (
+  !comboText.includes('최근 20거래일 수익률 +20% 이상') ||
+  !comboText.includes('거래량 20일 평균 대비 2배 이상') ||
+  !comboText.includes('주봉 종가가 구름대 위') ||
+  !comboText.includes(' + ')
+) {
+  throw new Error(`Combo rally rule should be translated into readable Korean text: ${comboText}`);
 }

@@ -78,8 +78,8 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
         ],
         rules=[
             DailyRallyRule(
-                rule_key="ret_20d>=0.10",
-                rule_label="ret_20d >= 0.10",
+                rule_key="ret_20d>=0.10&volume_ratio_20d>=2.00",
+                rule_label="ret_20d >= 0.10 AND volume_ratio_20d >= 2.00",
                 support=1,
                 positives=1,
                 total_matches=2,
@@ -95,7 +95,7 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
                 name="Samsung",
                 signal_date=date(2024, 2, 1),
                 close_price=140.0,
-                matched_rules=["ret_20d>=0.10"],
+                matched_rules=["ret_20d>=0.10&volume_ratio_20d>=2.00"],
                 matched_rule_count=1,
                 max_rule_score=1.5,
                 mean_rule_score=1.5,
@@ -104,8 +104,8 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
         ],
         pattern_stats=[
             EngineDailyRallyPatternStat(
-                pattern_key="ret_20d>=0.10",
-                pattern_label="ret_20d >= 0.10",
+                pattern_key="ret_20d>=0.10&volume_ratio_20d>=2.00",
+                pattern_label="ret_20d >= 0.10 AND volume_ratio_20d >= 2.00",
                 support=1,
                 positives=1,
                 total_matches=2,
@@ -206,14 +206,14 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
 
     rule = db_session.scalar(select(DailyRallyRuleStat).where(DailyRallyRuleStat.run_id == run_id))
     assert rule is not None
-    assert rule.rule_key == "ret_20d>=0.10"
+    assert rule.rule_key == "ret_20d>=0.10&volume_ratio_20d>=2.00"
     assert rule.score == pytest.approx(1.5)
 
     pattern = db_session.scalar(
         select(DailyRallyPatternStat).where(DailyRallyPatternStat.run_id == run_id)
     )
     assert pattern is not None
-    assert pattern.pattern_key == "ret_20d>=0.10"
+    assert pattern.pattern_key == "ret_20d>=0.10&volume_ratio_20d>=2.00"
     assert pattern.score == pytest.approx(1.5)
     return_stats = json.loads(pattern.return_stats_json)
     assert return_stats["20"]["mean"] == pytest.approx(0.15)
@@ -224,7 +224,9 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
     )
     assert candidate is not None
     assert candidate.ticker == "005930"
-    assert json.loads(candidate.matched_rules_json) == ["ret_20d>=0.10"]
+    assert json.loads(candidate.matched_rules_json) == [
+        "ret_20d>=0.10&volume_ratio_20d>=2.00"
+    ]
     assert json.loads(candidate.features_json) == {
         "ma5_gt_ma20": True,
         "ret_20d": 0.12,
