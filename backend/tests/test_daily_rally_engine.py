@@ -7,8 +7,13 @@ import pytest
 
 from scripts.backtest import daily_rally as daily_rally_module
 from scripts.backtest.daily_rally import (
+    DailyRallyCandidate,
+    DailyRallyPatternStability,
+    DailyRallyPatternStat,
+    DailyRallyReturnStat,
     DailyRallyRule,
     DailyRallySample,
+    DailyRallyValidationSummary,
     build_daily_rally_validation,
     build_daily_features,
     build_pattern_stats,
@@ -18,6 +23,7 @@ from scripts.backtest.daily_rally import (
     label_daily_rallies,
     rank_rules,
     run_daily_rally_backtest,
+    score_candidates,
 )
 
 
@@ -317,6 +323,175 @@ def test_find_current_candidates_uses_latest_sample_per_ticker() -> None:
     assert [candidate.ticker for candidate in candidates] == ["B"]
     assert candidates[0].matched_rule_count == 1
     assert candidates[0].max_rule_score == 3.0
+
+
+def _score_rule(rule_key: str, score: float) -> DailyRallyRule:
+    return DailyRallyRule(rule_key, rule_key, 5, 5, 50, 0.1, 0.02, 5.0, score)
+
+
+def _score_pattern(
+    pattern_key: str,
+    *,
+    win_rate: float | None,
+    median_return: float | None,
+    count: int = 50,
+) -> DailyRallyPatternStat:
+    return DailyRallyPatternStat(
+        pattern_key=pattern_key,
+        pattern_label=pattern_key,
+        support=5,
+        positives=5,
+        total_matches=50,
+        precision=0.1,
+        base_rate=0.02,
+        lift=5.0,
+        score=2.0,
+        return_stats={
+            20: DailyRallyReturnStat(
+                horizon=20,
+                count=count,
+                censored_count=0,
+                win_rate=win_rate,
+                mean=median_return,
+                median=median_return,
+                std=None,
+                p25=None,
+                p75=None,
+                min=None,
+                max=None,
+            )
+        },
+    )
+
+
+def _score_validation(classifications: dict[str, str]) -> DailyRallyValidationSummary:
+    return DailyRallyValidationSummary(
+        summary={},
+        year_breakdown=[],
+        ticker_concentration=[],
+        pattern_stability=[
+            DailyRallyPatternStability(
+                pattern_key=key,
+                pattern_label=key,
+                total_matches=50,
+                positives=5,
+                full_period_lift=5.0,
+                test_window_count=5,
+                median_train_lift=2.0,
+                median_test_lift=1.5,
+                test_lift_gt_1_ratio=0.8,
+                classification=classification,
+            )
+            for key, classification in classifications.items()
+        ],
+        walk_forward_windows=[],
+        warnings=[],
+    )
+
+
+def _score_candidate(matched_rules: list[str], *, max_rule_score: float) -> DailyRallyCandidate:
+    return DailyRallyCandidate(
+        ticker="A",
+        name="A",
+        signal_date=date(2024, 1, 2),
+        close_price=100,
+        matched_rules=matched_rules,
+        matched_rule_count=len(matched_rules),
+        max_rule_score=max_rule_score,
+        mean_rule_score=max_rule_score,
+    )
+
+
+def test_score_candidates_computes_composite_from_quality_stability_and_return() -> None:
+    rules = [_score_rule("ret_20d>=0.20", 10.0)]
+    patterns = [_score_pattern("ret_20d>=0.20", win_rate=0.6, median_return=0.20)]
+    validation = _score_validation({"ret_20d>=0.20": "stable"})
+    candidate = _score_candidate(["ret_20d>=0.20"], max_rule_score=10.0)
+
+    scored = score_candidates([candidate], rules, patterns, validation)[0]
+
+    # RQ = log1p(10)/log1p(10) = 1.0, ER = 0.5*0.6 + 0.5*(0.20/0.40) = 0.55, STAB = 1.0
+    assert scored.composite_score == pytest.approx(100 * (0.5 * 1.0 + 0.5 * 0.55))
+    assert scored.best_rule_key == "ret_20d>=0.20"
+    assert scored.rule_quality_score == pytest.approx(1.0)
+    assert scored.stability_score == pytest.approx(1.0)
+    assert scored.stability_classification == "stable"
+    assert scored.expected_return_score == pytest.approx(0.55)
+    assert scored.expected_win_rate_20d == pytest.approx(0.6)
+    assert scored.expected_median_return_20d == pytest.approx(0.20)
+    assert len(scored.rule_breakdowns) == 1
+
+
+def test_score_candidates_combo_stability_uses_worst_component() -> None:
+    combo_key = "ret_20d>=0.20&volume_ratio_20d>=2.00"
+    rules = [_score_rule(combo_key, 10.0)]
+    patterns = [_score_pattern(combo_key, win_rate=1.0, median_return=0.40)]
+    validation = _score_validation(
+        {"ret_20d>=0.20": "stable", "volume_ratio_20d>=2.00": "fragile"}
+    )
+    candidate = _score_candidate([combo_key], max_rule_score=10.0)
+
+    scored = score_candidates([candidate], rules, patterns, validation)[0]
+
+    assert scored.stability_score == pytest.approx(0.6)
+    assert scored.stability_classification == "fragile"
+    assert scored.composite_score == pytest.approx(100 * (0.5 * 1.0 + 0.5 * 1.0) * 0.6)
+
+
+def test_score_candidates_treats_missing_pattern_stat_as_zero_expected_return() -> None:
+    rules = [_score_rule("ret_20d>=0.20", 10.0)]
+    validation = _score_validation({"ret_20d>=0.20": "stable"})
+    candidate = _score_candidate(["ret_20d>=0.20"], max_rule_score=10.0)
+
+    scored = score_candidates([candidate], rules, [], validation)[0]
+
+    assert scored.expected_return_score == pytest.approx(0.0)
+    assert scored.expected_win_rate_20d is None
+    assert scored.composite_score == pytest.approx(100 * 0.5 * 1.0)
+
+
+def test_score_candidates_without_validation_defaults_to_insufficient_multiplier() -> None:
+    rules = [_score_rule("ret_20d>=0.20", 10.0)]
+    patterns = [_score_pattern("ret_20d>=0.20", win_rate=1.0, median_return=0.40)]
+    candidate = _score_candidate(["ret_20d>=0.20"], max_rule_score=10.0)
+
+    scored = score_candidates([candidate], rules, patterns, None)[0]
+
+    assert scored.stability_score == pytest.approx(0.4)
+    assert scored.stability_classification == "insufficient"
+    assert scored.composite_score == pytest.approx(100 * 1.0 * 0.4)
+
+
+def test_score_candidates_resorts_by_composite_over_max_rule_score() -> None:
+    rules = [_score_rule("fragile_rule>=1", 20.0), _score_rule("stable_rule>=1", 10.0)]
+    patterns = [
+        _score_pattern("fragile_rule>=1", win_rate=1.0, median_return=0.40),
+        _score_pattern("stable_rule>=1", win_rate=1.0, median_return=0.40),
+    ]
+    validation = _score_validation({"fragile_rule>=1": "fragile", "stable_rule>=1": "stable"})
+    fragile_candidate = _score_candidate(["fragile_rule>=1"], max_rule_score=20.0)
+    fragile_candidate.ticker = "FRAGILE"
+    stable_candidate = _score_candidate(["stable_rule>=1"], max_rule_score=10.0)
+    stable_candidate.ticker = "STABLE"
+
+    scored = score_candidates([fragile_candidate, stable_candidate], rules, patterns, validation)
+
+    assert [candidate.ticker for candidate in scored] == ["STABLE", "FRAGILE"]
+    assert scored[0].composite_score > scored[1].composite_score
+
+
+def test_score_candidates_caps_breadth_bonus_and_total_score() -> None:
+    rules = [_score_rule("ret_20d>=0.20", 10.0)]
+    patterns = [_score_pattern("ret_20d>=0.20", win_rate=1.0, median_return=0.24)]
+    validation = _score_validation({"ret_20d>=0.20": "stable"})
+    candidate = _score_candidate(["ret_20d>=0.20"], max_rule_score=10.0)
+    candidate.matched_rule_count = 10
+
+    scored = score_candidates([candidate], rules, patterns, validation)[0]
+
+    # ER = 0.5*1.0 + 0.5*(0.24/0.40) = 0.8 → rule_composite = 90; bonus capped at 1.2 → 108 → 100
+    assert scored.rule_breakdowns[0].rule_composite == pytest.approx(90.0)
+    assert scored.composite_score == pytest.approx(100.0)
 
 
 def test_run_daily_rally_backtest_returns_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:

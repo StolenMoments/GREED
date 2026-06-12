@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from itertools import combinations
@@ -19,6 +21,14 @@ RALLY_HORIZON_DAYS = 20
 RALLY_THRESHOLD = 0.40
 FORWARD_RETURN_DAYS = (20, 40, 60, 120)
 MIN_DAILY_HISTORY = 180 + 120
+
+COMPOSITE_SCORE_HORIZON = 20
+STABILITY_MULTIPLIERS = {"stable": 1.0, "fragile": 0.6, "insufficient": 0.4}
+STABILITY_DEFAULT_MULTIPLIER = 0.4
+BREADTH_BONUS_PER_RULE = 0.05
+BREADTH_BONUS_MAX_RULES = 4
+
+logger = logging.getLogger(__name__)
 
 DAILY_FEATURE_COLUMNS = (
     "ret_1d",
@@ -164,6 +174,19 @@ class DailyRallyValidationSummary:
 
 
 @dataclass(slots=True)
+class DailyRallyRuleScoreBreakdown:
+    rule_key: str
+    rule_label: str
+    rule_composite: float
+    rule_quality: float
+    stability_multiplier: float
+    stability_classification: str
+    expected_return: float
+    win_rate_20d: float | None
+    median_return_20d: float | None
+
+
+@dataclass(slots=True)
 class DailyRallyCandidate:
     ticker: str
     name: str
@@ -174,6 +197,15 @@ class DailyRallyCandidate:
     max_rule_score: float | None = None
     mean_rule_score: float | None = None
     features: dict[str, bool | int | float | str | None] = field(default_factory=dict)
+    composite_score: float | None = None
+    best_rule_key: str | None = None
+    rule_quality_score: float | None = None
+    stability_score: float | None = None
+    stability_classification: str | None = None
+    expected_return_score: float | None = None
+    expected_win_rate_20d: float | None = None
+    expected_median_return_20d: float | None = None
+    rule_breakdowns: list[DailyRallyRuleScoreBreakdown] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -1196,12 +1228,117 @@ def find_current_candidates(
     )
 
 
+def _stability_lookup(validation: DailyRallyValidationSummary | None) -> dict[str, str]:
+    if validation is None:
+        return {}
+    return {item.pattern_key: item.classification for item in validation.pattern_stability}
+
+
+def _combo_stability(rule_key: str, lookup: dict[str, str]) -> tuple[float, str]:
+    worst_multiplier = 1.0
+    worst_classification = "stable"
+    for component_key in rule_key.split("&"):
+        classification = lookup.get(component_key, "insufficient")
+        multiplier = STABILITY_MULTIPLIERS.get(classification, STABILITY_DEFAULT_MULTIPLIER)
+        if multiplier < worst_multiplier:
+            worst_multiplier = multiplier
+            worst_classification = classification
+    return worst_multiplier, worst_classification
+
+
+def _expected_return_score(
+    stat: DailyRallyPatternStat | None,
+) -> tuple[float, float | None, float | None]:
+    if stat is None:
+        return 0.0, None, None
+    return_stat = stat.return_stats.get(COMPOSITE_SCORE_HORIZON)
+    if return_stat is None or return_stat.count <= 0:
+        return 0.0, None, None
+    win_rate = return_stat.win_rate
+    median_return = return_stat.median
+    win_component = win_rate if win_rate is not None else 0.0
+    median_component = (
+        min(max(median_return / RALLY_THRESHOLD, 0.0), 1.0) if median_return is not None else 0.0
+    )
+    return 0.5 * win_component + 0.5 * median_component, win_rate, median_return
+
+
+def score_candidates(
+    candidates: list[DailyRallyCandidate],
+    rules: list[DailyRallyRule],
+    pattern_stats: list[DailyRallyPatternStat],
+    validation: DailyRallyValidationSummary | None,
+) -> list[DailyRallyCandidate]:
+    if not candidates or not rules:
+        return candidates
+    rules_by_key = {rule.rule_key: rule for rule in rules}
+    patterns_by_key = {stat.pattern_key: stat for stat in pattern_stats}
+    stability = _stability_lookup(validation)
+    max_score = max(rule.score for rule in rules)
+    log_max_score = math.log1p(max_score) if max_score > 0 else 0.0
+
+    for candidate in candidates:
+        breakdowns: list[DailyRallyRuleScoreBreakdown] = []
+        for rule_key in candidate.matched_rules:
+            rule = rules_by_key.get(rule_key)
+            if rule is None:
+                continue
+            rule_quality = (
+                math.log1p(max(rule.score, 0.0)) / log_max_score if log_max_score > 0 else 0.0
+            )
+            stability_multiplier, stability_classification = _combo_stability(rule_key, stability)
+            pattern_stat = patterns_by_key.get(rule_key)
+            if pattern_stat is None:
+                logger.warning("daily rally pattern stat missing for rule %s", rule_key)
+            expected_return, win_rate, median_return = _expected_return_score(pattern_stat)
+            breakdowns.append(
+                DailyRallyRuleScoreBreakdown(
+                    rule_key=rule_key,
+                    rule_label=rule.rule_label,
+                    rule_composite=100 * (0.5 * rule_quality + 0.5 * expected_return) * stability_multiplier,
+                    rule_quality=rule_quality,
+                    stability_multiplier=stability_multiplier,
+                    stability_classification=stability_classification,
+                    expected_return=expected_return,
+                    win_rate_20d=win_rate,
+                    median_return_20d=median_return,
+                )
+            )
+        if not breakdowns:
+            continue
+        breakdowns.sort(key=lambda item: (-item.rule_composite, item.rule_key))
+        best = breakdowns[0]
+        breadth_bonus = 1 + BREADTH_BONUS_PER_RULE * min(
+            candidate.matched_rule_count - 1, BREADTH_BONUS_MAX_RULES
+        )
+        candidate.composite_score = min(100.0, best.rule_composite * breadth_bonus)
+        candidate.best_rule_key = best.rule_key
+        candidate.rule_quality_score = best.rule_quality
+        candidate.stability_score = best.stability_multiplier
+        candidate.stability_classification = best.stability_classification
+        candidate.expected_return_score = best.expected_return
+        candidate.expected_win_rate_20d = best.win_rate_20d
+        candidate.expected_median_return_20d = best.median_return_20d
+        candidate.rule_breakdowns = breakdowns
+
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            -(candidate.composite_score or 0),
+            -(candidate.max_rule_score or 0),
+            candidate.ticker,
+        ),
+    )
+
+
 def run_daily_rally_backtest(db, universe: list[tuple[str, str]] | None = None) -> DailyRallyBacktestResult:
     samples, ticker_count, data_start, data_end = _collect_daily_rally_samples(db, universe)
     pattern_stats = build_pattern_stats(samples)
     validation = build_daily_rally_validation(samples)
     rules = rank_rules(samples)
-    current_candidates = find_current_candidates(samples, rules)
+    current_candidates = score_candidates(
+        find_current_candidates(samples, rules), rules, pattern_stats, validation
+    )
     return DailyRallyBacktestResult(
         samples=samples,
         rules=rules,

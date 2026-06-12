@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
 from datetime import date, datetime
 
@@ -735,6 +736,90 @@ def test_get_daily_rally_candidates_decodes_json(
     candidate = body["candidates"][0]
     assert candidate["matched_rules"] == ["ret_20d>=0.10"]
     assert candidate["features"] == {"ma5_gt_ma20": True, "ret_20d": 0.12}
+    assert candidate["composite_score"] is None
+    assert candidate["rule_breakdowns"] == []
+
+
+def test_get_daily_rally_candidates_sorts_by_composite_with_nulls_last(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=3,
+        signal_count=3,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    def _candidate(ticker: str, composite_score: float | None, max_rule_score: float, **extra):
+        return DailyRallyCurrentCandidate(
+            run_id=run.id,
+            ticker=ticker,
+            name=ticker,
+            signal_date=date(2024, 2, 1),
+            close_price=100.0,
+            matched_rules_json='["ret_20d>=0.10"]',
+            matched_rule_count=1,
+            max_rule_score=max_rule_score,
+            mean_rule_score=max_rule_score,
+            features_json="{}",
+            composite_score=composite_score,
+            **extra,
+        )
+
+    db_session.add_all(
+        [
+            _candidate("LEGACY", None, 99.0),
+            _candidate("LOW", 30.0, 5.0),
+            _candidate(
+                "HIGH",
+                80.0,
+                1.0,
+                best_rule_key="ret_20d>=0.10",
+                rule_quality_score=1.0,
+                stability_score=1.0,
+                stability_classification="stable",
+                expected_return_score=0.6,
+                expected_win_rate_20d=0.7,
+                expected_median_return_20d=0.2,
+                score_breakdown_json=json.dumps(
+                    [
+                        {
+                            "rule_key": "ret_20d>=0.10",
+                            "rule_label": "ret_20d >= 0.10",
+                            "rule_composite": 80.0,
+                            "rule_quality": 1.0,
+                            "stability_multiplier": 1.0,
+                            "stability_classification": "stable",
+                            "expected_return": 0.6,
+                            "win_rate_20d": 0.7,
+                            "median_return_20d": 0.2,
+                        }
+                    ]
+                ),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-candidates")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [candidate["ticker"] for candidate in body["candidates"]] == ["HIGH", "LOW", "LEGACY"]
+    top = body["candidates"][0]
+    assert top["composite_score"] == pytest.approx(80.0)
+    assert top["stability_classification"] == "stable"
+    assert top["rule_breakdowns"][0]["rule_key"] == "ret_20d>=0.10"
+    assert top["rule_breakdowns"][0]["stability_multiplier"] == pytest.approx(1.0)
 
 
 def test_get_daily_rally_pattern_stats_decodes_return_stats(

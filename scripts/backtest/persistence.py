@@ -198,6 +198,18 @@ def persist_daily_rally_run(db: Session, result: DailyRallyBacktestResult) -> in
                     ensure_ascii=False,
                     sort_keys=True,
                 ),
+                composite_score=candidate.composite_score,
+                best_rule_key=candidate.best_rule_key,
+                rule_quality_score=candidate.rule_quality_score,
+                stability_score=candidate.stability_score,
+                stability_classification=candidate.stability_classification,
+                expected_return_score=candidate.expected_return_score,
+                expected_win_rate_20d=candidate.expected_win_rate_20d,
+                expected_median_return_20d=candidate.expected_median_return_20d,
+                score_breakdown_json=json.dumps(
+                    [asdict(breakdown) for breakdown in candidate.rule_breakdowns[:10]],
+                    ensure_ascii=False,
+                ),
             )
         )
 

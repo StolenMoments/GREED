@@ -673,6 +673,8 @@ def get_daily_rally_candidates(
             select(DailyRallyCurrentCandidate)
             .where(DailyRallyCurrentCandidate.run_id == run_id)
             .order_by(
+                DailyRallyCurrentCandidate.composite_score.is_(None).asc(),
+                DailyRallyCurrentCandidate.composite_score.desc(),
                 DailyRallyCurrentCandidate.max_rule_score.desc(),
                 DailyRallyCurrentCandidate.matched_rule_count.desc(),
                 DailyRallyCurrentCandidate.ticker.asc(),
@@ -696,6 +698,15 @@ def get_daily_rally_candidates(
                 max_rule_score=candidate.max_rule_score,
                 mean_rule_score=candidate.mean_rule_score,
                 features=json.loads(candidate.features_json),
+                composite_score=candidate.composite_score,
+                best_rule_key=candidate.best_rule_key,
+                rule_quality_score=candidate.rule_quality_score,
+                stability_score=candidate.stability_score,
+                stability_classification=candidate.stability_classification,
+                expected_return_score=candidate.expected_return_score,
+                expected_win_rate_20d=candidate.expected_win_rate_20d,
+                expected_median_return_20d=candidate.expected_median_return_20d,
+                rule_breakdowns=json.loads(candidate.score_breakdown_json or "[]"),
             )
             for candidate in candidates
         ],

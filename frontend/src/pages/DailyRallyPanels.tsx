@@ -292,9 +292,13 @@ export function DailyRallyCandidateBriefing({
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-xs text-slate-500">max score</p>
+                  <p className="text-xs text-slate-500">
+                    {candidate.composite_score === null ? 'max score' : 'composite'}
+                  </p>
                   <p className="text-lg font-semibold text-amber-200">
-                    {decimal(candidate.max_rule_score)}
+                    {candidate.composite_score === null
+                      ? decimal(candidate.max_rule_score)
+                      : decimal(candidate.composite_score, 1)}
                   </p>
                 </div>
               </div>
@@ -302,6 +306,15 @@ export function DailyRallyCandidateBriefing({
                 {candidateReason(candidate)}
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {candidate.stability_classification !== null && (
+                  <span
+                    className={`rounded-md border border-slate-700 px-2 py-1 font-semibold ${validationTone(
+                      candidate.stability_classification,
+                    )}`}
+                  >
+                    {stabilityLabel(candidate.stability_classification)}
+                  </span>
+                )}
                 <span className="rounded-md border border-slate-700 px-2 py-1 text-slate-300">
                   매칭 룰 {count(candidate.matched_rule_count)}개
                 </span>
@@ -412,6 +425,13 @@ function validationTone(classification: string): string {
   if (classification === 'stable') return 'text-emerald-300';
   if (classification === 'fragile') return 'text-amber-200';
   return 'text-slate-400';
+}
+
+function stabilityLabel(classification: string | null | undefined): string {
+  if (classification === 'stable') return '안정';
+  if (classification === 'fragile') return '불안정';
+  if (classification === 'insufficient') return '검증부족';
+  return '—';
 }
 
 export function DailyRallyValidationPanel({
@@ -687,6 +707,8 @@ export function DailyRallyCandidatesTable({
   candidates: DailyRallyCandidates | undefined;
   isError: boolean;
 }) {
+  const [expandedId, setExpandedId] = React.useState<number | null>(null);
+
   return (
     <PanelShell title="current candidates">
       {isError ? (
@@ -697,46 +719,128 @@ export function DailyRallyCandidatesTable({
         <p className="mt-4 text-sm text-slate-500">No current candidates for this run.</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-sm">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
               <tr className="text-slate-400">
+                <th className="px-3 py-2 text-right">#</th>
                 <th className="px-3 py-2 text-left">Ticker</th>
                 <th className="px-3 py-2 text-left">Name</th>
                 <th className="px-3 py-2 text-right">Signal Date</th>
                 <th className="px-3 py-2 text-right">Close</th>
                 <th className="px-3 py-2 text-left">Matched Rules</th>
+                <th className="px-3 py-2 text-right">Composite</th>
+                <th className="px-3 py-2 text-right">Stability</th>
                 <th className="px-3 py-2 text-right">Max Score</th>
-                <th className="px-3 py-2 text-right">Mean Score</th>
               </tr>
             </thead>
             <tbody>
-              {candidates.candidates.map((candidate) => {
+              {candidates.candidates.map((candidate, index) => {
                 const visibleRules = candidate.matched_rules.slice(0, 3);
                 const hiddenRuleCount = candidate.matched_rules.length - visibleRules.length;
+                const hasBreakdown = candidate.rule_breakdowns.length > 0;
+                const isExpanded = expandedId === candidate.id;
                 return (
-                  <tr className="border-t border-slate-800/70" key={candidate.id}>
-                    <td className="px-3 py-3 font-semibold text-amber-100">
-                      {candidate.ticker}
-                    </td>
-                    <td className="px-3 py-3 text-slate-200">{candidate.name}</td>
-                    <td className="px-3 py-3 text-right text-slate-300">
-                      {date(candidate.signal_date)}
-                    </td>
-                    <td className="px-3 py-3 text-right text-slate-300">
-                      {formatPriceByTicker(candidate.close_price, candidate.ticker) ??
-                        count(candidate.close_price)}
-                    </td>
-                    <td className="px-3 py-3 text-slate-300">
-                      {visibleRules.map(translateDailyRallyRule).join(', ')}
-                      {hiddenRuleCount > 0 ? ` +${hiddenRuleCount}` : ''}
-                    </td>
-                    <td className="px-3 py-3 text-right font-semibold text-amber-200">
-                      {decimal(candidate.max_rule_score)}
-                    </td>
-                    <td className="px-3 py-3 text-right text-slate-300">
-                      {decimal(candidate.mean_rule_score)}
-                    </td>
-                  </tr>
+                  <React.Fragment key={candidate.id}>
+                    <tr className="border-t border-slate-800/70">
+                      <td className="px-3 py-3 text-right text-slate-500">{index + 1}</td>
+                      <td className="px-3 py-3 font-semibold text-amber-100">
+                        {candidate.ticker}
+                      </td>
+                      <td className="px-3 py-3 text-slate-200">{candidate.name}</td>
+                      <td className="px-3 py-3 text-right text-slate-300">
+                        {date(candidate.signal_date)}
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-300">
+                        {formatPriceByTicker(candidate.close_price, candidate.ticker) ??
+                          count(candidate.close_price)}
+                      </td>
+                      <td className="px-3 py-3 text-slate-300">
+                        {visibleRules.map(translateDailyRallyRule).join(', ')}
+                        {hiddenRuleCount > 0 ? ` +${hiddenRuleCount}` : ''}
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold text-amber-200">
+                        {candidate.composite_score === null ? (
+                          '—'
+                        ) : hasBreakdown ? (
+                          <button
+                            className="font-semibold text-amber-200 underline decoration-amber-200/40 underline-offset-4 hover:decoration-amber-200"
+                            onClick={() =>
+                              setExpandedId(isExpanded ? null : candidate.id)
+                            }
+                            type="button"
+                          >
+                            {decimal(candidate.composite_score, 1)}
+                          </button>
+                        ) : (
+                          decimal(candidate.composite_score, 1)
+                        )}
+                      </td>
+                      <td
+                        className={`px-3 py-3 text-right font-semibold ${validationTone(
+                          candidate.stability_classification ?? '',
+                        )}`}
+                      >
+                        {stabilityLabel(candidate.stability_classification)}
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-300">
+                        {decimal(candidate.max_rule_score)}
+                      </td>
+                    </tr>
+                    {isExpanded && hasBreakdown && (
+                      <tr className="border-t border-slate-800/40 bg-slate-950/45">
+                        <td className="px-3 py-3" colSpan={9}>
+                          <table className="w-full border-collapse text-xs">
+                            <thead>
+                              <tr className="text-slate-500">
+                                <th className="px-2 py-1 text-left">Rule</th>
+                                <th className="px-2 py-1 text-right">Quality</th>
+                                <th className="px-2 py-1 text-right">Stability</th>
+                                <th className="px-2 py-1 text-right">Exp. Return</th>
+                                <th className="px-2 py-1 text-right">20d Win</th>
+                                <th className="px-2 py-1 text-right">20d Median</th>
+                                <th className="px-2 py-1 text-right">Composite</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {candidate.rule_breakdowns.map((breakdown) => (
+                                <tr
+                                  className="border-t border-slate-800/40"
+                                  key={breakdown.rule_key}
+                                >
+                                  <td className="px-2 py-2 text-slate-300">
+                                    {translateDailyRallyRule(breakdown.rule_key)}
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-300">
+                                    {decimal(breakdown.rule_quality)}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-2 text-right ${validationTone(
+                                      breakdown.stability_classification,
+                                    )}`}
+                                  >
+                                    {stabilityLabel(breakdown.stability_classification)} ×
+                                    {decimal(breakdown.stability_multiplier, 1)}
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-300">
+                                    {decimal(breakdown.expected_return)}
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-300">
+                                    {ratio(breakdown.win_rate_20d)}
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-300">
+                                    {signedPct(breakdown.median_return_20d)}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-semibold text-amber-200">
+                                    {decimal(breakdown.rule_composite, 1)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>

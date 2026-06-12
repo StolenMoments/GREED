@@ -311,6 +311,18 @@ class DailyRallyPatternStatsRead(BaseModel):
     patterns: list[DailyRallyPatternStatRead]
 
 
+class DailyRallyRuleScoreBreakdownRead(BaseModel):
+    rule_key: str
+    rule_label: str
+    rule_composite: float
+    rule_quality: float
+    stability_multiplier: float
+    stability_classification: str
+    expected_return: float
+    win_rate_20d: float | None = None
+    median_return_20d: float | None = None
+
+
 class DailyRallyCandidateRead(BaseModel):
     id: int
     run_id: int
@@ -323,6 +335,15 @@ class DailyRallyCandidateRead(BaseModel):
     max_rule_score: float | None
     mean_rule_score: float | None
     features: dict[str, bool | int | float | str | None]
+    composite_score: float | None = None
+    best_rule_key: str | None = None
+    rule_quality_score: float | None = None
+    stability_score: float | None = None
+    stability_classification: str | None = None
+    expected_return_score: float | None = None
+    expected_win_rate_20d: float | None = None
+    expected_median_return_20d: float | None = None
+    rule_breakdowns: list[DailyRallyRuleScoreBreakdownRead] = []
 
 
 class DailyRallyCandidatesRead(BaseModel):

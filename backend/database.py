@@ -291,13 +291,42 @@ def _migrate_mariadb() -> None:
                     max_rule_score FLOAT NULL,
                     mean_rule_score FLOAT NULL,
                     features_json TEXT NOT NULL,
+                    composite_score FLOAT NULL,
+                    best_rule_key VARCHAR(255) NULL,
+                    rule_quality_score FLOAT NULL,
+                    stability_score FLOAT NULL,
+                    stability_classification VARCHAR(20) NULL,
+                    expected_return_score FLOAT NULL,
+                    expected_win_rate_20d FLOAT NULL,
+                    expected_median_return_20d FLOAT NULL,
+                    score_breakdown_json TEXT NULL,
                     PRIMARY KEY (id),
                     INDEX ix_daily_rally_current_candidates_run_score (run_id, max_rule_score),
-                    INDEX ix_daily_rally_current_candidates_run_ticker (run_id, ticker)
+                    INDEX ix_daily_rally_current_candidates_run_ticker (run_id, ticker),
+                    INDEX ix_daily_rally_current_candidates_run_composite (run_id, composite_score)
                 )
                 """
             )
         )
+        for col, typedef in [
+            ("composite_score", "FLOAT NULL"),
+            ("best_rule_key", "VARCHAR(255) NULL"),
+            ("rule_quality_score", "FLOAT NULL"),
+            ("stability_score", "FLOAT NULL"),
+            ("stability_classification", "VARCHAR(20) NULL"),
+            ("expected_return_score", "FLOAT NULL"),
+            ("expected_win_rate_20d", "FLOAT NULL"),
+            ("expected_median_return_20d", "FLOAT NULL"),
+            ("score_breakdown_json", "TEXT NULL"),
+        ]:
+            conn.execute(text(
+                "ALTER TABLE daily_rally_current_candidates "
+                f"ADD COLUMN IF NOT EXISTS {col} {typedef}"
+            ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_daily_rally_current_candidates_run_composite "
+            "ON daily_rally_current_candidates (run_id, composite_score)"
+        ))
         conn.execute(
             text(
                 """

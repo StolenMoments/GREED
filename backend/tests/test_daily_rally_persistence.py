@@ -22,6 +22,7 @@ from scripts.backtest.daily_rally import (
     DailyRallyCandidate,
     DailyRallyPatternStat as EngineDailyRallyPatternStat,
     DailyRallyRule,
+    DailyRallyRuleScoreBreakdown,
     DailyRallySample,
     DailyRallyReturnStat,
     DailyRallyValidationSummary as EngineDailyRallyValidationSummary,
@@ -100,6 +101,27 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
                 max_rule_score=1.5,
                 mean_rule_score=1.5,
                 features={"ret_20d": 0.12, "ma5_gt_ma20": True, "weekly_cloud_position": "above_cloud"},
+                composite_score=42.5,
+                best_rule_key="ret_20d>=0.10&volume_ratio_20d>=2.00",
+                rule_quality_score=1.0,
+                stability_score=0.6,
+                stability_classification="fragile",
+                expected_return_score=0.4375,
+                expected_win_rate_20d=0.5,
+                expected_median_return_20d=0.15,
+                rule_breakdowns=[
+                    DailyRallyRuleScoreBreakdown(
+                        rule_key="ret_20d>=0.10&volume_ratio_20d>=2.00",
+                        rule_label="ret_20d >= 0.10 AND volume_ratio_20d >= 2.00",
+                        rule_composite=43.125,
+                        rule_quality=1.0,
+                        stability_multiplier=0.6,
+                        stability_classification="fragile",
+                        expected_return=0.4375,
+                        win_rate_20d=0.5,
+                        median_return_20d=0.15,
+                    )
+                ],
             )
         ],
         pattern_stats=[
@@ -232,6 +254,16 @@ def test_persist_daily_rally_run_writes_run_rules_and_candidates(db_session: Ses
         "ret_20d": 0.12,
         "weekly_cloud_position": "above_cloud",
     }
+    assert candidate.composite_score == pytest.approx(42.5)
+    assert candidate.best_rule_key == "ret_20d>=0.10&volume_ratio_20d>=2.00"
+    assert candidate.stability_score == pytest.approx(0.6)
+    assert candidate.stability_classification == "fragile"
+    assert candidate.expected_win_rate_20d == pytest.approx(0.5)
+    breakdowns = json.loads(candidate.score_breakdown_json)
+    assert len(breakdowns) == 1
+    assert breakdowns[0]["rule_key"] == "ret_20d>=0.10&volume_ratio_20d>=2.00"
+    assert breakdowns[0]["stability_classification"] == "fragile"
+    assert breakdowns[0]["rule_composite"] == pytest.approx(43.125)
 
     validation = db_session.scalar(
         select(DailyRallyValidationSummary).where(DailyRallyValidationSummary.run_id == run_id)

@@ -124,6 +124,18 @@ export interface DailyRallyPatternStats {
   patterns: DailyRallyPatternStat[];
 }
 
+export interface DailyRallyRuleScoreBreakdown {
+  rule_key: string;
+  rule_label: string;
+  rule_composite: number;
+  rule_quality: number;
+  stability_multiplier: number;
+  stability_classification: string;
+  expected_return: number;
+  win_rate_20d: number | null;
+  median_return_20d: number | null;
+}
+
 export interface DailyRallyCandidate {
   id: number;
   run_id: number;
@@ -136,6 +148,15 @@ export interface DailyRallyCandidate {
   max_rule_score: number | null;
   mean_rule_score: number | null;
   features: Record<string, boolean | number | string | null>;
+  composite_score: number | null;
+  best_rule_key: string | null;
+  rule_quality_score: number | null;
+  stability_score: number | null;
+  stability_classification: string | null;
+  expected_return_score: number | null;
+  expected_win_rate_20d: number | null;
+  expected_median_return_20d: number | null;
+  rule_breakdowns: DailyRallyRuleScoreBreakdown[];
 }
 
 export interface DailyRallyCandidates {

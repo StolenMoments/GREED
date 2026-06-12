@@ -360,6 +360,7 @@ class DailyRallyCurrentCandidate(Base):
     __table_args__ = (
         Index("ix_daily_rally_current_candidates_run_score", "run_id", "max_rule_score"),
         Index("ix_daily_rally_current_candidates_run_ticker", "run_id", "ticker"),
+        Index("ix_daily_rally_current_candidates_run_composite", "run_id", "composite_score"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -373,6 +374,15 @@ class DailyRallyCurrentCandidate(Base):
     max_rule_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     mean_rule_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     features_json: Mapped[str] = mapped_column(Text, nullable=False)
+    composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    best_rule_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rule_quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stability_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stability_classification: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    expected_return_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_win_rate_20d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_median_return_20d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_breakdown_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class DailyRallyValidationSummary(Base):
