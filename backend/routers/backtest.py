@@ -52,7 +52,8 @@ from scripts.backtest.daily_rally import DAILY_RALLY_STRATEGY_KIND, run_daily_ra
 from scripts.backtest.engine import SignalRecord, WARMUP_WEEKS, run_span2_breakout_backtest
 from scripts.backtest.persistence import persist_daily_rally_run, persist_run
 from scripts.backtest.preload_daily import preload_daily_bars
-from scripts.backtest.universe import normalize_korean_ticker
+from scripts.backtest.preload_price_bars import PreloadPriceBarsResult, preload_price_bars
+from scripts.backtest.universe import load_active_universe, normalize_korean_ticker
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
@@ -250,6 +251,9 @@ def run_backtest_strategy_pipeline(job_id: int) -> None:
         job.error_message = None
         db.commit()
 
+        preload_result = preload_price_bars(db, universe=load_active_universe(db))
+        _raise_on_preload_price_bar_failures(preload_result)
+
         if job.strategy_kind == _SPAN2_STRATEGY_KIND:
             result = run_span2_breakout_backtest(db)
             run_id = persist_run(
@@ -288,6 +292,15 @@ def run_backtest_strategy_pipeline(job_id: int) -> None:
             db.commit()
     finally:
         db.close()
+
+
+def _raise_on_preload_price_bar_failures(result: PreloadPriceBarsResult) -> None:
+    if not result.failed:
+        return
+    failures = "; ".join(
+        f"{ticker} {name}: {message}" for ticker, name, message in result.failed
+    )
+    raise RuntimeError(f"Price bar preload failed: {failures}")
 
 
 @router.patch("/universe/{ticker}", response_model=BacktestUniverseMemberRead)

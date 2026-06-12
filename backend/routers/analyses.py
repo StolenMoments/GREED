@@ -4,6 +4,7 @@ from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.crud import (
@@ -25,6 +26,7 @@ from backend.crud import (
     upsert_stock_price,
 )
 from backend.database import SessionLocal, get_db
+from backend.models import Analysis, BacktestUniverseMember
 from backend.parser import parse_markdown
 from backend.outcome import evaluate_single_outcome, run_evaluate_outcomes
 from backend.schemas import (
@@ -41,6 +43,7 @@ from backend.schemas import (
 )
 from backend.stock_price import fetch_latest_close
 from backend.tickers import normalize_ticker
+from scripts.backtest.preload_price_bars import PreloadPriceBarsResult, preload_price_bars
 
 
 router = APIRouter(tags=["analyses"])
@@ -260,6 +263,12 @@ def run_analysis_backtest_pipeline(job_id: int) -> None:
             from scripts.backtest.engine import WARMUP_WEEKS
             from scripts.backtest.persistence import persist_run
 
+            preload_result = preload_price_bars(
+                db,
+                universe=_analysis_backtest_preload_universe(db, analysis),
+            )
+            _raise_on_preload_price_bar_failures(preload_result)
+
             result = run_analysis_contract_backtest(
                 db,
                 analysis,
@@ -292,3 +301,34 @@ def run_analysis_backtest_pipeline(job_id: int) -> None:
                 mark_analysis_backtest_job_failed(db, failed_job, error_message=error_message)
     finally:
         db.close()
+
+
+def _analysis_backtest_preload_universe(
+    db: Session,
+    analysis: Analysis,
+) -> list[tuple[str, str]]:
+    universe = [
+        (member.ticker, member.name)
+        for member in db.scalars(
+            select(BacktestUniverseMember)
+            .where(
+                BacktestUniverseMember.active.is_(True),
+                BacktestUniverseMember.market == "KR",
+            )
+            .order_by(BacktestUniverseMember.sort_order, BacktestUniverseMember.ticker)
+        ).all()
+    ]
+    seen = {ticker for ticker, _name in universe}
+    source_ticker = normalize_ticker(analysis.ticker)
+    if source_ticker not in seen:
+        universe.append((source_ticker, analysis.name))
+    return universe
+
+
+def _raise_on_preload_price_bar_failures(result: PreloadPriceBarsResult) -> None:
+    if not result.failed:
+        return
+    failures = "; ".join(
+        f"{ticker} {name}: {message}" for ticker, name, message in result.failed
+    )
+    raise RuntimeError(f"Price bar preload failed: {failures}")

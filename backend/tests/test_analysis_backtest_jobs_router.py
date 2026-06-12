@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
-from backend.models import Analysis, AnalysisBacktestJob, BacktestRun, PriceBar, Run
+from backend.models import Analysis, AnalysisBacktestJob, BacktestRun, BacktestUniverseMember, PriceBar, Run
 from backend.routers.analyses import router as analyses_router
+from scripts.backtest.preload_price_bars import PreloadPriceBarsResult
 
 
 @pytest.fixture()
@@ -168,6 +169,11 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
         )
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
+    monkeypatch.setattr(
+        analyses,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
@@ -186,6 +192,118 @@ def test_analysis_backtest_pipeline_persists_run_metadata(
     assert run.similarity_threshold == 12
     assert run.buy_threshold == 12
     assert run.ticker_count == 3
+
+
+def test_analysis_backtest_pipeline_preloads_active_universe_and_source_ticker(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis_id = _seed_analysis(db_session)
+    db_session.add_all(
+        [
+            BacktestUniverseMember(
+                ticker="000660",
+                name="SK Hynix",
+                market="KR",
+                active=True,
+                sort_order=1,
+                source="test",
+            ),
+            BacktestUniverseMember(
+                ticker="005930",
+                name="Samsung Old",
+                market="KR",
+                active=False,
+                sort_order=2,
+                source="test",
+            ),
+        ]
+    )
+    job = AnalysisBacktestJob(
+        analysis_id=analysis_id,
+        status="pending",
+        similarity_threshold=12,
+    )
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+    calls: list[list[tuple[str, str]]] = []
+
+    from backend.routers import analyses
+    from scripts.backtest.analysis_similarity import AnalysisBacktestResult
+    import scripts.backtest.analysis_similarity as analysis_similarity
+
+    def fake_preload(db: Session, *, universe):
+        calls.append(list(universe))
+        return PreloadPriceBarsResult(processed=len(calls[-1]))
+
+    monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
+    monkeypatch.setattr(analyses, "preload_price_bars", fake_preload)
+    monkeypatch.setattr(
+        analysis_similarity,
+        "run_analysis_contract_backtest",
+        lambda db, analysis, *, threshold: AnalysisBacktestResult(
+            ticker_count=0,
+            data_start=None,
+            data_end=None,
+            base_score=6,
+            base_judgment="buy",
+        ),
+    )
+
+    analyses.run_analysis_backtest_pipeline(job_id)
+
+    assert calls == [[("000660", "SK Hynix"), ("005930", "Samsung")]]
+    db_session.expire_all()
+    saved_job = db_session.get(AnalysisBacktestJob, job_id)
+    assert saved_job is not None
+    assert saved_job.status == "done"
+
+
+def test_analysis_backtest_pipeline_fails_without_run_on_preload_failure(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    analysis_id = _seed_analysis(db_session)
+    job = AnalysisBacktestJob(
+        analysis_id=analysis_id,
+        status="pending",
+        similarity_threshold=12,
+    )
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+
+    from backend.routers import analyses
+    import scripts.backtest.analysis_similarity as analysis_similarity
+
+    monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
+    monkeypatch.setattr(
+        analyses,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(
+            failed=[("005930", "Samsung", "fetch failed")]
+        ),
+    )
+    monkeypatch.setattr(
+        analysis_similarity,
+        "run_analysis_contract_backtest",
+        lambda db, analysis, *, threshold: (_ for _ in ()).throw(
+            AssertionError("engine should not run")
+        ),
+    )
+
+    analyses.run_analysis_backtest_pipeline(job_id)
+
+    db_session.expire_all()
+    saved_job = db_session.get(AnalysisBacktestJob, job_id)
+    assert saved_job is not None
+    assert saved_job.status == "failed"
+    assert saved_job.backtest_run_id is None
+    assert "005930 Samsung: fetch failed" in saved_job.error_message
+    assert db_session.query(BacktestRun).count() == 0
 
 
 def test_analysis_backtest_pipeline_marks_failure(

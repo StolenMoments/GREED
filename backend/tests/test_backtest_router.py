@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
 from scripts.backtest.preload_daily import PreloadDailyResult
+from scripts.backtest.preload_price_bars import PreloadPriceBarsResult
 
 from backend.models import (
     Analysis,
@@ -469,6 +470,12 @@ def test_run_backtest_strategy_pipeline_marks_done_with_run_id(
         data_end = date(2024, 1, 31)
 
     monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "load_active_universe", lambda db: [("005930", "Samsung")])
+    monkeypatch.setattr(
+        backtest,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(backtest, "run_span2_breakout_backtest", lambda db: FakeResult())
 
     backtest.run_backtest_strategy_pipeline(job_id)
@@ -498,6 +505,12 @@ def test_run_backtest_strategy_pipeline_daily_rally_marks_done_with_run_id(
         ticker_count = 1
 
     monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "load_active_universe", lambda db: [("005930", "Samsung")])
+    monkeypatch.setattr(
+        backtest,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(backtest, "run_daily_rally_backtest", lambda db: FakeResult())
     monkeypatch.setattr(backtest, "persist_daily_rally_run", lambda db, result: 77)
 
@@ -510,6 +523,109 @@ def test_run_backtest_strategy_pipeline_daily_rally_marks_done_with_run_id(
     assert saved.completed_at is not None
 
 
+def test_run_backtest_strategy_pipeline_preloads_active_universe_before_span2(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.add_all(
+        [
+            BacktestUniverseMember(
+                ticker="005930",
+                name="Samsung",
+                market="KR",
+                active=True,
+                sort_order=1,
+                source="test",
+            ),
+            BacktestUniverseMember(
+                ticker="000660",
+                name="SK Hynix",
+                market="KR",
+                active=True,
+                sort_order=2,
+                source="test",
+            ),
+        ]
+    )
+    job = BacktestStrategyJob(strategy_kind="ichimoku_span2_breakout")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+    calls: list[list[tuple[str, str]]] = []
+
+    class FakeResult:
+        ticker_count = 0
+        records = []
+        stats = []
+        data_start = None
+        data_end = None
+
+    def fake_preload(db: Session, *, universe):
+        calls.append(list(universe))
+        return PreloadPriceBarsResult(processed=len(calls[-1]))
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "preload_price_bars", fake_preload)
+    monkeypatch.setattr(backtest, "run_span2_breakout_backtest", lambda db: FakeResult())
+
+    backtest.run_backtest_strategy_pipeline(job_id)
+
+    assert calls == [[("005930", "Samsung"), ("000660", "SK Hynix")]]
+    saved = db_session.get(BacktestStrategyJob, job_id)
+    assert saved is not None
+    assert saved.status == "done"
+
+
+def test_run_backtest_strategy_pipeline_daily_rally_fails_without_run_on_preload_failure(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.add(
+        BacktestUniverseMember(
+            ticker="047040",
+            name="Daewoo E&C",
+            market="KR",
+            active=True,
+            sort_order=1,
+            source="test",
+        )
+    )
+    job = BacktestStrategyJob(strategy_kind="daily_20d_40pct_rally")
+    db_session.add(job)
+    db_session.commit()
+    job_id = job.id
+    persisted: list[int] = []
+
+    monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(
+        backtest,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(
+            failed=[("047040", "Daewoo E&C", "fetch failed")]
+        ),
+    )
+    monkeypatch.setattr(
+        backtest,
+        "run_daily_rally_backtest",
+        lambda db: (_ for _ in ()).throw(AssertionError("engine should not run")),
+    )
+    monkeypatch.setattr(
+        backtest,
+        "persist_daily_rally_run",
+        lambda db, result: persisted.append(1),
+    )
+
+    backtest.run_backtest_strategy_pipeline(job_id)
+
+    saved = db_session.get(BacktestStrategyJob, job_id)
+    assert saved is not None
+    assert saved.status == "failed"
+    assert saved.backtest_run_id is None
+    assert "047040 Daewoo E&C: fetch failed" in saved.error_message
+    assert persisted == []
+    assert db_session.query(BacktestRun).count() == 0
+
+
 def test_run_backtest_strategy_pipeline_marks_failed(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -520,6 +636,12 @@ def test_run_backtest_strategy_pipeline_marks_failed(
     job_id = job.id
 
     monkeypatch.setattr(backtest, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(backtest, "load_active_universe", lambda db: [("005930", "Samsung")])
+    monkeypatch.setattr(
+        backtest,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(
         backtest,
         "run_span2_breakout_backtest",
