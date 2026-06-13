@@ -328,6 +328,11 @@ def test_analysis_backtest_pipeline_marks_failure(
         raise RuntimeError("not enough data")
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
+    monkeypatch.setattr(
+        analyses,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
@@ -376,6 +381,11 @@ def test_analysis_backtest_pipeline_rolls_back_before_marking_failure(
         db.flush()
 
     monkeypatch.setattr(analyses, "SessionLocal", client.app.state.TestingSessionLocal)
+    monkeypatch.setattr(
+        analyses,
+        "preload_price_bars",
+        lambda db, universe: PreloadPriceBarsResult(processed=len(list(universe))),
+    )
     monkeypatch.setattr(analysis_similarity, "run_analysis_contract_backtest", fake_backtest)
 
     analyses.run_analysis_backtest_pipeline(job_id)
