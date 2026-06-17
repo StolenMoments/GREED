@@ -2,11 +2,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 
 import type {
+  DailyRallyCandidates,
   DailyRallyInsights,
   DailyRallyPatternStats,
   DailyRallyValidation,
 } from '../api/backtest';
 import {
+  DailyRallyBuyCandidatesPanel,
   DailyRallyPatternBriefing,
   DailyRallyPatternStatsTable,
   DailyRallyValidationPanel,
@@ -183,6 +185,59 @@ const failedValidation = renderToStaticMarkup(
 
 if (!failedValidation.includes('Could not load')) {
   throw new Error('Validation API failure should render a local panel error');
+}
+
+const buyCandidates: DailyRallyCandidates = {
+  run_id: 1,
+  candidate_count: 1,
+  candidates: [
+    {
+      id: 20,
+      run_id: 1,
+      ticker: '005930',
+      name: 'Samsung',
+      signal_date: '2026-06-17',
+      close_price: 73000,
+      matched_rules: ['ret_20d>=0.20'],
+      matched_rule_count: 2,
+      max_rule_score: 72,
+      mean_rule_score: 68,
+      features: {},
+      composite_score: 72.4,
+      best_rule_key: 'ret_20d>=0.20',
+      rule_quality_score: 0.8,
+      stability_score: 0.9,
+      stability_classification: 'stable',
+      expected_return_score: 0.7,
+      expected_win_rate_20d: 0.64,
+      expected_median_return_20d: 0.18,
+      rule_breakdowns: [],
+      selection_tier: 'buy',
+      selection_rank: 1,
+      selection_reasons: ['composite 72.4 >= 60', '20d expected win rate 64.0%'],
+    },
+  ],
+};
+
+const buyPanel = renderToStaticMarkup(
+  <DailyRallyBuyCandidatesPanel candidates={buyCandidates} isError={false} />,
+);
+
+for (const expected of ['매수 후보', 'Samsung', '005930', '72.4', '64.0%', '+18.0%', '안정']) {
+  if (!buyPanel.includes(expected)) {
+    throw new Error(`Buy candidates panel should include ${expected}`);
+  }
+}
+
+const emptyBuyPanel = renderToStaticMarkup(
+  <DailyRallyBuyCandidatesPanel
+    candidates={{ run_id: 1, candidate_count: 0, candidates: [] }}
+    isError={false}
+  />,
+);
+
+if (!emptyBuyPanel.includes('선별된 매수 후보 없음')) {
+  throw new Error('Buy candidates panel should show an empty state');
 }
 
 const comboText = translateDailyRallyRule(

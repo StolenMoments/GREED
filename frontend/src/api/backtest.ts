@@ -136,6 +136,8 @@ export interface DailyRallyRuleScoreBreakdown {
   median_return_20d: number | null;
 }
 
+export type DailyRallySelectionTier = 'all' | 'buy' | 'watch' | 'exclude';
+
 export interface DailyRallyCandidate {
   id: number;
   run_id: number;
@@ -157,6 +159,9 @@ export interface DailyRallyCandidate {
   expected_win_rate_20d: number | null;
   expected_median_return_20d: number | null;
   rule_breakdowns: DailyRallyRuleScoreBreakdown[];
+  selection_tier: Exclude<DailyRallySelectionTier, 'all'>;
+  selection_rank: number | null;
+  selection_reasons: string[];
 }
 
 export interface DailyRallyCandidates {
@@ -321,9 +326,27 @@ export async function fetchDailyRallyPatternStats(runId: number): Promise<DailyR
   return response.data;
 }
 
-export async function fetchDailyRallyCandidates(runId: number): Promise<DailyRallyCandidates> {
+export interface DailyRallyCandidateParams {
+  tier?: DailyRallySelectionTier;
+  limit?: number;
+}
+
+export function buildDailyRallyCandidatesParams(
+  options: DailyRallyCandidateParams = {},
+): Record<string, string | number> {
+  const params: Record<string, string | number> = {};
+  if (options.tier !== undefined) params.tier = options.tier;
+  if (options.limit !== undefined) params.limit = options.limit;
+  return params;
+}
+
+export async function fetchDailyRallyCandidates(
+  runId: number,
+  options: DailyRallyCandidateParams = {},
+): Promise<DailyRallyCandidates> {
   const response = await apiClient.get<DailyRallyCandidates>(
     `/backtest/runs/${runId}/daily-rally-candidates`,
+    { params: buildDailyRallyCandidatesParams(options) },
   );
   return response.data;
 }

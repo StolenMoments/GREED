@@ -17,6 +17,7 @@ import {
 } from '../api/backtest';
 import {
   DailyRallyCandidateBriefing,
+  DailyRallyBuyCandidatesPanel,
   DailyRallyCandidatesTable,
   DailyRallyPatternBriefing,
   DailyRallyPatternStatsTable,
@@ -347,6 +348,11 @@ function DailyRallyPage() {
     queryFn: () => fetchDailyRallyCandidates(runId as number),
     enabled: runId !== null,
   });
+  const dailyRallyBuyCandidatesQuery = useQuery({
+    queryKey: ['backtest', 'run', runId, 'daily-rally-candidates', 'buy', 10],
+    queryFn: () => fetchDailyRallyCandidates(runId as number, { tier: 'buy', limit: 10 }),
+    enabled: runId !== null,
+  });
   const dailyRallyPatternStatsQuery = useQuery({
     queryKey: ['backtest', 'run', runId, 'daily-rally-pattern-stats'],
     queryFn: () => fetchDailyRallyPatternStats(runId as number),
@@ -368,6 +374,7 @@ function DailyRallyPage() {
     if (runId !== null) void refetchDetail();
     void dailyRallyInsightsQuery.refetch();
     void dailyRallyCandidatesQuery.refetch();
+    void dailyRallyBuyCandidatesQuery.refetch();
     void dailyRallyPatternStatsQuery.refetch();
     void dailyRallyValidationQuery.refetch();
   };
@@ -434,6 +441,10 @@ function DailyRallyPage() {
                 isError={dailyRallyInsightsQuery.isError}
                 patternStats={dailyRallyPatternStatsQuery.data}
                 patternStatsIsError={dailyRallyPatternStatsQuery.isError}
+              />
+              <DailyRallyBuyCandidatesPanel
+                candidates={dailyRallyBuyCandidatesQuery.data}
+                isError={dailyRallyBuyCandidatesQuery.isError}
               />
               <DailyRallyCandidateBriefing
                 candidates={dailyRallyCandidatesQuery.data}

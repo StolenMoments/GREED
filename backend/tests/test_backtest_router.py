@@ -944,6 +944,232 @@ def test_get_daily_rally_candidates_sorts_by_composite_with_nulls_last(
     assert top["rule_breakdowns"][0]["stability_multiplier"] == pytest.approx(1.0)
 
 
+def test_get_daily_rally_candidates_adds_selection_fields(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=1,
+        signal_count=1,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add(
+        DailyRallyCurrentCandidate(
+            run_id=run.id,
+            ticker="BUY1",
+            name="Buy Candidate",
+            signal_date=date(2024, 2, 1),
+            close_price=100.0,
+            matched_rules_json='["ret_20d>=0.10"]',
+            matched_rule_count=2,
+            max_rule_score=80.0,
+            mean_rule_score=75.0,
+            features_json="{}",
+            composite_score=70.0,
+            stability_classification="stable",
+            expected_win_rate_20d=0.65,
+        )
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-candidates")
+
+    assert resp.status_code == 200
+    candidate = resp.json()["candidates"][0]
+    assert candidate["selection_tier"] == "buy"
+    assert candidate["selection_rank"] == 1
+    assert any("60" in reason for reason in candidate["selection_reasons"])
+
+
+def test_get_daily_rally_candidates_filters_buy_tier(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=3,
+        signal_count=3,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyRallyCurrentCandidate(
+                run_id=run.id,
+                ticker="BUY1",
+                name="Buy One",
+                signal_date=date(2024, 2, 1),
+                close_price=100.0,
+                matched_rules_json='["ret_20d>=0.10"]',
+                matched_rule_count=2,
+                max_rule_score=80.0,
+                mean_rule_score=75.0,
+                features_json="{}",
+                composite_score=70.0,
+                stability_classification="stable",
+                expected_win_rate_20d=0.65,
+            ),
+            DailyRallyCurrentCandidate(
+                run_id=run.id,
+                ticker="WATCH",
+                name="Watch",
+                signal_date=date(2024, 2, 1),
+                close_price=100.0,
+                matched_rules_json='["ret_20d>=0.10"]',
+                matched_rule_count=2,
+                max_rule_score=45.0,
+                mean_rule_score=45.0,
+                features_json="{}",
+                composite_score=45.0,
+                stability_classification="fragile",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(
+        f"/api/backtest/runs/{run.id}/daily-rally-candidates",
+        params={"tier": "buy", "limit": 10},
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["candidate_count"] == 1
+    assert [candidate["ticker"] for candidate in body["candidates"]] == ["BUY1"]
+
+
+def test_buy_selection_requires_score_60_and_non_insufficient_stability(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=2,
+        signal_count=2,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all(
+        [
+            DailyRallyCurrentCandidate(
+                run_id=run.id,
+                ticker="NOEXP",
+                name="No Expected Metric",
+                signal_date=date(2024, 2, 1),
+                close_price=100.0,
+                matched_rules_json='["ret_20d>=0.10"]',
+                matched_rule_count=1,
+                max_rule_score=70.0,
+                mean_rule_score=70.0,
+                features_json="{}",
+                composite_score=70.0,
+                stability_classification="stable",
+            ),
+            DailyRallyCurrentCandidate(
+                run_id=run.id,
+                ticker="INSUF",
+                name="Insufficient",
+                signal_date=date(2024, 2, 1),
+                close_price=100.0,
+                matched_rules_json='["ret_20d>=0.10"]',
+                matched_rule_count=1,
+                max_rule_score=70.0,
+                mean_rule_score=70.0,
+                features_json="{}",
+                composite_score=70.0,
+                stability_classification="insufficient",
+                expected_median_return_20d=0.15,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(f"/api/backtest/runs/{run.id}/daily-rally-candidates")
+
+    assert resp.status_code == 200
+    tiers = {candidate["ticker"]: candidate["selection_tier"] for candidate in resp.json()["candidates"]}
+    assert tiers == {"INSUF": "watch", "NOEXP": "watch"}
+
+
+def test_selection_rank_orders_buy_candidates_by_composite_then_expected_win_rate(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = BacktestRun(
+        created_at=datetime(2026, 5, 24, 9, 0, 0),
+        universe="KOSPI200-DB",
+        buy_threshold=0,
+        horizons="20d,40d,60d,120d",
+        warmup_weeks=0,
+        data_start=date(2024, 1, 1),
+        data_end=date(2024, 2, 1),
+        ticker_count=3,
+        signal_count=3,
+        strategy_kind="daily_20d_40pct_rally",
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    def _buy(ticker: str, composite: float, win_rate: float, matched_rule_count: int):
+        return DailyRallyCurrentCandidate(
+            run_id=run.id,
+            ticker=ticker,
+            name=ticker,
+            signal_date=date(2024, 2, 1),
+            close_price=100.0,
+            matched_rules_json='["ret_20d>=0.10"]',
+            matched_rule_count=matched_rule_count,
+            max_rule_score=composite,
+            mean_rule_score=composite,
+            features_json="{}",
+            composite_score=composite,
+            stability_classification="stable",
+            expected_win_rate_20d=win_rate,
+        )
+
+    db_session.add_all(
+        [
+            _buy("LOWCOMP", 65.0, 0.9, 3),
+            _buy("WIN2", 80.0, 0.55, 2),
+            _buy("WIN1", 80.0, 0.7, 1),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get(
+        f"/api/backtest/runs/{run.id}/daily-rally-candidates",
+        params={"tier": "buy", "limit": 10},
+    )
+
+    assert resp.status_code == 200
+    candidates = resp.json()["candidates"]
+    assert [candidate["ticker"] for candidate in candidates] == ["WIN1", "WIN2", "LOWCOMP"]
+    assert [candidate["selection_rank"] for candidate in candidates] == [1, 2, 3]
+
+
 def test_get_daily_rally_pattern_stats_decodes_return_stats(
     client: TestClient,
     db_session: Session,

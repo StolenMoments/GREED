@@ -344,6 +344,9 @@ class DailyRallyCandidateRead(BaseModel):
     expected_win_rate_20d: float | None = None
     expected_median_return_20d: float | None = None
     rule_breakdowns: list[DailyRallyRuleScoreBreakdownRead] = []
+    selection_tier: Literal["buy", "watch", "exclude"]
+    selection_rank: int | None = None
+    selection_reasons: list[str]
 
 
 class DailyRallyCandidatesRead(BaseModel):

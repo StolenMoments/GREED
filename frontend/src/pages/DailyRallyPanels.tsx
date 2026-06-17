@@ -252,6 +252,104 @@ function candidateReason(candidate: DailyRallyCandidate): string {
     .join(' / ');
 }
 
+function selectionTierLabel(tier: DailyRallyCandidate['selection_tier']): string {
+  if (tier === 'buy') return '매수 후보';
+  if (tier === 'watch') return '관망';
+  return '제외';
+}
+
+function selectionTierTone(tier: DailyRallyCandidate['selection_tier']): string {
+  if (tier === 'buy') return 'border-emerald-200/40 bg-emerald-300/10 text-emerald-100';
+  if (tier === 'watch') return 'border-amber-200/35 bg-amber-300/10 text-amber-100';
+  return 'border-slate-700 bg-slate-900/80 text-slate-400';
+}
+
+export function DailyRallyBuyCandidatesPanel({
+  candidates,
+  isError,
+}: {
+  candidates: DailyRallyCandidates | undefined;
+  isError: boolean;
+}) {
+  const buyCandidates = candidates?.candidates.slice(0, 10) ?? [];
+
+  return (
+    <PanelShell title="매수 후보">
+      {isError ? (
+        <p className="mt-4 text-sm font-semibold text-rose-200">
+          매수 후보를 불러오지 못했습니다.
+        </p>
+      ) : buyCandidates.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">선별된 매수 후보 없음</p>
+      ) : (
+        <div className="mt-5 grid gap-3 xl:grid-cols-2">
+          {buyCandidates.map((candidate) => (
+            <article
+              className="rounded-lg border border-emerald-200/20 bg-slate-950/65 p-4"
+              key={candidate.id}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {candidate.selection_rank !== null && (
+                      <span className="rounded-md bg-emerald-300 px-2 py-1 text-xs font-bold text-slate-950">
+                        #{candidate.selection_rank}
+                      </span>
+                    )}
+                    <p className="text-lg font-semibold text-slate-50">
+                      {candidate.name}
+                      <span className="ml-2 text-sm text-emerald-200">{candidate.ticker}</span>
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {date(candidate.signal_date)} · {formatPriceByTicker(
+                      candidate.close_price,
+                      candidate.ticker,
+                    ) ?? count(candidate.close_price)}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-xs text-slate-500">composite</p>
+                  <p className="text-lg font-semibold text-emerald-200">
+                    {decimal(candidate.composite_score, 1)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
+                <div className="rounded-md border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-slate-500">20d 승률</p>
+                  <p className="mt-1 font-semibold text-slate-100">
+                    {ratio(candidate.expected_win_rate_20d)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-slate-500">20d 중앙값</p>
+                  <p className="mt-1 font-semibold text-slate-100">
+                    {signedPct(candidate.expected_median_return_20d)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-slate-500">안정성</p>
+                  <p
+                    className={`mt-1 font-semibold ${validationTone(
+                      candidate.stability_classification ?? '',
+                    )}`}
+                  >
+                    {stabilityLabel(candidate.stability_classification)}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {candidate.selection_reasons.slice(0, 2).join(' · ') || candidateReason(candidate)}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
 export function DailyRallyCandidateBriefing({
   candidates,
   isError,
@@ -719,10 +817,11 @@ export function DailyRallyCandidatesTable({
         <p className="mt-4 text-sm text-slate-500">No current candidates for this run.</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
+          <table className="w-full min-w-[1060px] border-collapse text-sm">
             <thead>
               <tr className="text-slate-400">
                 <th className="px-3 py-2 text-right">#</th>
+                <th className="px-3 py-2 text-left">Tier</th>
                 <th className="px-3 py-2 text-left">Ticker</th>
                 <th className="px-3 py-2 text-left">Name</th>
                 <th className="px-3 py-2 text-right">Signal Date</th>
@@ -743,6 +842,15 @@ export function DailyRallyCandidatesTable({
                   <React.Fragment key={candidate.id}>
                     <tr className="border-t border-slate-800/70">
                       <td className="px-3 py-3 text-right text-slate-500">{index + 1}</td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${selectionTierTone(
+                            candidate.selection_tier,
+                          )}`}
+                        >
+                          {selectionTierLabel(candidate.selection_tier)}
+                        </span>
+                      </td>
                       <td className="px-3 py-3 font-semibold text-amber-100">
                         {candidate.ticker}
                       </td>
@@ -788,7 +896,7 @@ export function DailyRallyCandidatesTable({
                     </tr>
                     {isExpanded && hasBreakdown && (
                       <tr className="border-t border-slate-800/40 bg-slate-950/45">
-                        <td className="px-3 py-3" colSpan={9}>
+                        <td className="px-3 py-3" colSpan={10}>
                           <table className="w-full border-collapse text-xs">
                             <thead>
                               <tr className="text-slate-500">

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
@@ -68,6 +69,7 @@ _ACTIVE_STRATEGY_JOB_STATUSES = ("pending", "running")
 _SPAN2_STRATEGY_KIND = "ichimoku_span2_breakout"
 _DAILY_RALLY_STRATEGY_KIND = DAILY_RALLY_STRATEGY_KIND
 _CONTRACT_FOCUS_THRESHOLD = 12
+_DailyRallySelectionTier = Literal["all", "buy", "watch", "exclude"]
 _CONTRACT_TICKER_MIN_ENTRIES = 5
 
 
@@ -674,9 +676,105 @@ def get_daily_rally_pattern_stats(
     )
 
 
+def _daily_rally_candidate_selection(
+    candidate: DailyRallyCurrentCandidate,
+) -> tuple[Literal["buy", "watch", "exclude"], list[str]]:
+    score = candidate.composite_score
+    has_expected_20d = (
+        candidate.expected_win_rate_20d is not None
+        or candidate.expected_median_return_20d is not None
+    )
+    has_buy_score = score is not None and score >= 60
+    has_watch_score = score is not None and score >= 40
+    has_usable_stability = candidate.stability_classification != "insufficient"
+
+    if has_buy_score and has_expected_20d and has_usable_stability:
+        reasons = [f"composite {score:.1f} >= 60"]
+        if candidate.expected_win_rate_20d is not None:
+            reasons.append(f"20d expected win rate {candidate.expected_win_rate_20d * 100:.1f}%")
+        if candidate.expected_median_return_20d is not None:
+            reasons.append(
+                f"20d expected median return {candidate.expected_median_return_20d * 100:+.1f}%"
+            )
+        if candidate.stability_classification:
+            reasons.append(f"stability {candidate.stability_classification}")
+        return "buy", reasons
+
+    if has_watch_score or candidate.matched_rule_count >= 2:
+        reasons = []
+        if has_watch_score:
+            reasons.append(f"composite {score:.1f} >= 40")
+        if candidate.matched_rule_count >= 2:
+            reasons.append(f"matched rules {candidate.matched_rule_count} >= 2")
+        if score is not None and score >= 60 and not has_expected_20d:
+            reasons.append("missing 20d expected win rate or median return")
+        if candidate.stability_classification == "insufficient":
+            reasons.append("stability insufficient")
+        return "watch", reasons
+
+    return "exclude", ["below watch threshold"]
+
+
+def _daily_rally_buy_sort_key(
+    candidate: DailyRallyCurrentCandidate,
+) -> tuple[float, float, int, str]:
+    return (
+        -(candidate.composite_score or 0),
+        -(candidate.expected_win_rate_20d or 0),
+        -candidate.matched_rule_count,
+        candidate.ticker,
+    )
+
+
+def _daily_rally_default_sort_key(
+    candidate: DailyRallyCurrentCandidate,
+) -> tuple[bool, float, float, int, str]:
+    return (
+        candidate.composite_score is None,
+        -(candidate.composite_score or 0),
+        -(candidate.max_rule_score or 0),
+        -candidate.matched_rule_count,
+        candidate.ticker,
+    )
+
+
+def _daily_rally_candidate_read(
+    candidate: DailyRallyCurrentCandidate,
+    selection_tier: Literal["buy", "watch", "exclude"],
+    selection_rank: int | None,
+    selection_reasons: list[str],
+) -> DailyRallyCandidateRead:
+    return DailyRallyCandidateRead(
+        id=candidate.id,
+        run_id=candidate.run_id,
+        ticker=candidate.ticker,
+        name=candidate.name,
+        signal_date=candidate.signal_date,
+        close_price=candidate.close_price,
+        matched_rules=json.loads(candidate.matched_rules_json),
+        matched_rule_count=candidate.matched_rule_count,
+        max_rule_score=candidate.max_rule_score,
+        mean_rule_score=candidate.mean_rule_score,
+        features=json.loads(candidate.features_json),
+        composite_score=candidate.composite_score,
+        best_rule_key=candidate.best_rule_key,
+        rule_quality_score=candidate.rule_quality_score,
+        stability_score=candidate.stability_score,
+        stability_classification=candidate.stability_classification,
+        expected_return_score=candidate.expected_return_score,
+        expected_win_rate_20d=candidate.expected_win_rate_20d,
+        expected_median_return_20d=candidate.expected_median_return_20d,
+        rule_breakdowns=json.loads(candidate.score_breakdown_json or "[]"),
+        selection_tier=selection_tier,
+        selection_rank=selection_rank,
+        selection_reasons=selection_reasons,
+    )
+
+
 @router.get("/runs/{run_id}/daily-rally-candidates", response_model=DailyRallyCandidatesRead)
 def get_daily_rally_candidates(
     run_id: int,
+    tier: _DailyRallySelectionTier = Query("all"),
     limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
 ) -> DailyRallyCandidatesRead:
@@ -685,41 +783,50 @@ def get_daily_rally_candidates(
         db.scalars(
             select(DailyRallyCurrentCandidate)
             .where(DailyRallyCurrentCandidate.run_id == run_id)
-            .order_by(
-                DailyRallyCurrentCandidate.composite_score.is_(None).asc(),
-                DailyRallyCurrentCandidate.composite_score.desc(),
-                DailyRallyCurrentCandidate.max_rule_score.desc(),
-                DailyRallyCurrentCandidate.matched_rule_count.desc(),
-                DailyRallyCurrentCandidate.ticker.asc(),
-            )
-            .limit(limit)
         ).all()
     )
+    selections = {
+        candidate.id: _daily_rally_candidate_selection(candidate)
+        for candidate in candidates
+    }
+    buy_ranks = {
+        candidate.id: index
+        for index, candidate in enumerate(
+            sorted(
+                [
+                    candidate
+                    for candidate in candidates
+                    if selections[candidate.id][0] == "buy"
+                ],
+                key=_daily_rally_buy_sort_key,
+            ),
+            start=1,
+        )
+    }
+    if tier == "buy":
+        candidates = sorted(
+            [candidate for candidate in candidates if selections[candidate.id][0] == "buy"],
+            key=_daily_rally_buy_sort_key,
+        )
+    else:
+        candidates = sorted(candidates, key=_daily_rally_default_sort_key)
+        if tier != "all":
+            candidates = [
+                candidate
+                for candidate in candidates
+                if selections[candidate.id][0] == tier
+            ]
+    candidates = candidates[:limit]
+
     return DailyRallyCandidatesRead(
         run_id=run_id,
         candidate_count=len(candidates),
         candidates=[
-            DailyRallyCandidateRead(
-                id=candidate.id,
-                run_id=candidate.run_id,
-                ticker=candidate.ticker,
-                name=candidate.name,
-                signal_date=candidate.signal_date,
-                close_price=candidate.close_price,
-                matched_rules=json.loads(candidate.matched_rules_json),
-                matched_rule_count=candidate.matched_rule_count,
-                max_rule_score=candidate.max_rule_score,
-                mean_rule_score=candidate.mean_rule_score,
-                features=json.loads(candidate.features_json),
-                composite_score=candidate.composite_score,
-                best_rule_key=candidate.best_rule_key,
-                rule_quality_score=candidate.rule_quality_score,
-                stability_score=candidate.stability_score,
-                stability_classification=candidate.stability_classification,
-                expected_return_score=candidate.expected_return_score,
-                expected_win_rate_20d=candidate.expected_win_rate_20d,
-                expected_median_return_20d=candidate.expected_median_return_20d,
-                rule_breakdowns=json.loads(candidate.score_breakdown_json or "[]"),
+            _daily_rally_candidate_read(
+                candidate,
+                selections[candidate.id][0],
+                buy_ranks.get(candidate.id),
+                selections[candidate.id][1],
             )
             for candidate in candidates
         ],
