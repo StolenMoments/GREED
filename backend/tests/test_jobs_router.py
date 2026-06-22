@@ -1647,6 +1647,7 @@ def test_run_gemini_invokes_agy_with_prompt_file_reference_and_high_model(
         return FakeProcess()
 
     monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(jobs.sys, "platform", "linux")
 
     prompt_path = tmp_path / "prompt.md"
     jobs._run_gemini(
@@ -1662,7 +1663,7 @@ def test_run_gemini_invokes_agy_with_prompt_file_reference_and_high_model(
 
     payload = json.loads(captured["args"][3])
     cmd = payload["cmd"]
-    assert Path(cmd[0]).name == "agy.exe"
+    assert Path(cmd[0]).stem == "agy"
     assert "--dangerously-skip-permissions" in cmd
     prompt_idx = cmd.index("-p")
     assert str(prompt_path.resolve()) in cmd[prompt_idx + 1]
