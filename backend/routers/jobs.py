@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -1390,20 +1391,36 @@ def _run_codex(
     return _spawn_model_process(_codex_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
 
 
-def _gemini_cmd() -> list[str]:
-    base_args = ["--model", "gemini-3.1-pro-preview", "--yolo", "-p", "", "--output-format", "text"]
-    if sys.platform != "win32":
-        return ["gemini", *base_args]
-    # gemini.cmd (batch wrapper) drops empty-string args, breaking the -p "" stdin trigger.
-    # Call node + gemini.js directly so stdin is forwarded correctly.
-    gemini_js = (
-        Path.home()
-        / "AppData" / "Roaming" / "npm" / "node_modules"
-        / "@google" / "gemini-cli" / "bundle" / "gemini.js"
+AGY_MODEL = "Gemini 3.1 Pro (High)"
+
+
+def _agy_windows_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "agy" / "bin" / "agy.exe")
+    candidates.append(Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe")
+    return candidates
+
+
+def _agy_cmd(prompt_path: Path) -> list[str]:
+    prompt_instruction = (
+        f'Read the UTF-8 prompt file at "{prompt_path.resolve()}" and follow every instruction in it. '
+        "Create the requested analysis output file; do not summarize the prompt itself."
     )
-    if gemini_js.exists():
-        return ["node", str(gemini_js), *base_args]
-    return ["gemini.cmd", *base_args]
+    args = [
+        "--dangerously-skip-permissions",
+        "-p",
+        prompt_instruction,
+        "--model",
+        AGY_MODEL,
+    ]
+    if sys.platform != "win32":
+        return ["agy", *args]
+    for exe in _agy_windows_candidates():
+        if exe.exists():
+            return [str(exe), *args]
+    return ["agy.exe", *args]
 
 
 def _run_gemini(
@@ -1423,4 +1440,4 @@ def _run_gemini(
     pid_path = pid_path or PICK_OUTPUT_DIR / PID_FILENAME
     exit_code_path = exit_code_path or PICK_OUTPUT_DIR / EXIT_CODE_FILENAME
     prompt = _build_file_output_prompt(system_prompt, csv_text, analysis_path)
-    return _spawn_model_process(_gemini_cmd(), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)
+    return _spawn_model_process(_agy_cmd(prompt_path), prompt, prompt_path, stdout_path, stderr_path, pid_path, exit_code_path)

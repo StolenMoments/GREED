@@ -1635,7 +1635,7 @@ def test_file_output_prompt_identifies_last_real_week_before_future_cloud_rows(
     assert "미래 구름 행(OHLC 빈 행)을 현재가 분석 기준으로 사용하지 마세요." in prompt
 
 
-def test_run_gemini_passes_yolo_flag(
+def test_run_gemini_invokes_agy_with_prompt_file_reference_and_high_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1648,11 +1648,12 @@ def test_run_gemini_passes_yolo_flag(
 
     monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
 
+    prompt_path = tmp_path / "prompt.md"
     jobs._run_gemini(
         "ticker,name,close\n005930,Samsung,75000\n",
         jobs.SYSTEM_PROMPT,
         tmp_path / "analysis.md",
-        tmp_path / "prompt.md",
+        prompt_path,
         tmp_path / "stdout.log",
         tmp_path / "stderr.log",
         tmp_path / "model.pid",
@@ -1660,9 +1661,52 @@ def test_run_gemini_passes_yolo_flag(
     )
 
     payload = json.loads(captured["args"][3])
-    assert "--yolo" in payload["cmd"]
-    yolo_idx = payload["cmd"].index("--yolo")
-    assert payload["cmd"][yolo_idx + 1 : yolo_idx + 4] == ["-p", "", "--output-format"]
+    cmd = payload["cmd"]
+    assert Path(cmd[0]).name == "agy.exe"
+    assert "--dangerously-skip-permissions" in cmd
+    prompt_idx = cmd.index("-p")
+    assert str(prompt_path.resolve()) in cmd[prompt_idx + 1]
+    assert "005930,Samsung,75000" not in cmd[prompt_idx + 1]
+    model_idx = cmd.index("--model")
+    assert cmd[model_idx + 1] == "Gemini 3.1 Pro (High)"
+    assert "005930,Samsung,75000" in prompt_path.read_text(encoding="utf-8")
+
+
+def test_agy_cmd_uses_windows_exe_path_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_app_data = tmp_path / "LocalAppData"
+    agy_exe = local_app_data / "agy" / "bin" / "agy.exe"
+    agy_exe.parent.mkdir(parents=True)
+    agy_exe.write_text("", encoding="utf-8")
+    prompt_path = tmp_path / "prompt.md"
+
+    monkeypatch.setattr(jobs.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    monkeypatch.setattr(jobs.Path, "home", lambda: tmp_path / "home")
+
+    assert jobs._agy_cmd(prompt_path)[0] == str(agy_exe)
+
+
+def test_agy_cmd_falls_back_to_windows_exe_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(jobs.sys, "platform", "win32")
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(jobs.Path, "home", lambda: tmp_path / "home")
+
+    assert jobs._agy_cmd(tmp_path / "prompt.md")[0] == "agy.exe"
+
+
+def test_agy_cmd_keeps_bare_command_off_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(jobs.sys, "platform", "linux")
+
+    assert jobs._agy_cmd(tmp_path / "prompt.md")[0] == "agy"
 
 
 def _make_snapshot(**overrides: object) -> FundamentalSnapshot:
