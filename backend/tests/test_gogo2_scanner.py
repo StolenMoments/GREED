@@ -28,15 +28,15 @@ def make_weekly(close: float = 96.0, volume: float = 1000.0, rows: int = 180) ->
     )
 
 
-def install_fake_indicators(monkeypatch, weekday=0):
+def install_fake_indicators(monkeypatch, weekday=0, span_a=90.0, span_b=100.0):
     class FakeDateTime:
         @classmethod
         def today(cls):
             return SimpleNamespace(weekday=lambda: weekday)
 
     def fake_ichimoku(df: pd.DataFrame) -> pd.DataFrame:
-        df["span_a"] = 100.0
-        df["span_b"] = 90.0
+        df["span_a"] = span_a
+        df["span_b"] = span_b
         df["tenkan"] = 105.0
         df["kijun"] = 98.0
         df["chikou"] = df["Close"].shift(-26)
@@ -71,6 +71,18 @@ def test_breakout_passes_even_when_volume_is_below_old_required_multiplier(monke
     assert detail["캔들구름돌파_N주전"] == 0
     assert detail["거래량4주비율"] == 1.0
     assert detail["돌파시거래량증가(배)"] == 1.0
+
+
+def test_bullish_cloud_breakout_is_not_recognized_as_candle_break(monkeypatch):
+    install_fake_indicators(monkeypatch, span_a=100.0, span_b=90.0)
+    df = make_weekly()
+    df.loc[df.index[-2], "Close"] = 99.0
+    df.loc[df.index[-1], "Close"] = 103.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is False
+    assert detail == {}
 
 
 def test_near_cloud_top_stock_is_marked_pre_breakout(monkeypatch):
@@ -120,12 +132,24 @@ def test_stock_too_far_above_cloud_top_is_excluded(monkeypatch):
 def test_stock_at_cloud_gap_limit_can_still_pass(monkeypatch):
     install_fake_indicators(monkeypatch)
     df = make_weekly(close=125.0)
+    df.loc[df.index[-2], "Close"] = 99.0
     df.loc[df.index[-1], "Volume"] = 2000.0
 
     hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
 
     assert hit is True
-    assert detail["scan_type"] == "trend_confirm"
+    assert detail["scan_type"] == "breakout"
+
+
+def test_trend_confirm_requires_recent_bearish_cloud_breakout(monkeypatch):
+    install_fake_indicators(monkeypatch)
+    df = make_weekly(close=125.0)
+    df.loc[df.index[-1], "Volume"] = 2000.0
+
+    hit, detail = gogo2.check_conditions(df, candle_cloud_lookback=8, ma_cloud_lookback=4, gc_lookback=4)
+
+    assert hit is False
+    assert detail == {}
 
 
 def test_latest_weekly_candle_is_used_even_before_friday(monkeypatch):

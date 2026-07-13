@@ -81,7 +81,7 @@ def nearest_support_gap_pct(close, supports):
 # ────────────────────────────────────────
 # 3. 조건 체크
 #    AI 분석 후보를 넓게 모으는 스캐너:
-#    ① 구름 돌파형 ② 구름 돌파 임박형 ③ 돌파 후 눌림형 ④ 추세 확인형
+#    ① 구름 돌파형(음운 상방 돌파만 인정) ② 구름 돌파 임박형 ③ 돌파 후 눌림형 ④ 추세 확인형(음운 돌파 이력 필요)
 # ────────────────────────────────────────
 def check_conditions(df,
                      candle_cloud_lookback,
@@ -152,7 +152,7 @@ def check_conditions(df,
     if current_close < last['ma60']:
         return False, {}
 
-    # ── Step 1: 캔들 구름 돌파 탐색
+    # ── Step 1: 캔들 구름 돌파 탐색 (음운(span_a < span_b) 상방 돌파만 인정)
     candle_break_idx  = None
     candle_break_week = None
 
@@ -166,7 +166,7 @@ def check_conditions(df,
         cloud_top_cur  = max(cur['span_a'],  cur['span_b'])
         cloud_top_prev = max(prev['span_a'], prev['span_b'])
 
-        if (prev['Close'] <= cloud_top_prev) and (cur['Close'] > cloud_top_cur):
+        if (cur['span_a'] < cur['span_b']) and (prev['Close'] <= cloud_top_prev) and (cur['Close'] > cloud_top_cur):
             candle_break_idx  = idx_cur
             candle_break_week = i
 
@@ -284,7 +284,7 @@ def check_conditions(df,
         scan_type = 'breakout'
     elif pre_breakout_type:
         scan_type = 'pre_breakout'
-    elif score >= scanner_min_score:
+    elif recent_breakout and score >= scanner_min_score:
         scan_type = 'trend_confirm'
 
     if scan_type is None:
@@ -716,7 +716,7 @@ def parse_args():
         """
     )
     parser.add_argument('--candle',  type=int, default=None,
-                        help='캔들 구름 돌파 lookback (주)\n기본: KOSPI=12, KOSDAQ=8')
+                        help='캔들 구름 돌파(음운 상방 돌파) lookback (주)\n기본: KOSPI=12, KOSDAQ=8')
     parser.add_argument('--ma',      type=int, default=None,
                         help='이평선 구름 돌파 lookback (주)\n기본: KOSPI=6,  KOSDAQ=4')
     parser.add_argument('--gc',      type=int, default=None,
